@@ -41,11 +41,13 @@ js/
   apps.js             lógica do hub
   main.js             portfólio
   estudos.v5.js       Painel de Estudos (~97 KB)
+  estudos.plano.js    Metas da semana, revisões condicionais e desempenho (carregado depois do v5)
 assets/               imagens
 apps/
   _modelo/            template de app novo, já com login
   louvor/             Escala de Louvor (dados só em localStorage, sem login)
 supabase/rls.sql      Row Level Security: só o dono lê e grava
+supabase/estudos-plano.sql  tabelas sessoes, metas, revisoes e plano_estudos
 ```
 
 `/supabase/*` e `/README.md` retornam 404 no site, por regra no `netlify.toml`.
@@ -98,7 +100,8 @@ A página usa `<body class="auth-pending">` (com `visibility: hidden`) e remove 
 
 ## Supabase
 
-- Tabelas conhecidas: `resumos`, `topicos`, `disciplinas`. O `estudos.v5.js` provavelmente usa outras, ligadas a editais e sessões.
+- Tabelas: `editais`, `disciplinas`, `topicos`, `resumos` e, criadas por `supabase/estudos-plano.sql`, `sessoes`, `metas`, `revisoes` e `plano_estudos`. Os ids são texto.
+- Sem as tabelas do plano, o `estudos.plano.js` guarda tudo no `localStorage` e mostra um aviso; quando elas aparecem, envia esses dados uma vez (flag `est_plano_migrado`).
 - O `rls.sql` liga o RLS em todas as tabelas de `public`, **apaga todas as políticas existentes** e cria `dono_acesso_total`, que só libera para `auth.jwt()->>'email' = 'ecivilmatheus@gmail.com'`.
 - A chave `anon` pode ficar no front-end. A chave `service_role` **nunca** pode aparecer no código.
 
@@ -130,7 +133,14 @@ A página usa `<body class="auth-pending">` (com `visibility: hidden`) e remove 
 - [ ] Senha antiga trocada nos outros serviços onde era usada (ela ficou exposta no site antigo).
 - [ ] Repositório do GitHub passado para privado.
 
-**Otimização de desempenho preparada, ainda não aplicada.** Se existir um `otimizacao-site.zip` na pasta, o conteúdo dele é este:
+**Plano semanal no Painel de Estudos (branch `feat/plano-semanal`, ainda não publicada).** Inspirado na Guruja:
+- *Metas da Semana*: horas/semana, dias de estudo, peso e nível por disciplina → tópicos pendentes distribuídos pelos dias (prioridade = peso × (4 − nível); tempo do tópico pelo nível: 120/90/60 min), intercalando disciplinas.
+- *Revisões e Reforços*: intervalos 1/7/30/60 dias; acerto < 70% agenda reforço, ≥ 85% aumenta o intervalo em 50%; folgas do plano não recebem revisão.
+- *Desempenho*: horas por semana × meta, média diária, acerto por disciplina, pontos fracos e previsão de término do edital.
+- Regras e constantes ficam no topo de `js/estudos.plano.js`.
+- Pendente: rodar `supabase/estudos-plano.sql` e depois `supabase/rls.sql`.
+
+**Otimização de desempenho: aplicada** (commit `perf: aplica otimização preparada`, na mesma branch). O conteúdo era este:
 - `assets/profile.png` (JPEG de 1024 px, 772 KB) vira `assets/profile.webp` (21 KB) com `assets/profile.jpg` de reserva, servidos por `<picture>` no portfólio com `fetchpriority="high"`. Depois disso, apagar `profile.png`.
 - `@import` de fontes sai de todos os CSS e as fontes passam para `<link>` no `<head>`. O portfólio deixa de baixar Inter e Cormorant, que não usa.
 - `estudos.html`: sai o ApexCharts (não é usado; os gráficos são SVG próprios), o supabase-js fica fixo em `@2.45.4`, e o html2pdf passa a ser carregado sob demanda por `window.carregarHtml2pdf()`. As funções `exportResumoPDF` e `exportarDisciplinaPDF` do `estudos.v5.js` ficam `async` e aguardam esse carregamento.

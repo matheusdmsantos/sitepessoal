@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@300;400;600;700&family=Outfit:wght@300;400;500;600;700&display=swap" />
   <link href="https://cdn.quilljs.com/1.3.6/quill.snow.css" rel="stylesheet">
-  <link rel="stylesheet" href="css/estudos.css?v=3" />
+  <link rel="stylesheet" href="css/estudos.css?v=4" />
 </head>
 <body class="page-estudos">
 
@@ -51,6 +51,21 @@
         <span>Início (Visão Geral)</span>
       </button>
       
+      <button class="est-sidebar-item" data-section="metas">
+        <span class="est-sidebar-icon">🎯</span>
+        <span>Metas da Semana</span>
+      </button>
+
+      <button class="est-sidebar-item" data-section="revisoes">
+        <span class="est-sidebar-icon">📅</span>
+        <span>Revisões e Reforços</span>
+      </button>
+
+      <button class="est-sidebar-item" data-section="desempenho">
+        <span class="est-sidebar-icon">📈</span>
+        <span>Desempenho</span>
+      </button>
+
       <button class="est-sidebar-item" data-section="edital">
         <span class="est-sidebar-icon">📋</span>
         <span>Edital Verticalizado</span>
@@ -66,17 +81,6 @@
         <span>Histórico de Sessões</span>
       </button>
 
-      
-      <button class="est-sidebar-item" data-section="ciclo">
-        <span class="est-sidebar-icon">🔄</span>
-        <span>Ciclo de Estudos</span>
-      </button>
-      
-      <button class="est-sidebar-item" data-section="revisoes">
-        <span class="est-sidebar-icon">📅</span>
-        <span>Cronograma de Revisões</span>
-      </button>
-      
       <button class="est-sidebar-item" data-section="erros">
         <span class="est-sidebar-icon">❌</span>
         <span>Caderno de Erros</span>
@@ -110,7 +114,7 @@
           <article class="est-perf-card">
             <div class="est-card-header">
               <div class="est-card-icon green">🎯</div>
-              <span class="est-card-badge">HOJE</span>
+              <span class="est-card-badge">SEMANA</span>
             </div>
             <div>
               <div class="est-card-label">Metas Concluídas</div>
@@ -167,6 +171,9 @@
             </div>
           </article>
         </div>
+
+        <!-- Plano de hoje (metas e revisões do dia, via estudos.plano.js) -->
+        <div id="est-plano-hoje" class="est-animate-in" style="animation-delay: 0.15s;"></div>
 
         <!-- Content Grid (Atividade + Gráficos) -->
         <div class="est-content-grid est-animate-in" style="animation-delay: 0.2s;">
@@ -325,19 +332,17 @@
         </div>
       </section>
 
-      <!-- ─── SEÇÃO: CICLO DE ESTUDOS ─── -->
-      <section id="est-section-ciclo" class="est-placeholder-section" data-section="ciclo">
-        <div class="est-placeholder-icon">🔄</div>
-        <div class="est-placeholder-badge">Em desenvolvimento</div>
-        <h2 class="est-placeholder-title">Ciclo de Estudos</h2>
-        <p class="est-placeholder-text">Organize suas disciplinas em um ciclo adaptável ao invés de horários fixos. Módulo em breve.</p>
+      <!-- ─── SEÇÕES DO PLANO (renderizadas por estudos.plano.js) ─── -->
+      <section id="est-section-metas" class="est-placeholder-section est-plano-section" data-section="metas" aria-label="Metas da semana">
+        <div id="est-plano-metas"></div>
       </section>
 
-      <section id="est-section-revisoes" class="est-placeholder-section" data-section="revisoes">
-        <div class="est-placeholder-icon">📅</div>
-        <div class="est-placeholder-badge">Em desenvolvimento</div>
-        <h2 class="est-placeholder-title">Cronograma de Revisões</h2>
-        <p class="est-placeholder-text">Sistema automático de repetição espaçada (24h, 7d, 30d). Módulo em breve.</p>
+      <section id="est-section-revisoes" class="est-placeholder-section est-plano-section" data-section="revisoes" aria-label="Revisões e reforços">
+        <div id="est-plano-revisoes"></div>
+      </section>
+
+      <section id="est-section-desempenho" class="est-placeholder-section est-plano-section" data-section="desempenho" aria-label="Desempenho">
+        <div id="est-plano-desempenho"></div>
       </section>
 
       <section id="est-section-erros" class="est-placeholder-section" data-section="erros">
@@ -426,6 +431,46 @@
         <button type="submit" class="est-form-submit">
           Salvar Sessão
         </button>
+      </form>
+    </div>
+  </div>
+
+  <!-- ─── MODAL: CONCLUIR META OU REVISÃO ─── -->
+  <div class="est-modal-overlay" id="est-modal-concluir">
+    <div class="est-modal" style="max-width: 460px;" role="dialog" aria-modal="true" aria-labelledby="est-concluir-titulo">
+      <div class="est-modal-header" style="margin-bottom: 5px;">
+        <h2 class="est-modal-title" id="est-concluir-titulo">Concluir meta</h2>
+        <button class="est-modal-close" id="est-modal-concluir-close" aria-label="Fechar">✕</button>
+      </div>
+      <p id="est-concluir-topico" style="font-size: 0.85rem; color: var(--est-silver); margin-bottom: 6px; line-height: 1.4;"></p>
+      <p id="est-concluir-dica" style="font-size: 0.75rem; color: var(--est-accent-muted); margin-bottom: 20px; line-height: 1.4;"></p>
+
+      <form id="est-concluir-form">
+        <div class="est-form-row">
+          <div class="est-form-group">
+            <label class="est-form-label" for="est-concluir-h">Tempo (Horas)</label>
+            <input type="number" id="est-concluir-h" class="est-form-input" min="0" max="24" placeholder="0" />
+          </div>
+          <div class="est-form-group">
+            <label class="est-form-label" for="est-concluir-m">Tempo (Minutos)</label>
+            <input type="number" id="est-concluir-m" class="est-form-input" min="0" max="59" placeholder="0" />
+          </div>
+        </div>
+        <div class="est-form-row">
+          <div class="est-form-group">
+            <label class="est-form-label" for="est-concluir-q">Questões Feitas</label>
+            <input type="number" id="est-concluir-q" class="est-form-input" min="0" placeholder="0" />
+          </div>
+          <div class="est-form-group">
+            <label class="est-form-label" for="est-concluir-c">Questões Certas</label>
+            <input type="number" id="est-concluir-c" class="est-form-input" min="0" placeholder="0" />
+          </div>
+        </div>
+        <div class="est-form-group">
+          <label class="est-form-label" for="est-concluir-tec">Link do Caderno do TEC (Opcional)</label>
+          <input type="url" id="est-concluir-tec" class="est-form-input" placeholder="https://www.tecconcursos.com.br/..." />
+        </div>
+        <button type="submit" class="est-form-submit">Concluir</button>
       </form>
     </div>
   </div>
@@ -764,6 +809,7 @@
       return window.__html2pdfPromise;
     };
   </script>
-  <script src="js/estudos.v5.js"></script>
+  <script src="js/estudos.v5.js?v=6"></script>
+  <script src="js/estudos.plano.js?v=1"></script>
 </body>
 </html>

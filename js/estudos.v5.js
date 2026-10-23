@@ -38,6 +38,7 @@ const EST_CONFIG = {
 ============================================= */
 let studyData = [];
 let currentSection = localStorage.getItem('est_last_section') || 'inicio';
+if (currentSection === 'ciclo') currentSection = 'metas'; // seção antiga, virou "Metas da Semana"
 
 /* =============================================
    INICIALIZAÇÃO
@@ -46,6 +47,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   loadData();
   await migrateToSupabaseIfNeeded();
   await loadEditais();
+  await window.estPlano.init(); // estudos.plano.js: sessões, metas e revisões
   renderDashboard();
   initSidebar();
   initModal();
@@ -202,6 +204,8 @@ function navigateTo(section) {
   if (section === 'historico') {
     renderHistorico();
   }
+
+  window.estPlano.renderSecao(section);
 }
 
 /* =============================================
@@ -419,6 +423,7 @@ async function submitSession() {
   const totalQ = parseInt(document.getElementById('est-questions-total')?.value) || 0;
   const correctQ = parseInt(document.getElementById('est-questions-correct')?.value) || 0;
   const tecLinkInput = document.getElementById('est-session-tec-link')?.value.trim();
+  const metaDone = !!document.getElementById('est-meta-check')?.checked;
 
   if (!eId || !dId) return;
 
@@ -438,11 +443,12 @@ async function submitSession() {
       if (tecLinkInput) {
         topic.tecLink = tecLinkInput;
       }
-      
+      if (metaDone) topic.estudado = true;
+
       saveEditais();
       renderEdital();
 
-      const updateData = { 
+      const updateData = {
         tempo_gasto: topic.tempoGasto,
         questoes_feitas: topic.questoesFeitas,
         questoes_certas: topic.questoesCertas
@@ -450,6 +456,7 @@ async function submitSession() {
       if (tecLinkInput) {
         updateData.tec_link = topic.tecLink;
       }
+      if (metaDone) updateData.estudado = true;
 
       await window.supabaseClient.from('topicos').update(updateData).eq('id', topic.id);
     }
@@ -457,25 +464,46 @@ async function submitSession() {
 
   const session = {
     id: Date.now().toString(36) + Math.random().toString(36).slice(2, 7),
-    date: new Date().toISOString().split('T')[0],
+    date: dataLocal(),
     timestamp: new Date().toISOString(),
+    editalId: eId,
+    discId: dId,
+    topicId: topicName ? tId : null,
     discipline: disc ? disc.nome : '',
     topic: topicName || 'Tópico Geral',
     timeMinutes: totalMinutes,
     questionsTotal: totalQ,
-    questionsCorrect: Math.min(correctQ, totalQ)
+    questionsCorrect: Math.min(correctQ, totalQ),
+    tipo: 'estudo',
+    metaDone: metaDone && !!topicName
   };
 
   studyData.push(session);
   saveData();
+  window.estPlano.sessaoCriada(session);
   closeModal();
   renderDashboard();
+
+  // Tópico concluído: fecha a meta da semana e agenda a primeira revisão
+  if (session.metaDone) {
+    window.estPlano.topicoConcluido(tId, totalQ > 0 ? Math.round((session.questionsCorrect / totalQ) * 100) : null);
+  }
 }
 
 function deleteSession(id) {
   studyData = studyData.filter(s => s.id !== id);
   saveData();
+  window.estPlano.sessaoRemovida(id);
   renderDashboard();
+}
+
+/* Questões das sessões sem tópico. As com tópico já estão somadas no próprio tópico. */
+function questoesAvulsas() {
+  const avulsas = studyData.filter(s => !s.topicId && (!s.topic || s.topic === 'Tópico Geral'));
+  return {
+    total: avulsas.reduce((a, s) => a + (s.questionsTotal || 0), 0),
+    certas: avulsas.reduce((a, s) => a + (s.questionsCorrect || 0), 0)
+  };
 }
 
 /* =============================================
@@ -485,12 +513,11 @@ function renderDashboard() {
   renderCards();
   renderSessions();
   renderCharts();
+  window.estPlano.renderHoje();
 }
 
 /* ─── Cards de Performance ─── */
 function renderCards() {
-  const today = new Date().toISOString().split('T')[0];
-
   // Metas concluídas (Combina dados do edital)
   let totalMetas = 0;
   let metasDone = 0;
@@ -514,16 +541,22 @@ function renderCards() {
   const metaValEl = document.getElementById('est-card-metas-val');
   const metaSubEl = document.getElementById('est-card-metas-sub');
   const metaBarEl = document.getElementById('est-card-metas-bar');
-  if (metaValEl) metaValEl.innerHTML = `${metasDone} <span>/ ${totalMetas}</span>`;
+  // Com plano semanal, o card mostra as metas da semana; sem plano, os tópicos do edital
+  const semana = window.resumoSemanaPlano();
+  if (semana && semana.total > 0) {
+    const semanaPercent = Math.round((semana.feitas / semana.total) * 100);
+    if (metaValEl) metaValEl.innerHTML = `${semana.feitas} <span>/ ${semana.total}</span>`;
+    if (metaBarEl) metaBarEl.style.width = `${semanaPercent}%`;
+  } else {
+    if (metaValEl) metaValEl.innerHTML = `${metasDone} <span>/ ${totalMetas}</span>`;
+    if (metaBarEl) metaBarEl.style.width = `${metaPercent}%`;
+  }
   if (metaSubEl) metaSubEl.textContent = `${metaPercent}% do edital concluído`;
-  if (metaBarEl) metaBarEl.style.width = `${metaPercent}%`;
 
-  // Questões feitas (Combina edital + sessões diárias)
-  const sessionTotalQ = studyData.reduce((a, s) => a + s.questionsTotal, 0);
-  const sessionCorrectQ = studyData.reduce((a, s) => a + s.questionsCorrect, 0);
-  
-  const finalTotalQ = editalQuestions + sessionTotalQ;
-  const finalCorrectQ = editalCorrect + sessionCorrectQ;
+  // Questões feitas (edital + sessões sem tópico)
+  const avulsas = questoesAvulsas();
+  const finalTotalQ = editalQuestions + avulsas.total;
+  const finalCorrectQ = editalCorrect + avulsas.certas;
   const acertoPercent = finalTotalQ > 0 ? Math.round((finalCorrectQ / finalTotalQ) * 100) : 0;
 
   const questValEl = document.getElementById('est-card-quest-val');
@@ -558,14 +591,14 @@ function calculateStreak() {
   if (studyData.length === 0) return 0;
 
   const dates = [...new Set(studyData.map(s => s.date))].sort().reverse();
-  const today = new Date().toISOString().split('T')[0];
+  const today = dataLocal();
 
   // Se não estudou hoje, verifica se estudou ontem
   let checkDate = today;
   if (!dates.includes(today)) {
     const yesterday = new Date();
     yesterday.setDate(yesterday.getDate() - 1);
-    const yesterdayStr = yesterday.toISOString().split('T')[0];
+    const yesterdayStr = dataLocal(yesterday);
     if (!dates.includes(yesterdayStr)) return 0;
     checkDate = yesterdayStr;
   }
@@ -574,7 +607,7 @@ function calculateStreak() {
   let current = new Date(checkDate + 'T12:00:00');
 
   while (true) {
-    const dateStr = current.toISOString().split('T')[0];
+    const dateStr = dataLocal(current);
     if (dates.includes(dateStr)) {
       streak++;
       current.setDate(current.getDate() - 1);
@@ -613,7 +646,7 @@ function renderSessions() {
   const container = document.getElementById('est-sessions-container');
   if (!container) return;
 
-  const today = new Date().toISOString().split('T')[0];
+  const today = dataLocal();
   const todaySessions = studyData
     .filter(s => s.date === today)
     .sort((a, b) => b.timestamp.localeCompare(a.timestamp));
@@ -711,8 +744,9 @@ function renderQuestionsChart() {
   const legendContainer = document.getElementById('est-chart-questions-legend');
   if (!container || !legendContainer) return;
 
-  let totalQ = studyData.reduce((a, s) => a + s.questionsTotal, 0);
-  let correctQ = studyData.reduce((a, s) => a + s.questionsCorrect, 0);
+  const avulsas = questoesAvulsas();
+  let totalQ = avulsas.total;
+  let correctQ = avulsas.certas;
 
   editaisData.forEach(e => {
     e.disciplinas.forEach(d => {
@@ -897,6 +931,12 @@ function escapeHtml(str) {
   return div.innerHTML;
 }
 
+/* Data no fuso do navegador (AAAA-MM-DD). toISOString() usa UTC e, depois
+   das 21h no Brasil, já devolve o dia seguinte. */
+function dataLocal(d = new Date()) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
 /* =============================================
    MÓDULO: EDITAL VERTICALIZADO
 ============================================= */
@@ -944,15 +984,18 @@ async function migrateToSupabaseIfNeeded() {
 
 async function loadEditais() {
   try {
-    const { data: editais, error: errE } = await window.supabaseClient.from('editais').select('*');
-    if (errE) throw errE;
-    const { data: disciplinas, error: errD } = await window.supabaseClient.from('disciplinas').select('*');
-    if (errD) throw errD;
-    const { data: topicos, error: errT } = await window.supabaseClient.from('topicos').select('*');
-    if (errT) throw errT;
-
-    // Carrega resumos indexados por nome (independente de edital)
-    await loadResumosMap();
+    // As quatro consultas saem juntas, em vez de uma depois da outra
+    const sb = window.supabaseClient;
+    const [rE, rD, rT] = await Promise.all([
+      sb.from('editais').select('*').order('id'),
+      sb.from('disciplinas').select('*'),
+      sb.from('topicos').select('*'),
+      loadResumosMap() // resumos indexados por nome (independente de edital)
+    ]);
+    if (rE.error) throw rE.error;
+    if (rD.error) throw rD.error;
+    if (rT.error) throw rT.error;
+    const editais = rE.data, disciplinas = rD.data, topicos = rT.data;
 
     editaisData = editais.map(e => {
       let edDisciplinas = disciplinas.filter(d => d.edital_id === e.id).map(d => {
@@ -1074,6 +1117,7 @@ function initEditalUI() {
     select.addEventListener('change', (e) => {
       currentEditalId = e.target.value;
       renderEdital();
+      window.estPlano.editalTrocado();
     });
   }
 
@@ -1334,6 +1378,9 @@ async function toggleTopic(eId, dId, tId, checked) {
   renderCards();
 
   await window.supabaseClient.from('topicos').update({ estudado: checked }).eq('id', tId);
+
+  // Tópico concluído: fecha a meta da semana e agenda a primeira revisão
+  if (checked) window.estPlano.topicoConcluido(tId);
 }
 
 async function updateTopicName(eId, dId, tId, newName) {
