@@ -65,6 +65,16 @@ create table if not exists public.revisoes (
 );
 create index if not exists revisoes_data_idx on public.revisoes (data_prevista);
 
+-- Incidência de cada tópico (questões que caíram, pela planilha do TEC Concursos)
+create table if not exists public.incidencias (
+  topico_id      text primary key,
+  edital_id      text,
+  disciplina_id  text,
+  questoes       integer not null default 0,
+  atualizado_em  timestamptz not null default now()
+);
+create index if not exists incidencias_disc_idx on public.incidencias (disciplina_id);
+
 -- Para quem já tinha rodado uma versão anterior deste script
 alter table public.revisoes add column if not exists intervalo integer;
 alter table public.revisoes add column if not exists minutos integer;

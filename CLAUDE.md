@@ -22,6 +22,7 @@ Site pessoal que funciona como **repositório de aplicações próprias**. Ele t
   - html2pdf 0.10.1, carregado sob demanda
   - html2canvas 1.4.1 (só no app de louvor)
   - pdf.js 3.11.174 (cdnjs), carregado sob demanda na importação de edital; o worker roda na própria página
+  - SheetJS (xlsx) 0.18.5 (cdnjs), carregado sob demanda na importação de incidência do TEC
 - Fontes do Google carregadas por `<link>` no `<head>`, **nunca** por `@import` no CSS.
 - O `netlify.toml` define `publish = "."`, os headers de segurança e o cache de `/assets/*` por 30 dias. Por causa desse cache, ao trocar uma imagem é preciso **trocar o nome do arquivo**.
 
@@ -44,6 +45,7 @@ js/
   estudos.v5.js       Painel de Estudos (~97 KB)
   estudos.plano.js    Metas da semana, revisões condicionais e desempenho (carregado depois do v5)
   estudos.importar.js Importa edital de PDF (pdf.js 3.11.174 sob demanda) ou texto, com tela de revisão
+  estudos.incidencia.js Importa a planilha de incidência do TEC e liga assuntos a tópicos
 editais/              PDFs de teste; fora do git (.gitignore) para não serem publicados
 assets/               imagens
 apps/
@@ -103,7 +105,8 @@ A página usa `<body class="auth-pending">` (com `visibility: hidden`) e remove 
 
 ## Supabase
 
-- Tabelas: `editais`, `disciplinas`, `topicos`, `resumos` e, criadas por `supabase/estudos-plano.sql`, `sessoes`, `metas`, `revisoes` e `plano_estudos`. Os ids são texto.
+- Tabelas: `editais`, `disciplinas`, `topicos`, `resumos` e, criadas por `supabase/estudos-plano.sql`, `sessoes`, `metas`, `revisoes`, `plano_estudos` e `incidencias`. Os ids são texto.
+- `incidencias` é carregada à parte: se faltar, só a incidência fica no navegador e o resto do plano continua no Supabase.
 - Sem as tabelas do plano, o `estudos.plano.js` guarda tudo no `localStorage` e mostra um aviso; quando elas aparecem, envia esses dados uma vez (flag `est_plano_migrado`).
 - O `rls.sql` liga o RLS em todas as tabelas de `public`, **apaga todas as políticas existentes** e cria `dono_acesso_total`, que só libera para `auth.jwt()->>'email' = 'ecivilmatheus@gmail.com'`.
 - A chave `anon` pode ficar no front-end. A chave `service_role` **nunca** pode aparecer no código.
@@ -142,6 +145,7 @@ A página usa `<body class="auth-pending">` (com `visibility: hidden`) e remove 
 - *Revisões adaptativas*: o intervalo é multiplicado por 2 (70–84%), 3 (85–94%) ou 4 (≥ 95%); abaixo de 70% entra reforço (40 min); acima de 120 dias o tópico está dominado e sai do plano. Duração 15 min (≥ 90%) ou 25 min. Revisões ocupam no máximo 50% do tempo do dia (`diaComFolga`). A antiga tela "Revisões e Reforços" foi removida.
 - *Desempenho*: horas por semana × meta, média diária, acerto por disciplina, pontos fracos e previsão de término do edital.
 - Regras e constantes ficam no topo de `js/estudos.plano.js`.
+- *Incidência do TEC*: na configuração do plano, cada disciplina tem "📊 Importar". A planilha "Índice do Caderno" do TEC tem as colunas Hierarquia (vazia), Índice, Quantidade e Porcentagem, e declara a dimensão errada (`A1:D1`), por isso o intervalo é recalculado. Cada assunto é ligado a um tópico por semelhança (radicais, peso pela raridade, números de lei valem 2×); as correções do usuário ficam lembradas em `localStorage` (`est_inc_mapa_<disciplina>`). No plano: tópicos ordenados por incidência e tempo de 0,5× a 1,5× do bloco do nível (`blocoDoTopico`). Testado com Direito Administrativo (Cebraspe): 104 de 110 assuntos ligados sozinhos.
 - *Importar edital*: PDF ou texto → recorta o conteúdo programático até o primeiro ANEXO, separa "CARGO N", aplica "(EXCETO/SOMENTE PARA O CARGO …)", agrupa subitens no tópico principal (ou separa, por opção) e sugere a data de "Aplicação das provas". Testado com o edital do TCE-MA (Cebraspe): 16 cargos; cargo 13 com 15 disciplinas e 135 tópicos.
 - Pendente: rodar `supabase/estudos-plano.sql` e depois `supabase/rls.sql`.
 

@@ -1796,3 +1796,55 @@ html, body {
   text-overflow: ellipsis;
 }
 .est-plano-regra { line-height: 1.6; max-width: 900px; }
+/* =============================================
+   INCIDÊNCIA DO TEC (js/estudos.incidencia.js)
+============================================= */
+.est-plano-inc { color: var(--est-cyan); text-transform: none; letter-spacing: 0; }
+.est-plano-inc.alta { color: var(--est-green); }
+.est-plano-inc.baixa { color: var(--est-accent-muted); }
+.est-inc-grade {
+  display: grid;
+  grid-template-columns: 1fr 1.2fr;
+  gap: 24px;
+  margin-top: 12px;
+}
+.est-inc-rank {
+  display: grid;
+  grid-template-columns: 32px 1fr auto;
+  gap: 4px 10px;
+  align-items: center;
+  padding: 8px 0;
+  border-bottom: 1px solid rgba(200, 204, 212, 0.06);
+}
+.est-inc-rank.zero { opacity: 0.55; }
+.est-inc-pos { font-size: 0.75rem; color: var(--est-accent); }
+.est-inc-nome {
+  font-size: 0.8rem;
+  color: var(--est-silver-bright);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.est-inc-num { font-size: 0.82rem; font-weight: 700; color: var(--est-silver-bright); white-space: nowrap; text-align: right; }
+.est-inc-num small { font-weight: 400; color: var(--est-accent); margin-left: 4px; }
+.est-inc-barra { grid-column: 2 / 4; height: 4px; background: var(--est-accent-faint); border-radius: 4px; overflow: hidden; }
+.est-inc-barra div { height: 100%; background: var(--est-cyan); border-radius: 4px; }
+.est-inc-assuntos { display: flex; flex-direction: column; gap: 6px; max-height: 55vh; overflow-y: auto; padding-right: 4px; }
+.est-inc-assunto {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 6px 10px;
+  align-items: center;
+  padding: 8px 10px;
+  border: 1px solid var(--est-border);
+  border-radius: 10px;
+  background: rgba(20, 22, 36, 0.45);
+}
+.est-inc-assunto.solto { border-color: rgba(251, 191, 36, 0.45); background: var(--est-amber-dim); }
+.est-inc-assunto-nome { font-size: 0.8rem; color: var(--est-silver); line-height: 1.35; }
+.est-inc-assunto .est-form-select { grid-column: 1 / 3; padding: 6px 32px 6px 10px; font-size: 0.78rem; }
+#est-inc-status:empty { display: none; }
+@media (max-width: 768px) {
+  .est-inc-grade { grid-template-columns: 1fr; }
+}

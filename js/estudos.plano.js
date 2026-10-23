@@ -45,6 +45,9 @@
   let semanaVista = null;
   let configAberta = false;
   let contextoConclusao = null;
+  let incidencias = [];       // { topico_id, edital_id, disciplina_id, questoes } (planilha do TEC)
+  let incPorTopico = {};
+  let remotoInc = false;
 
   const TABELAS = { metas: () => metas, revisoes: () => revisoes, plano_estudos: () => planos };
 
@@ -157,6 +160,7 @@
       metas = lerLocal('metas');
       revisoes = lerLocal('revisoes');
       planos = lerLocal('plano_estudos');
+      await carregarIncidencias();
       garantirSemanaAtual();
       return;
     }
@@ -194,7 +198,77 @@
       studyData = rSessoes.map(linhaParaSessao);
     }
     saveData();
+    await carregarIncidencias();
     garantirSemanaAtual();
+  }
+
+  /* =============================================
+     INCIDÊNCIA (planilha do TEC, importada por estudos.incidencia.js)
+     Tabela própria e carregada à parte: se ela ainda não existir no Supabase,
+     só a incidência fica neste navegador; o resto do plano continua sincronizando.
+  ============================================= */
+  function indexarIncidencias() {
+    incPorTopico = {};
+    incidencias.forEach(r => { incPorTopico[r.topico_id] = r.questoes; });
+  }
+
+  async function carregarIncidencias() {
+    remotoInc = false;
+    if (remoto) {
+      const { data, error } = await sb.from('incidencias').select('*');
+      if (!error) {
+        remotoInc = true;
+        incidencias = data || [];
+        // Envia o que tinha sido guardado só aqui antes de a tabela existir
+        const locais = lerLocal('incidencias').filter(l => !incidencias.some(r => r.topico_id === l.topico_id));
+        if (locais.length) {
+          const r = await sb.from('incidencias').upsert(locais, { onConflict: 'topico_id' });
+          if (!r.error) { incidencias.push(...locais); localStorage.removeItem('est_plano_incidencias'); }
+        } else {
+          localStorage.removeItem('est_plano_incidencias');
+        }
+        indexarIncidencias();
+        return;
+      }
+      console.warn('Tabela incidencias indisponível; a incidência fica só neste navegador.', error);
+    }
+    incidencias = lerLocal('incidencias');
+    indexarIncidencias();
+  }
+
+  function incidenciaDaDisciplina(d) {
+    let soma = 0;
+    d.topicos.forEach(t => { soma += incPorTopico[t.id] || 0; });
+    return soma > 0 ? { soma, media: soma / d.topicos.length } : null;
+  }
+
+  /* % das questões da disciplina que caíram no tópico, ou null se a disciplina não tem incidência */
+  function pctIncidencia(topicId) {
+    const ref = acharTopico(topicId);
+    const inc = ref && incidenciaDaDisciplina(ref.d);
+    return inc ? ((incPorTopico[topicId] || 0) / inc.soma) * 100 : null;
+  }
+
+  async function salvarIncidencias(edital, disc, porTopico) {
+    const ids = new Set(disc.topicos.map(t => t.id));
+    const linhas = Object.entries(porTopico).map(([topico_id, questoes]) => ({
+      topico_id, edital_id: edital.id, disciplina_id: disc.id, questoes: Math.round(questoes),
+      atualizado_em: new Date().toISOString()
+    }));
+    incidencias = incidencias.filter(r => r.disciplina_id !== disc.id && !ids.has(r.topico_id)).concat(linhas);
+    indexarIncidencias();
+    if (remotoInc) {
+      const r1 = await sb.from('incidencias').delete().eq('disciplina_id', disc.id);
+      const r2 = linhas.length ? await sb.from('incidencias').upsert(linhas, { onConflict: 'topico_id' }) : { error: null };
+      if (r1.error || r2.error) {
+        console.error('Erro ao salvar incidência:', r1.error || r2.error);
+        aviso('Não foi possível salvar a incidência no servidor.');
+      }
+    } else {
+      try { localStorage.setItem('est_plano_incidencias', JSON.stringify(incidencias)); } catch (e) { console.warn(e); }
+    }
+    renderTudo();
+    aviso('Incidência salva. As próximas semanas já usam; clique em ↻ Regerar para refazer esta semana.');
   }
 
   /* =============================================
@@ -335,33 +409,44 @@
     const fila = edital.disciplinas
       .map(d => {
         const cfg = configDisc(plano, d.id);
-        return {
-          d, cfg, prioridade: cfg.peso * (4 - cfg.nivel), bloco: BLOCO_MIN[cfg.nivel] || 90, acerto: acertoEsperado(d),
-          pendentes: d.topicos.filter(t => !t.estudado && !ctx.usados.has(t.id))
-        };
+        const inc = incidenciaDaDisciplina(d);
+        const pendentes = d.topicos.filter(t => !t.estudado && !ctx.usados.has(t.id));
+        // Com incidência do TEC, os tópicos que mais caem vêm primeiro
+        if (inc) pendentes.sort((a, b) => (incPorTopico[b.id] || 0) - (incPorTopico[a.id] || 0));
+        return { d, cfg, inc, prioridade: cfg.peso * (4 - cfg.nivel), base: BLOCO_MIN[cfg.nivel] || 90, acerto: acertoEsperado(d), pendentes };
       })
       .filter(x => x.cfg.ativa && x.pendentes.length);
-    const vez = x => ((ctx.alocado[x.d.id] || 0) + x.bloco) / x.prioridade;
+    const vez = x => ((ctx.alocado[x.d.id] || 0) + blocoDoTopico(x, x.pendentes[0])) / x.prioridade;
 
     const novas = [];
     while (fila.length) {
       fila.sort((a, b) => vez(a) - vez(b));
       const x = fila[0];
-      const dia = dias.find(d => cabe(d, x.bloco));
+      const bloco = blocoDoTopico(x, x.pendentes[0]);
+      const dia = dias.find(d => cabe(d, bloco));
       if (!dia) { fila.shift(); continue; }   // não cabe mais nesta semana
       const t = x.pendentes.shift();
-      usado[dia] = (usado[dia] || 0) + x.bloco;
-      ctx.alocado[x.d.id] = (ctx.alocado[x.d.id] || 0) + x.bloco;
+      usado[dia] = (usado[dia] || 0) + bloco;
+      ctx.alocado[x.d.id] = (ctx.alocado[x.d.id] || 0) + bloco;
       ctx.usados.add(t.id);
       reservarRevisoes(ctx, plano, dia, x.acerto, t.id, x.d.id);
       novas.push({
         id: novoId('m'), edital_id: edital.id, semana, dia,
         disciplina_id: x.d.id, topico_id: t.id,
-        tipo: 'estudo', minutos: x.bloco, concluida: false, ordem: novas.length
+        tipo: 'estudo', minutos: bloco, concluida: false, ordem: novas.length
       });
       if (!x.pendentes.length) fila.shift();
     }
     return novas;
+  }
+
+  /* Tempo do tópico: o do nível, ajustado pela incidência (0,5× quando quase não cai,
+     1× na média da disciplina, até 1,5× quando cai o dobro da média ou mais) */
+  function blocoDoTopico(x, t) {
+    if (!x.inc || !t) return x.base;
+    const r = (incPorTopico[t.id] || 0) / x.inc.media;
+    const fator = Math.min(1.5, Math.max(0.5, 0.5 + 0.5 * r));
+    return Math.max(30, Math.round((x.base * fator) / 15) * 15);
   }
 
   function gerarSemana(edital, semana) {
@@ -732,6 +817,13 @@
       : '';
   }
 
+  function seloIncidencia(topicId) {
+    const pct = pctIncidencia(topicId);
+    if (pct === null) return '';
+    const txt = pct >= 1 ? Math.round(pct) + '%' : pct > 0 ? '<1%' : '0%';
+    return ` · <span class="est-plano-inc ${pct >= 10 ? 'alta' : pct < 2 ? 'baixa' : ''}" title="${pct.toFixed(1).replace('.', ',')}% das questões da disciplina no TEC">📊 ${txt}</span>`;
+  }
+
   function itemMeta(m, { compacto = false } = {}) {
     const ref = acharTopico(m.topico_id);
     const disc = ref ? ref.d.nome : 'Disciplina removida';
@@ -741,7 +833,7 @@
     return `
       <div class="est-plano-item tipo-estudo ${m.concluida ? 'feito' : ''} ${m.previsto ? 'previsto' : ''}">
         <div class="est-plano-item-info">
-          <span class="est-plano-tag">${tag} · ${fmtMin(m.minutos)}</span>
+          <span class="est-plano-tag">${tag} · ${fmtMin(m.minutos)}${seloIncidencia(m.topico_id)}</span>
           <span class="est-plano-item-disc">${escapeHtml(disc)}</span>
           <span class="est-plano-item-top" title="${escapeHtml(top)}">${escapeHtml(top)}</span>
         </div>
@@ -860,7 +952,7 @@
         <p class="est-plano-sub">Disciplinas com <strong>peso alto</strong> e <strong>nível iniciante</strong> recebem mais metas. O nível também define o tempo de cada tópico (iniciante ${fmtMin(BLOCO_MIN[1])}, intermediário ${fmtMin(BLOCO_MIN[2])}, avançado ${fmtMin(BLOCO_MIN[3])}).</p>
         <div class="est-plano-tabela-wrap">
           <table class="est-plano-tabela">
-            <thead><tr><th>Disciplina</th><th>Peso na prova</th><th>Seu nível</th><th>Incluir</th></tr></thead>
+            <thead><tr><th>Disciplina</th><th>Peso na prova</th><th>Seu nível</th><th>Incidência (TEC)</th><th>Incluir</th></tr></thead>
             <tbody>
               ${e.disciplinas.map(d => {
                 const c = configDisc(plano, d.id);
@@ -868,6 +960,11 @@
                   <td>${escapeHtml(d.nome)}</td>
                   <td><select class="est-form-select" name="peso">${opcoes(NOMES_PESO, c.peso)}</select></td>
                   <td><select class="est-form-select" name="nivel">${opcoes(NOMES_NIVEL, c.nivel)}</select></td>
+                  <td>${(() => {
+                    const inc = incidenciaDaDisciplina(d);
+                    return `<button type="button" class="est-plano-btn ${inc ? '' : 'primario'}" onclick="estIncidencia.abrir('${e.id}', '${d.id}')">
+                      ${inc ? `✓ ${inc.soma} questões · trocar` : '📊 Importar'}</button>`;
+                  })()}</td>
                   <td><input type="checkbox" name="ativa" ${c.ativa ? 'checked' : ''} aria-label="Incluir ${escapeHtml(d.nome)}"/></td>
                 </tr>`;
               }).join('')}
@@ -1282,6 +1379,7 @@
   window.estPlano = {
     init, renderHoje, renderSecao, topicoConcluido, sessaoCriada, sessaoRemovida,
     abrirConclusao, adiarRevisao, removerMeta, regerarSemana, agendarEstudados,
-    agendarReforco, mudarSemana, irParaSemana, alternarConfig, editalTrocado, projetar
+    agendarReforco, mudarSemana, irParaSemana, alternarConfig, editalTrocado, projetar,
+    incidenciaDaDisciplina, pctIncidencia, salvarIncidencias
   };
 })();
