@@ -45,7 +45,9 @@ create table if not exists public.metas (
   tipo           text not null default 'estudo',
   minutos        integer not null default 0,
   concluida      boolean not null default false,
-  ordem          integer not null default 0
+  ordem          integer not null default 0,
+  parte          integer,            -- tópico com PDF longo dividido em partes: parte/partes
+  partes         integer
 );
 create index if not exists metas_semana_idx on public.metas (edital_id, semana);
 
@@ -90,3 +92,5 @@ create index if not exists materiais_disc_idx on public.materiais (disciplina_id
 -- Para quem já tinha rodado uma versão anterior deste script
 alter table public.revisoes add column if not exists intervalo integer;
 alter table public.revisoes add column if not exists minutos integer;
+alter table public.metas add column if not exists parte integer;
+alter table public.metas add column if not exists partes integer;

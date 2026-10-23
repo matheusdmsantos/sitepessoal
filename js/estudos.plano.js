@@ -30,6 +30,8 @@
   const MIN_REVISAO_RAPIDA = 15;                 // com acerto de 90% ou mais
   const MIN_REFORCO = 40;
   const LIMITE_REVISAO_DIA = 0.5;                // revisões ocupam no máximo metade do tempo do dia
+  const PAGINAS_POR_HORA = 20;                   // ritmo de leitura dos PDFs ligados aos tópicos
+  const PARTE_MAX = 120;                         // tópico com PDF longo é dividido em partes de até 2h
   const PADRAO_DISC = { peso: 2, nivel: 2, ativa: true };
   const NOMES_PESO = { 1: 'Baixo', 2: 'Médio', 3: 'Alto' };
   const NOMES_NIVEL = { 1: 'Iniciante', 2: 'Intermediário', 3: 'Avançado' };
@@ -113,7 +115,12 @@
     if (!lista.length) return;
     if (!remoto) { salvarLocal(tabela); return; }
     const onConflict = tabela === 'plano_estudos' ? 'edital_id' : 'id';
-    const { error } = await sb.from(tabela).upsert(lista, { onConflict });
+    let { error } = await sb.from(tabela).upsert(lista, { onConflict });
+    if (error && tabela === 'metas' && /parte/.test(error.message || '')) {
+      // Tabela criada antes das colunas parte/partes: grava sem elas até o SQL ser rodado de novo
+      console.warn('Colunas parte/partes ausentes em metas; rode supabase/estudos-plano.sql de novo.');
+      ({ error } = await sb.from(tabela).upsert(lista.map(({ parte, partes, ...m }) => m), { onConflict }));
+    }
     if (error) {
       console.error(`Erro ao salvar em ${tabela}:`, error);
       aviso('Não foi possível salvar no servidor. Confira sua conexão.');
@@ -451,27 +458,83 @@
     }
   }
 
-  /* Estado do planejamento: tópicos já planejados, tempo reservado para revisões
-     por dia e minutos já dados a cada disciplina (para o rodízio). */
+  /* Estado do planejamento: minutos já planejados de cada tópico, tempo reservado para
+     revisões por dia e minutos já dados a cada disciplina (para o rodízio). Contam as
+     partes concluídas de semanas anteriores e tudo o que está na semana base. */
   function novoContexto(edital, plano, semanaBase) {
-    const ctx = { usados: new Set(), reservas: {}, contagem: {}, itens: {}, alocado: {} };
+    const ctx = { progresso: {}, partesFeitas: {}, reservas: {}, contagem: {}, itens: {}, alocado: {} };
     const h = hoje();
     revisoes.filter(r => r.edital_id === edital.id && !r.concluida_em).forEach(r => {
       reservar(ctx, r.data_prevista < h ? h : r.data_prevista, r.minutos || MIN_REVISAO);
     });
+    const contar = m => {
+      ctx.progresso[m.topico_id] = (ctx.progresso[m.topico_id] || 0) + m.minutos;
+      ctx.partesFeitas[m.topico_id] = (ctx.partesFeitas[m.topico_id] || 0) + 1;
+    };
+    metas.filter(m => m.edital_id === edital.id && m.semana < semanaBase && m.concluida).forEach(contar);
     metasDaSemana(edital.id, semanaBase).forEach(m => {
-      ctx.usados.add(m.topico_id);
+      contar(m);
       ctx.alocado[m.disciplina_id] = (ctx.alocado[m.disciplina_id] || 0) + m.minutos;
-      if (!m.concluida) {
+      // As revisões só começam depois da última parte do tópico
+      if (!m.concluida && (!m.partes || m.parte >= m.partes)) {
         reservarRevisoes(ctx, plano, m.dia, acertoEsperado(edital.disciplinas.find(d => d.id === m.disciplina_id)), m.topico_id, m.disciplina_id);
       }
     });
     return ctx;
   }
 
+  /* Tempo total do tópico. Com PDF ligado, é o tempo de leitura (PAGINAS_POR_HORA),
+     dividido em partes de até PARTE_MAX. Sem PDF, é o bloco do nível ajustado pela
+     incidência (0,5× quando quase não cai, 1× na média da disciplina, até 1,5×). */
+  function tempoDoTopico(x, t) {
+    const pags = paginasDoTopico(t.id);
+    if (pags > 0) {
+      const total = Math.max(15, Math.ceil((pags / PAGINAS_POR_HORA) * 60 / 15) * 15);
+      const partes = Math.ceil(total / PARTE_MAX);
+      return { total, partes };
+    }
+    let bloco = x.base;
+    if (x.inc) {
+      const r = (incPorTopico[t.id] || 0) / x.inc.media;
+      bloco = Math.max(30, Math.round((x.base * Math.min(1.5, Math.max(0.5, 0.5 + 0.5 * r))) / 15) * 15);
+    }
+    return { total: bloco, partes: 1 };
+  }
+
+  /* Minutos que ainda faltam planejar do tópico. Sem PDF, qualquer meta já cobre o tópico
+     inteiro (o bloco pode mudar com o nível sem gerar uma "sobra"). */
+  function faltaDoTopico(ctx, x, t) {
+    if (t.estudado) return 0;
+    const feito = ctx.progresso[t.id] || 0;
+    const tempo = tempoDoTopico(x, t);
+    if (tempo.partes === 1) return feito > 0 ? 0 : tempo.total;
+    const falta = tempo.total - feito;
+    return falta >= 15 ? falta : 0;
+  }
+
+  /* Próxima meta do tópico: { minutos, parte, partes }. O que falta é dividido por igual entre as partes restantes. */
+  function proximaParte(ctx, x, t) {
+    const tempo = tempoDoTopico(x, t);
+    const falta = faltaDoTopico(ctx, x, t);
+    if (tempo.partes === 1) return { minutos: falta, parte: 1, partes: 1 };
+    const parte = (ctx.partesFeitas[t.id] || 0) + 1;
+    const partes = Math.max(tempo.partes, parte);
+    const resto = partes - parte + 1;
+    return { minutos: resto <= 1 ? falta : Math.round(falta / resto), parte, partes };
+  }
+
+  function filaDoTopico(plano, d) {
+    const cfg = configDisc(plano, d.id);
+    const inc = incidenciaDaDisciplina(d);
+    // Com incidência do TEC, primeiro o que mais cai por página de material
+    const ordem = inc ? prioridadeDosTopicos(d).itens.map(x => x.t) : d.topicos;
+    return { d, cfg, inc, prioridade: cfg.peso * (4 - cfg.nivel), base: BLOCO_MIN[cfg.nivel] || 90, acerto: acertoEsperado(d), ordem };
+  }
+
   /* Monta uma semana. A disciplina da vez é a que recebeu menos tempo em relação à sua
      prioridade (peso × (4 − nível)): as de peso alto andam mais rápido, mas todas giram,
-     como num ciclo de estudos. Cada tópico vai para o primeiro dia em que cabe. */
+     como num ciclo de estudos. Cada meta vai para o primeiro dia em que cabe; um tópico
+     grande vira várias metas (partes), na sequência. */
   function planejarSemana(edital, plano, semana, ctx) {
     const h = hoje();
     const dias = [];
@@ -491,48 +554,41 @@
     };
 
     const fila = edital.disciplinas
-      .map(d => {
-        const cfg = configDisc(plano, d.id);
-        const inc = incidenciaDaDisciplina(d);
-        // Com incidência do TEC, primeiro o que mais cai por página de material
-        const pendentes = (inc ? prioridadeDosTopicos(d).itens.map(x => x.t) : d.topicos)
-          .filter(t => !t.estudado && !ctx.usados.has(t.id));
-        return { d, cfg, inc, prioridade: cfg.peso * (4 - cfg.nivel), base: BLOCO_MIN[cfg.nivel] || 90, acerto: acertoEsperado(d), pendentes };
-      })
-      .filter(x => x.cfg.ativa && x.pendentes.length);
-    const vez = x => ((ctx.alocado[x.d.id] || 0) + blocoDoTopico(x, x.pendentes[0])) / x.prioridade;
+      .map(d => filaDoTopico(plano, d))
+      .filter(x => x.cfg.ativa)
+      .map(x => ({ ...x, pendentes: x.ordem.filter(t => faltaDoTopico(ctx, x, t) > 0) }))
+      .filter(x => x.pendentes.length);
+    const vez = x => ((ctx.alocado[x.d.id] || 0) + proximaParte(ctx, x, x.pendentes[0]).minutos) / x.prioridade;
 
     const novas = [];
     while (fila.length) {
       fila.sort((a, b) => vez(a) - vez(b));
       const x = fila[0];
-      const bloco = blocoDoTopico(x, x.pendentes[0]);
-      const dia = dias.find(d => cabe(d, bloco));
+      const t = x.pendentes[0];
+      const p = proximaParte(ctx, x, t);
+      // Partes do mesmo tópico ficam em ordem: nunca antes do dia da parte anterior
+      const depoisDe = p.parte > 1 ? (novas.filter(m => m.topico_id === t.id).pop() || {}).dia : null;
+      const dia = dias.find(d => (!depoisDe || d > depoisDe) && cabe(d, p.minutos));
       if (!dia) { fila.shift(); continue; }   // não cabe mais nesta semana
-      const t = x.pendentes.shift();
-      usado[dia] = (usado[dia] || 0) + bloco;
-      ctx.alocado[x.d.id] = (ctx.alocado[x.d.id] || 0) + bloco;
-      ctx.usados.add(t.id);
-      reservarRevisoes(ctx, plano, dia, x.acerto, t.id, x.d.id);
+      usado[dia] = (usado[dia] || 0) + p.minutos;
+      ctx.alocado[x.d.id] = (ctx.alocado[x.d.id] || 0) + p.minutos;
+      ctx.progresso[t.id] = (ctx.progresso[t.id] || 0) + p.minutos;
+      ctx.partesFeitas[t.id] = (ctx.partesFeitas[t.id] || 0) + 1;
+      const ultima = faltaDoTopico(ctx, x, t) === 0;
+      if (ultima) {
+        x.pendentes.shift();
+        reservarRevisoes(ctx, plano, dia, x.acerto, t.id, x.d.id);
+      }
       novas.push({
         id: novoId('m'), edital_id: edital.id, semana, dia,
         disciplina_id: x.d.id, topico_id: t.id,
-        tipo: 'estudo', minutos: bloco, concluida: false, ordem: novas.length
+        tipo: 'estudo', minutos: p.minutos, concluida: false, ordem: novas.length,
+        ...(p.partes > 1 ? { parte: p.parte, partes: p.partes } : {})
       });
       if (!x.pendentes.length) fila.shift();
     }
     return novas;
   }
-
-  /* Tempo do tópico: o do nível, ajustado pela incidência (0,5× quando quase não cai,
-     1× na média da disciplina, até 1,5× quando cai o dobro da média ou mais) */
-  function blocoDoTopico(x, t) {
-    if (!x.inc || !t) return x.base;
-    const r = (incPorTopico[t.id] || 0) / x.inc.media;
-    const fator = Math.min(1.5, Math.max(0.5, 0.5 + 0.5 * r));
-    return Math.max(30, Math.round((x.base * fator) / 15) * 15);
-  }
-
   function gerarSemana(edital, semana) {
     const plano = planoDe(edital.id);
     if (!plano || !plano.dias_semana || !plano.dias_semana.length) return [];
@@ -547,7 +603,8 @@
     const atual = segundaDe(hoje());
     const ctx = novoContexto(edital, plano, atual);
     const ativas = edital.disciplinas.filter(d => configDisc(plano, d.id).ativa);
-    const restantes = () => ativas.reduce((a, d) => a + d.topicos.filter(t => !t.estudado && !ctx.usados.has(t.id)).length, 0);
+    const filas = ativas.map(d => filaDoTopico(plano, d));
+    const restantes = () => filas.reduce((a, x) => a + x.d.topicos.filter(t => faltaDoTopico(ctx, x, t) > 0).length, 0);
     const foraDoPlano = edital.disciplinas.filter(d => !configDisc(plano, d.id).ativa)
       .reduce((a, d) => a + d.topicos.filter(t => !t.estudado).length, 0);
 
@@ -772,7 +829,10 @@
       : item.tipo === 'reforco' ? 'Concluir reforço' : `Concluir revisão ${item.etapa}`;
     document.getElementById('est-concluir-titulo').textContent = titulo;
     document.getElementById('est-concluir-topico').textContent = `${ref.d.nome} — ${ref.t.nome}`;
-    document.getElementById('est-concluir-dica').textContent = tipo === 'meta'
+    const parcial = tipo === 'meta' && item.partes > 1 && item.parte < item.partes;
+    document.getElementById('est-concluir-dica').textContent = parcial
+      ? `Parte ${item.parte} de ${item.partes}: leia cerca de ${Math.round(item.minutos / 60 * PAGINAS_POR_HORA)} páginas. A revisão só é agendada depois da última parte.`
+      : tipo === 'meta'
       ? 'Teoria e caderno de questões do tópico. Ao concluir, a primeira revisão é agendada conforme o seu acerto.'
       : `Refaça o caderno do TEC deste tópico. Quanto maior o acerto, mais longe fica a próxima revisão; abaixo de ${ACERTO_REFORCO}% entra um reforço.`;
 
@@ -814,7 +874,9 @@
       tempo_gasto: t.tempoGasto, questoes_feitas: t.questoesFeitas,
       questoes_certas: t.questoesCertas, tec_link: t.tecLink || ''
     };
-    if (ctx.tipo === 'meta') { t.estudado = true; atualizacao.estudado = true; }
+    // Parte intermediária de um tópico longo: o tópico só fica estudado na última parte
+    const parcial = ctx.tipo === 'meta' && item.partes > 1 && item.parte < item.partes;
+    if (ctx.tipo === 'meta' && !parcial) { t.estudado = true; atualizacao.estudado = true; }
     saveEditais();
     fecharConclusao();
 
@@ -823,7 +885,7 @@
       id: novoId('s'), date: hoje(), timestamp: new Date().toISOString(),
       editalId: e.id, discId: d.id, topicId: t.id, discipline: d.nome, topic: t.nome,
       timeMinutes: minutos, questionsTotal: questoes, questionsCorrect: acertos,
-      tipo: ctx.tipo === 'meta' ? 'estudo' : item.tipo, metaDone: ctx.tipo === 'meta'
+      tipo: ctx.tipo === 'meta' ? 'estudo' : item.tipo, metaDone: ctx.tipo === 'meta' && !parcial
     };
     studyData.push(sessao);
     saveData();
@@ -832,7 +894,8 @@
     if (ctx.tipo === 'meta') {
       item.concluida = true;
       gravar('metas', item);
-      topicoConcluido(t.id, pct);
+      if (parcial) aviso(`Parte ${item.parte} de ${item.partes} concluída.`);
+      else topicoConcluido(t.id, pct);
     } else {
       item.concluida_em = hoje();
       item.acerto = pct;
@@ -918,7 +981,8 @@
     const disc = ref ? ref.d.nome : 'Disciplina removida';
     const top = ref ? ref.t.nome : 'Tópico removido';
     const atrasada = !m.concluida && !m.previsto && m.dia < hoje();
-    const tag = m.previsto ? 'Previsto' : m.concluida ? '✓ Feito' : atrasada ? 'Atrasada' : 'Estudo';
+    const tag = (m.previsto ? 'Previsto' : m.concluida ? '✓ Feito' : atrasada ? 'Atrasada' : 'Estudo') +
+      (m.partes > 1 ? ` · parte ${m.parte}/${m.partes}` : '');
     return `
       <div class="est-plano-item tipo-estudo ${m.concluida ? 'feito' : ''} ${m.previsto ? 'previsto' : ''}">
         <div class="est-plano-item-info">
@@ -1269,7 +1333,8 @@
         dobra com acerto de ${ACERTO_REFORCO}% a ${ACERTO_BOM - 1}%, triplica de ${ACERTO_BOM}% a ${ACERTO_OTIMO - 1}% e quadruplica
         a partir de ${ACERTO_OTIMO}%. Abaixo de ${ACERTO_REFORCO}% entra um reforço. Quando o intervalo passaria de ${INTERVALO_MAX} dias,
         o tópico está dominado e sai do plano. Revisões ocupam no máximo ${LIMITE_REVISAO_DIA * 100}% do tempo de cada dia.
-        Nas disciplinas com incidência do TEC, entra primeiro o tópico com mais questões por página de material.</p>` : ''}
+        Nas disciplinas com incidência do TEC, entra primeiro o tópico com mais questões por página de material.
+        Tópico com PDF ligado leva o tempo de leitura (${PAGINAS_POR_HORA} páginas por hora), em partes de até ${fmtMin(PARTE_MAX)}.</p>` : ''}
     `;
 
     const form = document.getElementById('est-plano-config-form');
