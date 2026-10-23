@@ -23,6 +23,12 @@
   [headers.values]
     Cache-Control = "no-cache"
 
+# Imagens: cache de 30 dias. Ao trocar uma imagem, troque também o nome do arquivo.
+[[headers]]
+  for = "/assets/*"
+  [headers.values]
+    Cache-Control = "public, max-age=2592000"
+
 # Documentação e SQL ficam na pasta, mas não são servidos no site.
 [[redirects]]
   from = "/supabase/*"

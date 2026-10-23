@@ -4,6 +4,9 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Painel de Estudos — Matheus Miranda</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@300;400;600;700&family=Outfit:wght@300;400;500;600;700&display=swap" />
   <link href="https://cdn.quilljs.com/1.3.6/quill.snow.css" rel="stylesheet">
   <link rel="stylesheet" href="css/estudos.css?v=3" />
 </head>
@@ -736,17 +739,31 @@
     </div>
   </div>
 
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4"></script>
   <script src="js/supabase-client.js"></script>
   <script src="js/auth.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
   <script>
     if (!requireAuth()) {
       throw new Error('Não autenticado');
     }
   </script>
   <script src="https://cdn.quilljs.com/1.3.6/quill.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+  <script>
+    // html2pdf é pesado: só é baixado na primeira exportação em PDF.
+    window.carregarHtml2pdf = function () {
+      if (window.html2pdf) return Promise.resolve();
+      if (!window.__html2pdfPromise) {
+        window.__html2pdfPromise = new Promise(function (ok, falha) {
+          var s = document.createElement('script');
+          s.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js';
+          s.onload = ok;
+          s.onerror = function () { window.__html2pdfPromise = null; falha(); };
+          document.head.appendChild(s);
+        });
+      }
+      return window.__html2pdfPromise;
+    };
+  </script>
   <script src="js/estudos.v5.js"></script>
 </body>
 </html>

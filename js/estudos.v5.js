@@ -1938,9 +1938,11 @@ async function deleteResumo() {
   renderMeusResumos();
 }
 
-function exportResumoPDF() {
-  if (!window.html2pdf) {
-    alert("A biblioteca de PDF ainda não foi carregada. Tente novamente em alguns segundos.");
+async function exportResumoPDF() {
+  try {
+    await carregarHtml2pdf();
+  } catch (e) {
+    alert("Não foi possível carregar a biblioteca de PDF. Verifique sua conexão e tente de novo.");
     return;
   }
   
@@ -2312,9 +2314,11 @@ window.exportarDisciplinaWord = function() {
   document.getElementById('est-export-disc-modal').classList.remove('active');
 }
 
-window.exportarDisciplinaPDF = function() {
-  if (typeof html2pdf === 'undefined') {
-    alert("A biblioteca de PDF ainda não foi carregada. Tente novamente em alguns segundos.");
+window.exportarDisciplinaPDF = async function() {
+  try {
+    await carregarHtml2pdf();
+  } catch (e) {
+    alert("Não foi possível carregar a biblioteca de PDF. Verifique sua conexão e tente de novo.");
     return;
   }
   const eId = document.getElementById('est-export-edital-select').value;

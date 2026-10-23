@@ -9,12 +9,14 @@
   <meta property="og:title" content="Matheus Miranda — Engenheiro Civil" />
   <meta property="og:description" content="Projetos de engenharia civil com precisão técnica e excelência." />
   <meta property="og:type" content="website" />
+  <meta property="og:image" content="https://matheusmirandaeng.com.br/assets/profile.jpg" />
+  <meta property="og:url" content="https://matheusmirandaeng.com.br/portfolio.html" />
   <title>Matheus Miranda — Engenheiro Civil</title>
 
   <!-- Google Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
 
   <!-- Styles -->
   <link rel="stylesheet" href="css/style.css" />
@@ -142,7 +144,11 @@
 
       <div class="hero-visual" aria-hidden="true">
         <div class="avatar-ring">
-          <img src="assets/profile.png" alt="Foto de Matheus Miranda" class="avatar-img" id="avatar-img" />
+          <picture>
+            <source srcset="assets/profile.webp" type="image/webp" />
+            <img src="assets/profile.jpg" alt="Foto de Matheus Miranda" class="avatar-img" id="avatar-img"
+                 width="500" height="500" fetchpriority="high" decoding="async" />
+          </picture>
           <div class="ring ring-1"></div>
           <div class="ring ring-2"></div>
           <div class="ring ring-3"></div>
