@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="robots" content="noindex, nofollow" />
+  <title>Novo app — Matheus Miranda</title>
+  <style>body.auth-pending { visibility: hidden; }</style>
+  <!-- <link rel="stylesheet" href="style.css" /> -->
+</head>
+<body class="auth-pending">
+
+  <main>
+    <h1>Novo app</h1>
+    <p>Comece a construir aqui.</p>
+  </main>
+
+  <!-- Login obrigatório: mantenha estes 4 scripts, nesta ordem, em todo app. -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4"></script>
+  <script src="/js/supabase-client.js"></script>
+  <script src="/js/auth.js"></script>
+  <script>
+    if (!requireAuth()) throw new Error('Não autenticado');
+    authReady.then((user) => { if (user) document.body.classList.remove('auth-pending'); });
+  </script>
+
+  <!-- Código do app. Para salvar dados no Supabase use window.supabaseClient. -->
+  <!-- <script src="app.js"></script> -->
+</body>
+</html>

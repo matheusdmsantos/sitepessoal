@@ -1,0 +1,752 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Painel de Estudos — Matheus Miranda</title>
+  <link href="https://cdn.quilljs.com/1.3.6/quill.snow.css" rel="stylesheet">
+  <link rel="stylesheet" href="css/estudos.css?v=3" />
+</head>
+<body class="page-estudos">
+
+
+
+  <!-- ─── TOPBAR ─── -->
+  <header class="est-topbar" role="banner">
+    <a href="apps.html" class="est-topbar-logo" aria-label="Voltar para Apps">
+      <div class="est-topbar-logo-icon" aria-hidden="true">📚</div>
+      <div>
+        <span class="est-topbar-logo-text">Matheus Miranda</span>
+        <span class="est-topbar-logo-sub">Painel de Estudos</span>
+      </div>
+    </a>
+
+    <div class="est-topbar-spacer" aria-hidden="true"></div>
+
+    <div class="est-topbar-user" aria-label="Usuário logado">
+      <div class="est-user-avatar" aria-hidden="true">MM</div>
+      <span class="est-user-name">matheusmiranda</span>
+    </div>
+
+    <a href="apps.html" class="est-back-btn" aria-label="Voltar para lista de apps">
+      <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+        <path d="M11 7H3M6 4L3 7L6 10" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      <span>Voltar aos Apps</span>
+    </a>
+  </header>
+
+  <!-- ─── LAYOUT PRINCIPAL ─── -->
+  <div class="est-layout">
+
+    <!-- ─── SIDEBAR ─── -->
+    <aside class="est-sidebar" aria-label="Menu de estudos">
+      <div class="est-sidebar-label">Módulos</div>
+      
+      <button class="est-sidebar-item active" data-section="inicio">
+        <span class="est-sidebar-icon">📊</span>
+        <span>Início (Visão Geral)</span>
+      </button>
+      
+      <button class="est-sidebar-item" data-section="edital">
+        <span class="est-sidebar-icon">📋</span>
+        <span>Edital Verticalizado</span>
+      </button>
+
+      <button class="est-sidebar-item" data-section="resumos">
+        <span class="est-sidebar-icon">📄</span>
+        <span>Meus Resumos</span>
+      </button>
+
+      <button class="est-sidebar-item" data-section="historico">
+        <span class="est-sidebar-icon">⏳</span>
+        <span>Histórico de Sessões</span>
+      </button>
+
+      
+      <button class="est-sidebar-item" data-section="ciclo">
+        <span class="est-sidebar-icon">🔄</span>
+        <span>Ciclo de Estudos</span>
+      </button>
+      
+      <button class="est-sidebar-item" data-section="revisoes">
+        <span class="est-sidebar-icon">📅</span>
+        <span>Cronograma de Revisões</span>
+      </button>
+      
+      <button class="est-sidebar-item" data-section="erros">
+        <span class="est-sidebar-icon">❌</span>
+        <span>Caderno de Erros</span>
+      </button>
+    </aside>
+
+    <!-- ─── MAIN CONTENT ─── -->
+    <main class="est-main">
+
+      <!-- ─── SEÇÃO: INÍCIO (DASHBOARD) ─── -->
+      <section id="est-section-inicio" class="est-dashboard active" aria-label="Visão geral dos estudos">
+        
+        <!-- Cabeçalho -->
+        <header class="est-header est-animate-in" style="animation-delay: 0s;">
+          <h1 class="est-greeting">
+            <span id="est-greeting-text">Olá, Eu!</span>
+          </h1>
+          <div class="est-date-row">
+            <span class="est-date" id="est-current-date">Carregando data...</span>
+            <button class="est-countdown" id="est-countdown" aria-label="Alterar data da prova">
+              <span class="est-countdown-dot"></span>
+              <span id="est-countdown-text">Carregando contador...</span>
+            </button>
+          </div>
+        </header>
+
+        <!-- Cards de Performance -->
+        <div class="est-cards-row est-animate-in" style="animation-delay: 0.1s;">
+          
+          <!-- Card 1: Metas -->
+          <article class="est-perf-card">
+            <div class="est-card-header">
+              <div class="est-card-icon green">🎯</div>
+              <span class="est-card-badge">HOJE</span>
+            </div>
+            <div>
+              <div class="est-card-label">Metas Concluídas</div>
+              <div class="est-card-value" id="est-card-metas-val">0 <span>/ 0</span></div>
+              <div class="est-card-sub" id="est-card-metas-sub">0% do edital concluído</div>
+              <div class="est-progress-mini">
+                <div class="est-progress-mini-fill green" id="est-card-metas-bar" style="width: 0%"></div>
+              </div>
+            </div>
+          </article>
+
+          <!-- Card 2: Questões -->
+          <article class="est-perf-card">
+            <div class="est-card-header">
+              <div class="est-card-icon blue">📝</div>
+              <span class="est-card-badge">TOTAL</span>
+            </div>
+            <div>
+              <div class="est-card-label">Questões Feitas</div>
+              <div class="est-card-value" id="est-card-quest-val">0</div>
+              <div class="est-card-sub" id="est-card-quest-sub">0% de acertos</div>
+              <div class="est-progress-mini">
+                <div class="est-progress-mini-fill blue" id="est-card-quest-bar" style="width: 0%"></div>
+              </div>
+            </div>
+          </article>
+
+          <!-- Card 3: Tempo -->
+          <article class="est-perf-card">
+            <div class="est-card-header">
+              <div class="est-card-icon amber">⏱️</div>
+              <span class="est-card-badge">LÍQUIDO</span>
+            </div>
+            <div>
+              <div class="est-card-label">Tempo de Estudo</div>
+              <div class="est-card-value" id="est-card-time-val">0<span>h</span> 0<span>m</span></div>
+              <div class="est-card-sub" id="est-card-time-sub">0 minutos acumulados</div>
+            </div>
+          </article>
+
+          <!-- Card 4: Ofensiva -->
+          <article class="est-perf-card">
+            <div class="est-card-header">
+              <div class="est-card-icon red">🔥</div>
+              <span class="est-card-badge">STREAK</span>
+            </div>
+            <div>
+              <div class="est-card-label">Ofensiva</div>
+              <div class="est-card-value" id="est-card-streak-val">0 <span>dias</span></div>
+              <div class="est-card-sub" id="est-card-streak-sub">Recorde: 0 dias</div>
+              <div class="est-progress-mini">
+                <div class="est-progress-mini-fill red" id="est-card-streak-bar" style="width: 0%"></div>
+              </div>
+            </div>
+          </article>
+        </div>
+
+        <!-- Content Grid (Atividade + Gráficos) -->
+        <div class="est-content-grid est-animate-in" style="animation-delay: 0.2s;">
+          
+          <!-- Coluna Esquerda: Atividade Diária -->
+          <div class="est-activity-panel">
+            <div class="est-activity-header">
+              <h2 class="est-activity-title">O que fiz hoje</h2>
+              <button class="est-btn-register" id="est-btn-open-modal">
+                <span aria-hidden="true">+</span> Registrar Sessão
+              </button>
+            </div>
+            
+            <div class="est-sessions-list" id="est-sessions-container">
+              <!-- Sessões injetadas via JS -->
+            </div>
+          </div>
+
+          <!-- Coluna Direita: Analítico -->
+          <div class="est-analytics-panel">
+            
+            <!-- Gráfico 1 -->
+            <div class="est-chart-card">
+              <h3 class="est-chart-title">Tempo por Disciplina</h3>
+              <div id="est-chart-time"></div>
+              <div class="est-chart-legend" id="est-chart-time-legend"></div>
+            </div>
+
+            <!-- Gráfico 2 -->
+            <div class="est-chart-card">
+              <h3 class="est-chart-title">Desempenho em Questões</h3>
+              <div id="est-chart-questions"></div>
+              <div class="est-chart-legend" id="est-chart-questions-legend"></div>
+            </div>
+
+            <!-- Cadernos Executados -->
+            <div class="est-chart-card">
+              <h3 class="est-chart-title">Cadernos Executados</h3>
+              <div id="est-cadernos-list" class="est-cadernos-list"></div>
+            </div>
+
+          </div>
+
+        </div>
+
+      </section>
+
+      <!-- ─── SEÇÕES "EM BREVE" (Placeholders) ─── -->
+      <section id="est-section-edital" class="est-edital-section" data-section="edital">
+        
+        <header class="est-edital-header est-animate-in">
+          <div class="est-edital-controls">
+            <select id="est-edital-select" class="est-form-select" aria-label="Selecionar edital">
+              <option value="" disabled selected>Carregando editais...</option>
+            </select>
+            <button class="est-btn-register" id="est-btn-new-edital">
+              <span aria-hidden="true">+</span> Novo Edital
+            </button>
+            <button class="est-btn-icon" id="est-btn-edit-edital" title="Editar Título" style="display:none;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path></svg></button>
+            <button class="est-btn-icon" id="est-btn-delete-edital" title="Excluir Edital" style="display:none;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg></button>
+          </div>
+          
+          <div class="est-edital-progress-wrapper" id="est-edital-progress-wrapper" style="display: none;">
+            <div class="est-edital-progress-labels" style="margin-bottom: 8px;">
+              <span class="est-edital-progress-title">Progresso Geral do Edital</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 20px;">
+              <div class="est-progress-mini" style="height: 14px; flex: 1; border-radius: 8px;">
+                <div class="est-progress-mini-fill green" id="est-edital-progress-bar" style="width: 0%; border-radius: 8px;"></div>
+              </div>
+              <span class="est-edital-progress-percent" id="est-edital-progress-text" style="font-size: 3.5rem; line-height: 1;">0%</span>
+            </div>
+          </div>
+        </header>
+
+        <div class="est-edital-content est-animate-in" id="est-edital-container" style="animation-delay: 0.1s;">
+          <!-- Placeholder de vazio -->
+          <div class="est-sessions-empty" id="est-edital-empty">
+            <span class="est-sessions-empty-icon">📋</span>
+            <p>Nenhum edital selecionado ou cadastrado.<br/>Clique em "Novo Edital" para começar.</p>
+          </div>
+          <!-- O Acordeão será renderizado aqui -->
+          <div id="est-edital-accordion" class="est-edital-accordion"></div>
+        </div>
+
+      </section>
+
+      <section id="est-section-resumos" class="est-placeholder-section est-resumos-section" data-section="resumos">
+
+        <!-- ── BARRA SUPERIOR ───────────────────────────────────────── -->
+        <div class="est-resumos-toolbar">
+          <div class="est-resumos-toolbar-inner">
+            <div class="est-resumos-fields">
+              <div class="est-resumos-field-group">
+                <label for="res-materia">Matéria</label>
+                <input type="text" id="res-materia" list="res-datalist-materias" placeholder="Ex: Direito Constitucional" />
+                <datalist id="res-datalist-materias">
+                  <option value="Língua Portuguesa">
+                  <option value="Competências Digitais e Informática Aplicada">
+                  <option value="Raciocínio Lógico">
+                  <option value="Direito Administrativo">
+                  <option value="Direito Constitucional">
+                  <option value="Controle Externo">
+                  <option value="Legislação Específica">
+                  <option value="História do Estado do Maranhão">
+                  <option value="Geografia do Estado do Maranhão">
+                  <option value="Noções de Direitos Humanos">
+                  <option value="Obras - Planejamento, Normas, Fiscalização e Legislação">
+                  <option value="Obras de Edificações">
+                  <option value="Obras Hídricas">
+                  <option value="Obras Rodoviárias">
+                  <option value="Auditoria do Setor Público">
+                </datalist>
+              </div>
+              <div class="est-resumos-field-group">
+                <label for="res-topico">Tópico *</label>
+                <input type="text" id="res-topico" placeholder="Ex: Direitos Fundamentais" />
+              </div>
+              <div class="est-resumos-field-group">
+                <label for="res-subtopico">Subtópico</label>
+                <input type="text" id="res-subtopico" placeholder="Ex: Nacionalidade (opcional)" />
+              </div>
+            </div>
+            <div class="est-resumos-actions">
+              <button type="button" id="res-btn-limpar" class="est-resumos-btn-limpar">🗑️ Limpar</button>
+              <button type="button" id="res-btn-salvar" class="est-resumos-btn-salvar">💾 Salvar no Word</button>
+            </div>
+          </div>
+          <div id="res-status" class="est-resumos-status" style="display:none;"></div>
+          <div class="est-resumos-info">
+            <span class="est-resumos-info-dot"></span>
+            Salvo em <code>C:\Users\matheus.santos\Desktop\Matheus\Estudo\Resumos\{Matéria}.docx</code>
+            &nbsp;·&nbsp; servidor: <strong>http://localhost:5000</strong>
+          </div>
+        </div>
+
+        <!-- ── ÁREA DE EDIÇÃO (estilo folha Word) ──────────────────── -->
+        <div class="est-resumos-page-area">
+          <div class="est-word-page">
+            <div id="res-editor"></div>
+          </div>
+        </div>
+
+      </section>
+
+      <section id="est-section-historico" class="est-placeholder-section" data-section="historico">
+        <div style="width: 100%; max-width: 900px; margin: 0 auto; text-align: left;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
+            <h2 style="font-size: 1.5rem; color: #fff; display: flex; align-items: center; gap: 10px;">
+              <span>⏳</span> Histórico de Sessões de Estudo
+            </h2>
+          </div>
+          <div id="est-historico-container" style="display: flex; flex-direction: column; gap: 20px;">
+            <!-- Sessões históricas agrupadas por data injetadas via JS -->
+          </div>
+        </div>
+      </section>
+
+      <!-- ─── SEÇÃO: CICLO DE ESTUDOS ─── -->
+      <section id="est-section-ciclo" class="est-placeholder-section" data-section="ciclo">
+        <div class="est-placeholder-icon">🔄</div>
+        <div class="est-placeholder-badge">Em desenvolvimento</div>
+        <h2 class="est-placeholder-title">Ciclo de Estudos</h2>
+        <p class="est-placeholder-text">Organize suas disciplinas em um ciclo adaptável ao invés de horários fixos. Módulo em breve.</p>
+      </section>
+
+      <section id="est-section-revisoes" class="est-placeholder-section" data-section="revisoes">
+        <div class="est-placeholder-icon">📅</div>
+        <div class="est-placeholder-badge">Em desenvolvimento</div>
+        <h2 class="est-placeholder-title">Cronograma de Revisões</h2>
+        <p class="est-placeholder-text">Sistema automático de repetição espaçada (24h, 7d, 30d). Módulo em breve.</p>
+      </section>
+
+      <section id="est-section-erros" class="est-placeholder-section" data-section="erros">
+        <div class="est-placeholder-icon">❌</div>
+        <div class="est-placeholder-badge">Em desenvolvimento</div>
+        <h2 class="est-placeholder-title">Caderno de Erros</h2>
+        <p class="est-placeholder-text">Registre e revise as questões que errou para fixar o aprendizado. Módulo em breve.</p>
+      </section>
+
+    </main>
+  </div>
+
+  <!-- ─── MODAL: REGISTRAR SESSÃO ─── -->
+  <div class="est-modal-overlay" id="est-modal-overlay">
+    <div class="est-modal" role="dialog" aria-labelledby="est-modal-title" aria-modal="true">
+      <div class="est-modal-header">
+        <h2 class="est-modal-title" id="est-modal-title">Nova Sessão de Estudo</h2>
+        <button class="est-modal-close" id="est-modal-close" aria-label="Fechar modal">✕</button>
+      </div>
+
+      <form id="est-session-form">
+        <div class="est-form-group">
+          <label class="est-form-label" for="est-edital-select-modal">Edital *</label>
+          <select id="est-edital-select-modal" class="est-form-select" required>
+            <option value="" disabled selected>Selecione o edital...</option>
+          </select>
+        </div>
+
+        <div class="est-form-group">
+          <label class="est-form-label" for="est-disc-select">Disciplina *</label>
+          <select id="est-disc-select" class="est-form-select" required disabled>
+            <option value="" disabled selected>Selecione a disciplina...</option>
+          </select>
+        </div>
+
+        <div class="est-form-group">
+          <label class="est-form-label" for="est-topic-select">Tópico Específico</label>
+          <select id="est-topic-select" class="est-form-select" disabled>
+            <option value="" selected>Selecione o tópico (opcional)...</option>
+          </select>
+        </div>
+
+        <div style="margin-top: -12px; margin-bottom: 12px; display: flex; justify-content: flex-end;">
+          <button type="button" id="est-btn-modal-add-topic" style="background: transparent; border: none; color: var(--est-silver-bright); font-size: 0.8rem; cursor: pointer; display: none; align-items: center; gap: 4px; padding: 4px 8px; border-radius: 4px;">
+            ➕ Adicionar Tópico ao Edital
+          </button>
+        </div>
+
+        <div class="est-form-row">
+          <div class="est-form-group">
+            <label class="est-form-label" for="est-hours-input">Tempo (Horas)</label>
+            <input type="number" id="est-hours-input" class="est-form-input" min="0" max="24" placeholder="0" />
+          </div>
+          <div class="est-form-group">
+            <label class="est-form-label" for="est-minutes-input">Tempo (Minutos)</label>
+            <input type="number" id="est-minutes-input" class="est-form-input" min="0" max="59" placeholder="45" />
+          </div>
+        </div>
+
+        <div class="est-form-row">
+          <div class="est-form-group">
+            <label class="est-form-label" for="est-questions-total">Questões Feitas</label>
+            <input type="number" id="est-questions-total" class="est-form-input" min="0" placeholder="20" />
+          </div>
+          <div class="est-form-group">
+            <label class="est-form-label" for="est-questions-correct">Questões Certas</label>
+            <input type="number" id="est-questions-correct" class="est-form-input" min="0" placeholder="17" />
+          </div>
+        </div>
+
+        <div class="est-form-group">
+          <label class="est-form-label" for="est-session-tec-link">Link do Caderno do TEC Concursos (Opcional)</label>
+          <input type="url" id="est-session-tec-link" class="est-form-input" placeholder="https://www.tecconcursos.com.br/..." />
+        </div>
+
+        <label class="est-form-checkbox">
+          <input type="checkbox" id="est-meta-check" />
+          <span>Marcar meta da disciplina como concluída</span>
+        </label>
+
+        <button type="button" id="est-btn-modal-resumo" class="est-form-submit" disabled style="background: var(--est-bg-card-2); color: var(--est-silver); margin-bottom: 15px; border: 1px solid var(--est-border); display: flex; align-items: center; justify-content: center; opacity: 0.5; cursor: not-allowed;">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 6px;"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+          Fazer Resumo deste Tópico
+        </button>
+
+        <button type="submit" class="est-form-submit">
+          Salvar Sessão
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <!-- ─── MODAL: CONFIGURAR DATA ALVO ─── -->
+  <div class="est-date-modal-overlay" id="est-date-modal">
+    <div class="est-modal" style="max-width: 400px;">
+      <div class="est-modal-header" style="margin-bottom: 20px;">
+        <h2 class="est-modal-title" style="font-size: 1.2rem;">Data da Prova</h2>
+        <button class="est-modal-close" onclick="closeDatePicker()">✕</button>
+      </div>
+      <div class="est-form-group">
+        <label class="est-form-label">Defina a data alvo do concurso</label>
+        <input type="date" id="est-target-date-input" class="est-form-input" />
+      </div>
+      <button class="est-form-submit" onclick="saveDateTarget()">Salvar Data</button>
+    </div>
+  </div>
+
+  <!-- ─── MODAL: NOVO EDITAL (IMPORTAÇÃO) ─── -->
+  <div class="est-modal-overlay" id="est-modal-edital">
+    <div class="est-modal" style="max-width: 600px;" role="dialog" aria-modal="true">
+      <div class="est-modal-header">
+        <h2 class="est-modal-title">Novo Edital Verticalizado</h2>
+        <button class="est-modal-close" id="est-modal-edital-close">✕</button>
+      </div>
+
+      <form id="est-edital-form">
+        <div class="est-form-group">
+          <label class="est-form-label" for="est-edital-title">Título do Edital *</label>
+          <input type="text" id="est-edital-title" class="est-form-input" placeholder="Ex: TCE-PI 2026 - Engenharia Civil" required />
+        </div>
+
+        <div class="est-form-group">
+          <label class="est-form-label" for="est-edital-text">Importação Inteligente</label>
+          <p style="font-size: 0.85rem; color: var(--est-silver-dim); margin-bottom: 10px; line-height: 1.4;">
+            Cole aqui o bloco de disciplinas e conhecimentos do edital. O sistema tentará separar as disciplinas (normalmente em MAIÚSCULO) e os tópicos (normalmente numerados). Após importar, você poderá editar, adicionar e excluir itens individualmente na tela.
+          </p>
+          <textarea id="est-edital-text" class="est-form-input" style="min-height: 200px; resize: vertical;" placeholder="Cole o texto do edital aqui..."></textarea>
+        </div>
+
+        <button type="submit" class="est-form-submit">
+          Importar e Criar Edital
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <!-- ─── MODAL: REVISÃO DE TÓPICO ─── -->
+  <div class="est-modal-overlay" id="est-modal-revisao">
+    <div class="est-modal" style="max-width: 450px;" role="dialog" aria-modal="true">
+      <div class="est-modal-header" style="margin-bottom: 5px;">
+        <h2 class="est-modal-title" id="est-modal-revisao-title">Editar Desempenho</h2>
+        <button class="est-modal-close" id="est-modal-revisao-close">✕</button>
+      </div>
+      <p id="est-rev-topic-name" style="font-size: 0.85rem; color: var(--est-accent); margin-bottom: 20px; line-height: 1.4;"></p>
+
+      <form id="est-revisao-form">
+        <input type="hidden" id="est-rev-eid" />
+        <input type="hidden" id="est-rev-did" />
+        <input type="hidden" id="est-rev-tid" />
+
+        <div class="est-form-row">
+          <div class="est-form-group">
+            <label class="est-form-label" for="est-rev-q-feitas">Questões Feitas</label>
+            <input type="number" id="est-rev-q-feitas" class="est-form-input" min="0" placeholder="0" />
+          </div>
+          <div class="est-form-group">
+            <label class="est-form-label" for="est-rev-q-certas">Questões Certas</label>
+            <input type="number" id="est-rev-q-certas" class="est-form-input" min="0" placeholder="0" />
+          </div>
+        </div>
+        <button type="submit" class="est-form-submit">
+          Salvar Alterações
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <!-- ─── MODAL: REGISTRO DE TEMPO ─── -->
+  <div class="est-modal-overlay" id="est-modal-tempo">
+    <div class="est-modal" style="max-width: 400px;" role="dialog" aria-modal="true">
+      <div class="est-modal-header" style="margin-bottom: 5px;">
+        <h2 class="est-modal-title">Registrar Tempo</h2>
+        <button class="est-modal-close" id="est-modal-tempo-close">✕</button>
+      </div>
+      <p id="est-tempo-topic-name" style="font-size: 0.85rem; color: var(--est-accent); margin-bottom: 20px; line-height: 1.4;"></p>
+
+      <form id="est-tempo-form">
+        <div class="est-form-row">
+          <div class="est-form-group">
+            <label class="est-form-label" for="est-tempo-h">Horas Adicionais</label>
+            <input type="number" id="est-tempo-h" class="est-form-input" min="0" placeholder="0" />
+          </div>
+          <div class="est-form-group">
+            <label class="est-form-label" for="est-tempo-m">Minutos Adicionais</label>
+            <input type="number" id="est-tempo-m" class="est-form-input" min="0" max="59" placeholder="0" />
+          </div>
+        </div>
+        
+        <p style="font-size: 0.75rem; color: var(--est-accent-muted); margin-bottom: 15px; line-height: 1.4;">
+          O tempo inserido será <strong>somado</strong> ao tempo total já gasto neste tópico.
+        </p>
+
+        <button type="submit" class="est-form-submit">
+          Adicionar Tempo
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <!-- ─── MODAL: DETALHE DO CADERNO ─── -->
+  <div class="est-modal-overlay" id="est-modal-detalhe-caderno">
+    <div class="est-modal" style="max-width: 400px;" role="dialog" aria-modal="true">
+      <div class="est-modal-header" style="margin-bottom: 20px;">
+        <h2 class="est-modal-title" id="est-modal-detalhe-title" style="font-size: 1.1rem; line-height: 1.4;">Detalhe do Caderno</h2>
+        <button class="est-modal-close" id="est-modal-detalhe-close">✕</button>
+      </div>
+      <div class="est-chart-card" style="border: none; padding: 0; box-shadow: none; background: transparent;">
+        <div id="est-chart-detalhe-caderno"></div>
+        <div class="est-chart-legend" id="est-chart-detalhe-legend" style="margin-top: 15px;"></div>
+      </div>
+      <div style="margin-top: 24px; display: flex; justify-content: center;">
+        <button id="est-btn-acessar-caderno" class="est-form-submit" style="display: none; max-width: 250px;">Acessar Caderno</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─── MODAL: REFAZER CADERNO ─── -->
+  <div class="est-modal-overlay" id="est-modal-refazer">
+    <div class="est-modal" style="max-width: 450px;" role="dialog" aria-modal="true">
+      <div class="est-modal-header" style="margin-bottom: 5px;">
+        <h2 class="est-modal-title">Refazer Caderno</h2>
+        <button class="est-modal-close" id="est-modal-refazer-close">✕</button>
+      </div>
+      <p id="est-refazer-topic-name" style="font-size: 0.85rem; color: var(--est-accent); margin-bottom: 20px; line-height: 1.4;"></p>
+
+      <form id="est-refazer-form">
+        <div class="est-form-group">
+          <label class="est-form-label" for="est-refazer-tec">Novo Link do Caderno do TEC (Opcional)</label>
+          <input type="url" id="est-refazer-tec" class="est-form-input" placeholder="https://www.tecconcursos.com.br/..." />
+        </div>
+
+        <div class="est-form-row">
+          <div class="est-form-group">
+            <label class="est-form-label" for="est-refazer-q-feitas">Novas Questões Feitas</label>
+            <input type="number" id="est-refazer-q-feitas" class="est-form-input" min="0" placeholder="0" />
+          </div>
+          <div class="est-form-group">
+            <label class="est-form-label" for="est-refazer-q-certas">Novas Questões Certas</label>
+            <input type="number" id="est-refazer-q-certas" class="est-form-input" min="0" placeholder="0" />
+          </div>
+        </div>
+
+        <p style="font-size: 0.75rem; color: var(--est-accent-muted); margin-bottom: 15px; line-height: 1.4;">
+          As questões informadas acima serão <strong>somadas</strong> ao seu histórico. O link do TEC atual será substituído caso você preencha um novo.
+        </p>
+
+        <button type="submit" class="est-form-submit">
+          Salvar Novo Desempenho
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Scripts -->
+  <!-- ─── MODAL: CUSTOM PROMPT ─── -->
+  <div class="est-modal-overlay" id="est-modal-prompt">
+    <div class="est-modal" style="max-width: 400px;" role="dialog" aria-modal="true">
+      <div class="est-modal-header" style="margin-bottom: 20px;">
+        <h2 class="est-modal-title" id="est-modal-prompt-title" style="font-size: 1.1rem; line-height: 1.4;"></h2>
+        <button class="est-modal-close" id="est-modal-prompt-close">✕</button>
+      </div>
+      <form id="est-prompt-form">
+        <div class="est-form-group">
+          <input type="text" id="est-prompt-input" class="est-form-input" />
+        </div>
+        <div style="display: flex; justify-content: flex-end; gap: 12px; margin-top: 10px;">
+          <button type="button" class="est-btn-icon" id="est-modal-prompt-cancel" style="background: transparent; color: var(--est-silver); padding: 8px 16px; border-radius: 6px; width: auto; font-size: 0.9rem;">Cancelar</button>
+          <button type="submit" class="est-form-submit" style="width: auto; padding: 8px 24px; margin-top: 0;">OK</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ─── MODAL: CUSTOM CONFIRM ─── -->
+  <div class="est-modal-overlay" id="est-modal-confirm">
+    <div class="est-modal" style="max-width: 400px;" role="dialog" aria-modal="true">
+      <div class="est-modal-header" style="margin-bottom: 20px;">
+        <h2 class="est-modal-title" style="font-size: 1.1rem; line-height: 1.4; color: var(--est-red);">Atenção</h2>
+        <button class="est-modal-close" id="est-modal-confirm-close">✕</button>
+      </div>
+      <p id="est-modal-confirm-msg" style="font-size: 0.9rem; color: var(--est-silver); margin-bottom: 24px;"></p>
+      <div style="display: flex; justify-content: flex-end; gap: 12px;">
+        <button type="button" class="est-btn-icon" id="est-modal-confirm-cancel" style="background: transparent; color: var(--est-silver); padding: 8px 16px; border-radius: 6px; width: auto; font-size: 0.9rem;">Cancelar</button>
+        <button type="button" class="est-form-submit" id="est-modal-confirm-ok" style="background: var(--est-red); border-color: var(--est-red); width: auto; padding: 8px 24px; margin-top: 0;">Confirmar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal de Resumo (Quill) -->
+  <div class="est-modal-overlay" id="est-modal-resumo" aria-hidden="true">
+    <div class="est-modal" role="dialog" style="max-width: 1600px; width: 98%; height: 96vh; padding: 20px; display: flex; flex-direction: column;">
+      <div class="est-modal-header" style="flex-shrink: 0; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+        <div style="flex: 1; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; min-width: 0;">
+          <h2 class="est-modal-title" style="margin: 0; font-size: 1.25rem;">Resumo: <span id="est-resumo-topic-name" style="color: var(--est-primary);"></span></h2>
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <label for="est-resumo-subtopic-input" style="font-size: 0.8rem; color: var(--est-silver); white-space: nowrap;">Subtópico (Word):</label>
+            <input type="text" id="est-resumo-subtopic-input" class="est-form-input" placeholder="Ex: Nacionalidade (opcional)" style="padding: 6px 10px; font-size: 0.85rem; width: 220px; background: rgba(0,0,0,0.3); height: 32px;" />
+          </div>
+        </div>
+        <button class="est-modal-close" id="est-modal-resumo-close" aria-label="Fechar modal" style="margin-left: 10px;">✕</button>
+      </div>
+      
+      <div class="est-resumo-editor-wrapper" style="flex: 1; display: flex; flex-direction: column; overflow: hidden; margin-top: 10px; background: #fff; border-radius: 8px;">
+        <div id="est-resumo-editor" style="flex: 1; overflow-y: auto; color: #000; font-size: 12pt;"></div>
+      </div>
+      
+      <div style="flex-shrink: 0; margin-top: 20px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+        <div>
+          <button type="button" class="est-btn-icon" id="est-btn-delete-resumo" title="Excluir Resumo" style="color: var(--est-red); border: 1px solid rgba(239,68,68,0.3); padding: 8px 12px; border-radius: 6px; width: auto; height: auto;">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 6px;"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+            Excluir
+          </button>
+        </div>
+        <div style="display: flex; gap: 10px; flex-wrap: wrap; align-items: center;">
+          <button type="button" class="est-btn-icon" id="est-btn-export-pdf" title="Exportar para PDF local" style="background: rgba(255,255,255,0.05); border: 1px solid var(--est-border); padding: 8px 12px; border-radius: 6px; width: auto; height: auto; color: var(--est-silver);">
+            📄 PDF
+          </button>
+          <button type="button" class="est-btn-icon" id="est-btn-export-docx" title="Baixar Arquivo .doc" style="background: rgba(255,255,255,0.05); border: 1px solid var(--est-border); padding: 8px 12px; border-radius: 6px; width: auto; height: auto; color: var(--est-silver);">
+            📝 Baixar .doc
+          </button>
+          <button type="button" class="est-btn-icon" id="est-btn-export-python-docx" title="Enviar diretamente para o Word .docx no seu PC via Python" style="background: rgba(46, 125, 50, 0.2); border: 1px solid rgba(76, 175, 80, 0.4); padding: 8px 14px; border-radius: 6px; width: auto; height: auto; color: #4ade80; font-weight: 600; display: flex; align-items: center; gap: 6px;">
+            💾 Salvar em .DOCX (Python)
+          </button>
+          <button type="button" class="est-form-submit" id="est-btn-save-resumo" style="width: auto; padding: 12px 28px; margin-top: 0;">Salvar Resumo</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─── MODAL: CRIAR NOVO RESUMO ─── -->
+  <div class="est-modal-overlay" id="est-modal-novo-resumo" aria-hidden="true">
+    <div class="est-modal" role="dialog" style="max-width: 500px;">
+      <div class="est-modal-header" style="margin-bottom: 20px;">
+        <h2 class="est-modal-title">Criar / Abrir Resumo</h2>
+        <button class="est-modal-close" id="est-modal-novo-resumo-close">✕</button>
+      </div>
+
+      <form id="est-form-novo-resumo">
+        <div class="est-form-group">
+          <label class="est-form-label" for="est-novo-resumo-materia">Matéria (Nome do Arquivo Word) *</label>
+          <input type="text" id="est-novo-resumo-materia" class="est-form-input" list="est-datalist-materias" placeholder="Ex: Direito Constitucional" required />
+          <datalist id="est-datalist-materias"></datalist>
+          <span style="font-size: 0.78rem; color: var(--est-silver-dim); margin-top: 6px; display: block; line-height: 1.4;">
+            Esta matéria será o nome do arquivo Word (<code>.docx</code>). Se o arquivo já existir, o novo resumo será inserido nele.
+          </span>
+        </div>
+
+        <div class="est-form-group">
+          <label class="est-form-label" for="est-novo-resumo-topico">Assunto / Tópico Principal *</label>
+          <input type="text" id="est-novo-resumo-topico" class="est-form-input" placeholder="Ex: Direitos Fundamentais" required />
+        </div>
+
+        <div class="est-form-group">
+          <label class="est-form-label" for="est-novo-resumo-subtopico">Subtópico (Opcional)</label>
+          <input type="text" id="est-novo-resumo-subtopico" class="est-form-input" placeholder="Ex: Nacionalidade" />
+        </div>
+
+        <div style="display: flex; gap: 12px; margin-top: 25px;">
+          <button type="button" class="est-btn-cancelar" id="est-btn-novo-resumo-cancelar">Cancelar</button>
+          <button type="submit" class="est-form-submit" style="flex: 1; margin-top: 0; background: var(--est-primary);">Abrir / Criar Resumo</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ─── MODAL: EXPORTAR DISCIPLINA ─── -->
+  <div class="est-date-modal-overlay" id="est-export-disc-modal">
+    <div class="est-date-modal-content" style="max-width: 500px;">
+      <h3 style="color: #fff; font-size: 1.25rem; font-weight: 500; margin-bottom: 20px;">Exportar Disciplina</h3>
+      
+      <div class="est-form-group">
+        <label class="est-form-label">Selecione o Edital</label>
+        <select id="est-export-edital-select" class="est-form-select"></select>
+      </div>
+
+      <div class="est-form-group">
+        <label class="est-form-label">Selecione a Disciplina</label>
+        <select id="est-export-disc-select" class="est-form-select" disabled>
+          <option value="">Selecione primeiro o edital...</option>
+        </select>
+      </div>
+
+      <div style="display: flex; flex-direction: column; gap: 10px; margin-top: 25px;">
+        <button type="button" class="est-form-submit" onclick="exportarDisciplinaPythonWord()" style="width: 100%; padding: 12px; margin-top: 0; background: rgba(46, 125, 50, 0.2); border: 1px solid rgba(76, 175, 80, 0.4); color: #4ade80; font-weight: 600;">
+          💾 Gerar Documento .DOCX (Servidor Python)
+        </button>
+        <div style="display: flex; gap: 10px;">
+          <button type="button" class="est-btn-cancelar" onclick="document.getElementById('est-export-disc-modal').classList.remove('active');">
+            Cancelar
+          </button>
+          <button type="button" class="est-form-submit" onclick="exportarDisciplinaWord()" style="flex: 1; padding: 10px; margin-top: 0; background: var(--est-primary); font-size: 0.85rem;">
+            Baixar .doc
+          </button>
+          <button type="button" class="est-form-submit" onclick="exportarDisciplinaPDF()" style="flex: 1; padding: 10px; margin-top: 0; background: var(--est-primary); font-size: 0.85rem;">
+            Baixar PDF
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="js/supabase-client.js"></script>
+  <script src="js/auth.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
+  <script>
+    if (!requireAuth()) {
+      throw new Error('Não autenticado');
+    }
+  </script>
+  <script src="https://cdn.quilljs.com/1.3.6/quill.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+  <script src="js/estudos.v5.js"></script>
+</body>
+</html>

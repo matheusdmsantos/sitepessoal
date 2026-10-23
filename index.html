@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="robots" content="noindex, nofollow" />
+  <title>Área Pessoal — Matheus Miranda</title>
+  <link rel="stylesheet" href="css/login.css" />
+</head>
+<body>
+
+  <div class="login-bg" aria-hidden="true">
+    <div class="bg-grid"></div>
+    <div class="bg-orb bg-orb-1"></div>
+    <div class="bg-orb bg-orb-2"></div>
+  </div>
+
+  <div class="login-wrapper">
+    <div class="login-card">
+
+      <header class="login-header">
+        <div class="login-logo"><span class="login-logo-icon" aria-hidden="true">⚡</span></div>
+        <h1 class="login-title">Área Pessoal</h1>
+        <p class="login-subtitle">Acesso restrito · Matheus Miranda</p>
+      </header>
+
+      <div class="login-divider" aria-hidden="true"><span>identificação</span></div>
+
+      <form id="login-form" class="login-form" novalidate aria-label="Formulário de login">
+
+        <div class="input-group">
+          <label for="login-email">E-mail</label>
+          <div class="input-wrap">
+            <span class="input-icon" aria-hidden="true">✉️</span>
+            <input type="email" id="login-email" name="email" placeholder="seu@email.com"
+                   required autocomplete="username" inputmode="email" />
+          </div>
+        </div>
+
+        <div class="input-group">
+          <label for="login-pass">Senha</label>
+          <div class="input-wrap">
+            <span class="input-icon" aria-hidden="true">🔒</span>
+            <input type="password" id="login-pass" name="password" placeholder="Sua senha"
+                   required autocomplete="current-password" />
+            <button type="button" class="input-toggle" id="toggle-password"
+                    aria-label="Mostrar senha" aria-pressed="false">👁️</button>
+          </div>
+        </div>
+
+        <div id="login-error" class="login-error" hidden role="alert" aria-live="assertive">
+          <span aria-hidden="true">⚠️</span>
+          <span id="login-error-msg"></span>
+        </div>
+
+        <button type="submit" id="login-btn" class="login-btn">
+          <div class="btn-spinner" aria-hidden="true"></div>
+          <span class="btn-text">Entrar</span>
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+            <path d="M3 8H13M9 4L13 8L9 12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </button>
+      </form>
+
+      <footer class="login-footer">
+        <a href="portfolio.html" class="login-back">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+            <path d="M11 7H3M6 4L3 7L6 10" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+          Voltar ao portfólio
+        </a>
+      </footer>
+
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4"></script>
+  <script src="js/supabase-client.js"></script>
+  <script src="js/auth.js"></script>
+  <script>
+    (async () => {
+      // Já tem sessão válida? Vai direto para os apps.
+      if (isAuthenticated() && await authReady) {
+        location.replace(getPostLoginUrl());
+        return;
+      }
+    })();
+
+    const form      = document.getElementById('login-form');
+    const emailIn   = document.getElementById('login-email');
+    const passIn    = document.getElementById('login-pass');
+    const toggleBtn = document.getElementById('toggle-password');
+    const loginBtn  = document.getElementById('login-btn');
+    const errorBox  = document.getElementById('login-error');
+    const errorMsg  = document.getElementById('login-error-msg');
+
+    toggleBtn.addEventListener('click', () => {
+      const show = passIn.type === 'password';
+      passIn.type = show ? 'text' : 'password';
+      toggleBtn.textContent = show ? '🙈' : '👁️';
+      toggleBtn.setAttribute('aria-label', show ? 'Ocultar senha' : 'Mostrar senha');
+      toggleBtn.setAttribute('aria-pressed', String(show));
+    });
+
+    function showError(msg) {
+      errorMsg.textContent = msg;
+      errorBox.hidden = false;
+      errorBox.style.animation = 'none';
+      void errorBox.offsetWidth;
+      errorBox.style.animation = '';
+    }
+
+    function setLoading(on) {
+      loginBtn.classList.toggle('loading', on);
+      loginBtn.disabled = on;
+    }
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const email = emailIn.value.trim();
+      const password = passIn.value;
+
+      errorBox.hidden = true;
+      emailIn.classList.remove('error-input');
+      passIn.classList.remove('error-input');
+
+      if (!email || !password) {
+        showError('Preencha e-mail e senha.');
+        return;
+      }
+
+      setLoading(true);
+      const result = await login(email, password);
+
+      if (result.ok) {
+        loginBtn.querySelector('.btn-text').textContent = 'Entrando…';
+        location.replace(getPostLoginUrl());
+      } else {
+        setLoading(false);
+        showError(result.message);
+        passIn.value = '';
+        emailIn.classList.add('error-input');
+        passIn.classList.add('error-input');
+        passIn.focus();
+      }
+    });
+  </script>
+</body>
+</html>

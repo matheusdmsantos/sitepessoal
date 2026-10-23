@@ -1,0 +1,75 @@
+{
+  "categorias": [
+    { "id": "engenharia",    "nome": "Engenharia",    "icone": "🏗️" },
+    { "id": "produtividade", "nome": "Produtividade", "icone": "⚡" },
+    { "id": "gestao",        "nome": "Gestão",        "icone": "📊" },
+    { "id": "utilitarios",   "nome": "Utilitários",   "icone": "🔧" }
+  ],
+  "apps": [
+    {
+      "id": "estudos",
+      "nome": "Painel de Estudos",
+      "descricao": "Edital verticalizado, sessões, resumos e desempenho em questões para o concurso.",
+      "icone": "📚",
+      "cor": "rgba(100, 160, 220, 0.15)",
+      "categoria": "produtividade",
+      "url": "estudos.html",
+      "abrirEm": "pagina"
+    },
+    {
+      "id": "louvor",
+      "nome": "Escala de Louvor",
+      "descricao": "Integrantes, repertório e montagem da escala semanal com geração de card.",
+      "icone": "🎵",
+      "cor": "rgba(74, 222, 128, 0.15)",
+      "categoria": "gestao",
+      "url": "apps/louvor/index.html",
+      "abrirEm": "visualizador"
+    },
+    {
+      "id": "calc-estruturas",
+      "nome": "Calculadora de Estruturas",
+      "descricao": "Cálculo rápido de elementos estruturais em concreto armado.",
+      "icone": "🏗️",
+      "cor": "rgba(100, 130, 200, 0.15)",
+      "categoria": "engenharia",
+      "url": null
+    },
+    {
+      "id": "controle-obras",
+      "nome": "Controle de Obras",
+      "descricao": "Cronograma e progresso das obras em andamento.",
+      "icone": "📊",
+      "cor": "rgba(80, 170, 130, 0.15)",
+      "categoria": "gestao",
+      "url": null
+    },
+    {
+      "id": "orcamentador",
+      "nome": "Orçamentador Rápido",
+      "descricao": "Estimativa de custo de materiais e serviços para obras e reformas.",
+      "icone": "💰",
+      "cor": "rgba(200, 170, 60, 0.15)",
+      "categoria": "gestao",
+      "url": null
+    },
+    {
+      "id": "diario-obra",
+      "nome": "Diário de Obra Digital",
+      "descricao": "Registro diário de ocorrências, fotos e progresso, com exportação.",
+      "icone": "📝",
+      "cor": "rgba(200, 100, 100, 0.15)",
+      "categoria": "gestao",
+      "url": null
+    },
+    {
+      "id": "conversor-unidades",
+      "nome": "Conversor de Unidades",
+      "descricao": "Força, pressão, momento, área e volume em unidades técnicas.",
+      "icone": "🔄",
+      "cor": "rgba(60, 160, 200, 0.15)",
+      "categoria": "utilitarios",
+      "url": null
+    }
+  ]
+}

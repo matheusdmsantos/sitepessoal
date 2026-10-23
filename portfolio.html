@@ -1,0 +1,542 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="Matheus Miranda — Engenheiro Civil (CREA 1919117873). Projetos estruturais, laudos técnicos e consultoria em engenharia civil." />
+  <meta name="keywords" content="engenheiro civil, projetos estruturais, laudo técnico, CREA, Matheus Miranda" />
+  <meta name="author" content="Matheus Miranda" />
+  <meta property="og:title" content="Matheus Miranda — Engenheiro Civil" />
+  <meta property="og:description" content="Projetos de engenharia civil com precisão técnica e excelência." />
+  <meta property="og:type" content="website" />
+  <title>Matheus Miranda — Engenheiro Civil</title>
+
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet" />
+
+  <!-- Styles -->
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+
+
+
+  <!-- ─── LOADER ─── -->
+  <div id="loader" role="status" aria-label="Carregando">
+    <div class="loader-logo">
+      <span class="loader-initials">MM</span>
+      <span class="loader-subtitle">Engenheiro Civil</span>
+    </div>
+    <div class="loader-bar"><span></span></div>
+  </div>
+
+  <!-- ─── HEADER / NAV ─── -->
+  <header id="header" role="banner">
+    <nav class="nav-container" aria-label="Navegação principal">
+      <a href="#hero" class="nav-logo" id="nav-logo-link" aria-label="Matheus Miranda — início">
+        <div>
+          <span class="nav-logo-text">Matheus Miranda</span>
+          <span class="nav-logo-sub">Engenheiro Civil · CREA 1919117873</span>
+        </div>
+      </a>
+      <ul class="nav-links" role="list">
+        <li><a href="#sobre"   class="nav-link" id="nav-sobre">Sobre</a></li>
+        <li><a href="#servicos" class="nav-link" id="nav-servicos">Serviços</a></li>
+        <li><a href="#projetos" class="nav-link" id="nav-projetos">Projetos</a></li>
+        <li><a href="#contato"  class="nav-link" id="nav-contato">Contato</a></li>
+      </ul>
+      <a href="index.html" class="nav-apps-btn" id="nav-apps-btn" aria-label="Acessar área pessoal">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+          <rect x="1" y="1" width="5" height="5" rx="1" stroke="currentColor" stroke-width="1.2"/>
+          <rect x="8" y="1" width="5" height="5" rx="1" stroke="currentColor" stroke-width="1.2"/>
+          <rect x="1" y="8" width="5" height="5" rx="1" stroke="currentColor" stroke-width="1.2"/>
+          <rect x="8" y="8" width="5" height="5" rx="1" stroke="currentColor" stroke-width="1.2"/>
+        </svg>
+        Área Pessoal
+      </a>
+      <button id="nav-toggle" class="nav-toggle" aria-label="Abrir menu" aria-expanded="false" aria-controls="mobile-menu">
+        <span></span><span></span><span></span>
+      </button>
+    </nav>
+
+    <!-- Mobile Menu -->
+    <div id="mobile-menu" class="mobile-menu" role="dialog" aria-label="Menu mobile" hidden>
+      <ul role="list">
+        <li><a href="#sobre"    class="mobile-link" id="mob-sobre">Sobre</a></li>
+        <li><a href="#servicos" class="mobile-link" id="mob-servicos">Serviços</a></li>
+        <li><a href="#projetos" class="mobile-link" id="mob-projetos">Projetos</a></li>
+        <li><a href="#contato"  class="mobile-link" id="mob-contato">Contato</a></li>
+      </ul>
+      <a href="index.html" class="mobile-apps-link" id="mob-apps-link">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+          <rect x="1" y="1" width="5" height="5" rx="1" stroke="currentColor" stroke-width="1.2"/>
+          <rect x="8" y="1" width="5" height="5" rx="1" stroke="currentColor" stroke-width="1.2"/>
+          <rect x="1" y="8" width="5" height="5" rx="1" stroke="currentColor" stroke-width="1.2"/>
+          <rect x="8" y="8" width="5" height="5" rx="1" stroke="currentColor" stroke-width="1.2"/>
+        </svg>
+        Área Pessoal
+      </a>
+    </div>
+  </header>
+
+  <main>
+
+    <!-- ─── HERO ─── -->
+    <section id="hero" class="section-hero" aria-labelledby="hero-title">
+      <div class="hero-bg-grid" aria-hidden="true"></div>
+      <div class="hero-orbs" aria-hidden="true">
+        <div class="orb orb-1"></div>
+        <div class="orb orb-2"></div>
+        <div class="orb orb-3"></div>
+      </div>
+
+      <div class="hero-content">
+        <div class="hero-badge" id="hero-badge">
+          <span class="badge-dot"></span>
+          Disponível para novos projetos
+        </div>
+        <h1 id="hero-title" class="hero-title">
+          <span class="title-line">Matheus</span>
+          <span class="title-line accent">Miranda</span>
+        </h1>
+        <p class="hero-crea">
+          <span class="hero-crea-dot"></span>
+          Engenheiro Civil
+          <span class="hero-crea-dot"></span>
+          CREA 1919117873
+        </p>
+        <p class="hero-subtitle">Projetos Estruturais · Laudos Técnicos · Consultoria</p>
+        <p class="hero-description">
+          Transformo complexidade técnica em soluções de engenharia precisas e seguras.
+          Do dimensionamento estrutural à gestão de obras — cada projeto é entregue
+          com excelência e rigor técnico.
+        </p>
+        <div class="hero-cta">
+          <a href="#projetos" id="btn-ver-projetos" class="btn btn-primary">
+            <span>Ver Projetos</span>
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+              <path d="M3 8H13M9 4L13 8L9 12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </a>
+          <a href="#contato" id="btn-entrar-contato" class="btn btn-outline">Entrar em contato</a>
+        </div>
+        <div class="hero-stats" role="list" aria-label="Estatísticas">
+          <div class="stat" role="listitem">
+            <span class="stat-number" data-target="7">0</span><span>+</span>
+            <span class="stat-label">Anos de exp.</span>
+          </div>
+          <div class="stat-divider" aria-hidden="true"></div>
+          <div class="stat" role="listitem">
+            <span class="stat-number" data-target="60">0</span><span>+</span>
+            <span class="stat-label">Projetos</span>
+          </div>
+          <div class="stat-divider" aria-hidden="true"></div>
+          <div class="stat" role="listitem">
+            <span class="stat-number" data-target="30">0</span><span>+</span>
+            <span class="stat-label">Obras acompanhadas</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="hero-visual" aria-hidden="true">
+        <div class="avatar-ring">
+          <img src="assets/profile.png" alt="Foto de Matheus Miranda" class="avatar-img" id="avatar-img" />
+          <div class="ring ring-1"></div>
+          <div class="ring ring-2"></div>
+          <div class="ring ring-3"></div>
+        </div>
+        <div class="floating-card card-1">
+          <div class="fc-icon">🏗️</div>
+          <div class="fc-text">
+            <strong>Estrutural</strong>
+            <span>Cálculo & Dimensionamento</span>
+          </div>
+        </div>
+        <div class="floating-card card-2">
+          <div class="fc-icon">📐</div>
+          <div class="fc-text">
+            <strong>Projetos</strong>
+            <span>NBR & ABNT</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="scroll-indicator" aria-hidden="true">
+        <div class="scroll-line"></div>
+        <span>scroll</span>
+      </div>
+    </section>
+
+    <!-- ─── SOBRE ─── -->
+    <section id="sobre" class="section-sobre" aria-labelledby="sobre-title">
+      <div class="container">
+        <div class="section-header">
+          <span class="section-tag">01 — Sobre</span>
+          <h2 id="sobre-title" class="section-title">Engenharia com<br/>propósito e precisão</h2>
+        </div>
+        <div class="sobre-grid">
+          <div class="sobre-text" data-animate="fade-left">
+            <p class="sobre-lead">
+              Sou Engenheiro Civil formado e registrado no CREA com <em>7 anos de experiência</em>
+              em projetos estruturais, laudos técnicos e acompanhamento de obras.
+            </p>
+            <p>
+              Minha atuação abrange desde o dimensionamento de estruturas em concreto armado
+              e metálicas até a elaboração de laudos de vistoria e perícias técnicas.
+              Acredito que <em>engenharia bem feita</em> combina rigor normativo com
+              soluções criativas e economicamente viáveis.
+            </p>
+            <p>
+              Além da formação em Engenharia Civil, desenvolvi habilidades em programação
+              e ferramentas digitais que me permitem entregar projetos com maior
+              eficiência e precisão.
+            </p>
+            <div class="sobre-tags" role="list" aria-label="Especialidades">
+              <span class="tag" role="listitem">Concreto Armado</span>
+              <span class="tag" role="listitem">Estrutura Metálica</span>
+              <span class="tag" role="listitem">Laudos Técnicos</span>
+              <span class="tag" role="listitem">Gestão de Obras</span>
+              <span class="tag" role="listitem">AutoCAD</span>
+              <span class="tag" role="listitem">Revit</span>
+              <span class="tag" role="listitem">TQS / Eberick</span>
+            </div>
+          </div>
+          <div class="sobre-timeline" data-animate="fade-right">
+            <h3 class="timeline-title">Trajetória</h3>
+            <ol class="timeline" aria-label="Linha do tempo profissional">
+              <li class="timeline-item">
+                <div class="tl-dot"></div>
+                <div class="tl-content">
+                  <span class="tl-year">2022 — Presente</span>
+                  <strong>Engenheiro Civil Autônomo</strong>
+                  <p>Projetos estruturais, laudos técnicos e consultoria em obras residenciais e comerciais</p>
+                </div>
+              </li>
+              <li class="timeline-item">
+                <div class="tl-dot"></div>
+                <div class="tl-content">
+                  <span class="tl-year">2019 — 2022</span>
+                  <strong>Engenheiro de Projetos</strong>
+                  <p>Dimensionamento estrutural e coordenação de projetos em construtora de médio porte</p>
+                </div>
+              </li>
+              <li class="timeline-item">
+                <div class="tl-dot"></div>
+                <div class="tl-content">
+                  <span class="tl-year">2018 — 2019</span>
+                  <strong>Engenheiro Residente</strong>
+                  <p>Acompanhamento e fiscalização de obras, controle de qualidade e cronogramas</p>
+                </div>
+              </li>
+              <li class="timeline-item">
+                <div class="tl-dot"></div>
+                <div class="tl-content">
+                  <span class="tl-year">2013 — 2018</span>
+                  <strong>Graduação em Engenharia Civil</strong>
+                  <p>Formação com ênfase em Estruturas e Construção Civil</p>
+                </div>
+              </li>
+            </ol>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ─── SERVIÇOS ─── -->
+    <section id="servicos" class="section-servicos" aria-labelledby="servicos-title">
+      <div class="container">
+        <div class="section-header centered">
+          <span class="section-tag">02 — Serviços</span>
+          <h2 id="servicos-title" class="section-title">O que ofereço</h2>
+          <p class="section-desc">
+            Soluções completas de engenharia civil para projetos residenciais,
+            comerciais e industriais.
+          </p>
+        </div>
+        <div class="services-grid">
+
+          <article class="service-card" id="service-estrutural">
+            <div class="service-icon">🏛️</div>
+            <h3 class="service-name">Projetos Estruturais</h3>
+            <div class="service-divider"></div>
+            <p class="service-desc">
+              Dimensionamento e detalhamento de estruturas em concreto armado, protendido
+              e metálica, seguindo as normas ABNT/NBR vigentes.
+            </p>
+            <div class="service-tags">
+              <span class="s-tag">Concreto Armado</span>
+              <span class="s-tag">Estrutura Metálica</span>
+              <span class="s-tag">Fundações</span>
+            </div>
+          </article>
+
+          <article class="service-card" id="service-laudo">
+            <div class="service-icon">📋</div>
+            <h3 class="service-name">Laudos & Perícias</h3>
+            <div class="service-divider"></div>
+            <p class="service-desc">
+              Elaboração de laudos técnicos, vistorias estruturais, laudos de
+              vizinhança e perícias judiciais com responsabilidade técnica do CREA.
+            </p>
+            <div class="service-tags">
+              <span class="s-tag">Vistoria</span>
+              <span class="s-tag">Laudo Técnico</span>
+              <span class="s-tag">Perícia Judicial</span>
+            </div>
+          </article>
+
+          <article class="service-card" id="service-gestao">
+            <div class="service-icon">🏗️</div>
+            <h3 class="service-name">Gestão de Obras</h3>
+            <div class="service-divider"></div>
+            <p class="service-desc">
+              Acompanhamento e fiscalização de obras, controle de qualidade,
+              gestão de cronograma e orçamento, e emissão de ART.
+            </p>
+            <div class="service-tags">
+              <span class="s-tag">Fiscalização</span>
+              <span class="s-tag">ART</span>
+              <span class="s-tag">Controle de Qualidade</span>
+            </div>
+          </article>
+
+          <article class="service-card" id="service-consultoria">
+            <div class="service-icon">📐</div>
+            <h3 class="service-name">Consultoria Técnica</h3>
+            <div class="service-divider"></div>
+            <p class="service-desc">
+              Análise de projetos de terceiros, consultoria em patologias
+              construtivas, reforço estrutural e soluções técnicas personalizadas.
+            </p>
+            <div class="service-tags">
+              <span class="s-tag">Patologias</span>
+              <span class="s-tag">Reforço Estrutural</span>
+              <span class="s-tag">Revisão de Projetos</span>
+            </div>
+          </article>
+
+          <article class="service-card" id="service-topografia">
+            <div class="service-icon">🗺️</div>
+            <h3 class="service-name">Levantamento Topográfico</h3>
+            <div class="service-divider"></div>
+            <p class="service-desc">
+              Levantamentos planialtimétricos, cadastrais e locação de obras,
+              com emissão de planta e memorial descritivo.
+            </p>
+            <div class="service-tags">
+              <span class="s-tag">Planimetria</span>
+              <span class="s-tag">Altimetria</span>
+              <span class="s-tag">Locação</span>
+            </div>
+          </article>
+
+          <article class="service-card" id="service-regularizacao">
+            <div class="service-icon">📜</div>
+            <h3 class="service-name">Regularização de Imóveis</h3>
+            <div class="service-divider"></div>
+            <p class="service-desc">
+              Assessoria completa para regularização de edificações junto
+              aos órgãos municipais, CREA e cartório de registro de imóveis.
+            </p>
+            <div class="service-tags">
+              <span class="s-tag">Habite-se</span>
+              <span class="s-tag">AVCB</span>
+              <span class="s-tag">Regularização</span>
+            </div>
+          </article>
+
+        </div>
+      </div>
+    </section>
+
+    <!-- ─── PROJETOS ─── -->
+    <section id="projetos" class="section-projetos" aria-labelledby="projetos-title">
+      <div class="container">
+        <div class="section-header centered">
+          <span class="section-tag">03 — Projetos</span>
+          <h2 id="projetos-title" class="section-title">Obras em Destaque</h2>
+          <p class="section-desc">Uma seleção dos projetos de maior impacto técnico e complexidade.</p>
+        </div>
+        <div class="projects-grid">
+
+          <article class="project-card featured" id="project-1" tabindex="0">
+            <div class="project-number">01</div>
+            <div class="project-content">
+              <div class="project-tags-row">
+                <span class="p-tag">Concreto Armado</span>
+                <span class="p-tag">Residencial</span>
+                <span class="p-tag">Estrutural</span>
+              </div>
+              <h3 class="project-title">Edifício Residencial Multifamiliar — 12 Pavimentos</h3>
+              <p class="project-desc">
+                Projeto estrutural completo em concreto armado para edifício residencial
+                de 12 pavimentos. Dimensionamento de lajes, vigas, pilares e fundações,
+                com otimização de formas e redução de 18% no consumo de aço.
+              </p>
+              <div class="project-metrics">
+                <div class="metric"><strong>4.200 m²</strong><span>Área construída</span></div>
+                <div class="metric"><strong>↓ 18%</strong><span>Redução de aço</span></div>
+                <div class="metric"><strong>14 meses</strong><span>Prazo de execução</span></div>
+              </div>
+            </div>
+            <div class="project-link-area">
+              <a href="#" id="proj1-link" class="project-link" aria-label="Ver detalhes do projeto">
+                Ver Detalhes
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                  <path d="M3 13L13 3M13 3H6M13 3V10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                </svg>
+              </a>
+            </div>
+          </article>
+
+          <article class="project-card" id="project-2" tabindex="0">
+            <div class="project-number">02</div>
+            <div class="project-content">
+              <div class="project-tags-row">
+                <span class="p-tag">Estrutura Metálica</span>
+                <span class="p-tag">Industrial</span>
+              </div>
+              <h3 class="project-title">Galpão Industrial — Estrutura Metálica</h3>
+              <p class="project-desc">
+                Projeto e execução de galpão industrial em estrutura metálica com
+                2.800 m², incluindo cobertura em telha termoacústica e mezanino em
+                concreto para área administrativa.
+              </p>
+            </div>
+            <div class="project-link-area">
+              <a href="#" id="proj2-link" class="project-link" aria-label="Ver detalhes do projeto 2">
+                Ver Detalhes
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                  <path d="M3 13L13 3M13 3H6M13 3V10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                </svg>
+              </a>
+            </div>
+          </article>
+
+          <article class="project-card" id="project-3" tabindex="0">
+            <div class="project-number">03</div>
+            <div class="project-content">
+              <div class="project-tags-row">
+                <span class="p-tag">Laudo Técnico</span>
+                <span class="p-tag">Patologias</span>
+              </div>
+              <h3 class="project-title">Laudo de Vistoria — Condomínio Comercial</h3>
+              <p class="project-desc">
+                Elaboração de laudo técnico completo para condomínio comercial com
+                45 anos de construção, identificando patologias estruturais e
+                propondo plano de recuperação e reforço.
+              </p>
+            </div>
+            <div class="project-link-area">
+              <a href="#" id="proj3-link" class="project-link" aria-label="Ver detalhes do projeto 3">
+                Ver Detalhes
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                  <path d="M3 13L13 3M13 3H6M13 3V10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                </svg>
+              </a>
+            </div>
+          </article>
+
+        </div>
+      </div>
+    </section>
+
+    <!-- ─── CONTATO ─── -->
+    <section id="contato" class="section-contato" aria-labelledby="contato-title">
+      <div class="container">
+        <div class="contato-inner">
+          <div class="contato-text" data-animate="fade-up">
+            <span class="section-tag">04 — Contato</span>
+            <h2 id="contato-title" class="section-title">Vamos conversar<br/><span class="silver">sobre seu projeto?</span></h2>
+            <p>
+              Estou disponível para novos projetos, consultorias e parcerias.
+              Entre em contato pelo canal de sua preferência.
+            </p>
+            <div class="contact-links">
+              <a href="mailto:ecivilmatheus@gmail.com" id="link-email" class="contact-item">
+                <div class="contact-icon">✉️</div>
+                <div>
+                  <span class="contact-label">Email</span>
+                  <span class="contact-value">ecivilmatheus@gmail.com</span>
+                </div>
+              </a>
+              <a href="https://wa.me/5586998645503" id="link-whatsapp" target="_blank" rel="noopener noreferrer" class="contact-item">
+                <div class="contact-icon">📱</div>
+                <div>
+                  <span class="contact-label">WhatsApp</span>
+                  <span class="contact-value">(86) 9 9864-5503</span>
+                </div>
+              </a>
+              <a href="https://instagram.com/eng.matheus.miranda" id="link-instagram" target="_blank" rel="noopener noreferrer" class="contact-item">
+                <div class="contact-icon">📸</div>
+                <div>
+                  <span class="contact-label">Instagram</span>
+                  <span class="contact-value">@eng.matheus.miranda</span>
+                </div>
+              </a>
+            </div>
+          </div>
+
+          <form id="contact-form" class="contato-form" novalidate aria-label="Formulário de contato">
+            <div class="form-group">
+              <label for="form-name">Nome</label>
+              <input type="text" id="form-name" name="nome" placeholder="Seu nome completo" required autocomplete="name" />
+            </div>
+            <div class="form-group">
+              <label for="form-email">E-mail</label>
+              <input type="email" id="form-email" name="email" placeholder="seu@email.com" required autocomplete="email" />
+            </div>
+            <div class="form-group">
+              <label for="form-subject">Tipo de Serviço</label>
+              <input type="text" id="form-subject" name="assunto" placeholder="Ex: Projeto Estrutural, Laudo Técnico..." />
+            </div>
+            <div class="form-group">
+              <label for="form-message">Mensagem</label>
+              <textarea id="form-message" name="mensagem" rows="5" placeholder="Descreva brevemente seu projeto ou necessidade..." required></textarea>
+            </div>
+            <button type="submit" id="btn-enviar" class="btn btn-primary btn-full">
+              <span id="btn-enviar-text">Enviar Mensagem</span>
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                <path d="M2 8L14 2L8 14L7 9L2 8Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
+              </svg>
+            </button>
+            <div id="form-feedback" class="form-feedback" role="alert" aria-live="polite" hidden></div>
+          </form>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- ─── FOOTER ─── -->
+  <footer id="footer" role="contentinfo">
+    <div class="container">
+      <div class="footer-content">
+        <span class="footer-logo">MM</span>
+        <p class="footer-text">
+          © <span id="footer-year"></span> Matheus Miranda · Engenheiro Civil · CREA 1919117873
+        </p>
+        <div class="footer-links">
+          <a href="#hero" id="footer-top" class="footer-link">Topo</a>
+          <a href="https://instagram.com/eng.matheus.miranda" id="footer-instagram" target="_blank" rel="noopener noreferrer" class="footer-link">Instagram</a>
+          <a href="https://wa.me/5586998645503" id="footer-whatsapp" target="_blank" rel="noopener noreferrer" class="footer-link">WhatsApp</a>
+          <a href="index.html" id="footer-private" class="footer-private-link" aria-label="Acesso à área pessoal">
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+              <rect x="1" y="1" width="4" height="4" rx="0.8" stroke="currentColor" stroke-width="1"/>
+              <rect x="7" y="1" width="4" height="4" rx="0.8" stroke="currentColor" stroke-width="1"/>
+              <rect x="1" y="7" width="4" height="4" rx="0.8" stroke="currentColor" stroke-width="1"/>
+              <rect x="7" y="7" width="4" height="4" rx="0.8" stroke="currentColor" stroke-width="1"/>
+            </svg>
+            Área Pessoal
+          </a>
+        </div>
+      </div>
+    </div>
+  </footer>
+
+  <!-- Scripts -->
+  <script src="js/main.js"></script>
+</body>
+</html>

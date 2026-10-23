@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Escala de Louvor</title>
+  
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
+
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <div class="app-container">
+    <header class="app-header">
+      <h1>Ministério de Louvor</h1>
+      <p>Escala Mensal e Repertório</p>
+    </header>
+
+    <nav class="app-tabs">
+      <button class="tab-btn active" data-target="tab-escala">Montar Escala Mensal</button>
+      <button class="tab-btn" data-target="tab-integrantes">Integrantes</button>
+    </nav>
+
+    <main class="app-content">
+      
+      <!-- ABA: INTEGRANTES -->
+      <section id="tab-integrantes" class="tab-pane">
+        <div class="card">
+          <h2>Adicionar Integrante</h2>
+          <form id="form-integrante" class="form-group">
+            <input type="text" id="nome-integrante" placeholder="Nome do Integrante" required />
+            
+            <div class="roles-selection">
+              <label><input type="checkbox" name="role" value="Vocal"> Vocal</label>
+              <label><input type="checkbox" name="role" value="Violão"> Violão</label>
+              <label><input type="checkbox" name="role" value="Guitarra"> Guitarra</label>
+              <label><input type="checkbox" name="role" value="Baixo"> Baixo</label>
+              <label><input type="checkbox" name="role" value="Bateria"> Bateria</label>
+              <label><input type="checkbox" name="role" value="Teclado"> Teclado</label>
+              <label><input type="checkbox" name="role" value="Saxofone"> Saxofone</label>
+              <label><input type="checkbox" name="role" value="Cajon"> Cajon</label>
+            </div>
+            
+            <button type="submit" class="btn btn-primary">Salvar Integrante</button>
+          </form>
+        </div>
+
+        <div class="card">
+          <h2>Lista de Integrantes</h2>
+          <ul id="lista-integrantes" class="lista-itens">
+            <!-- Lista renderizada via JS -->
+          </ul>
+        </div>
+      </section>
+
+      <!-- ABA: ESCALA MENSAL -->
+      <section id="tab-escala" class="tab-pane active">
+        <div class="grid-2">
+          
+          <!-- Controles (Lista de Eventos) -->
+          <div class="escala-controls">
+            
+            <div class="card">
+              <h2>Adicionar Culto/Evento</h2>
+              <form id="form-evento" class="form-group">
+                <input type="text" id="evento-nome" placeholder="Nome (Ex: Domingo de Manhã)" required />
+                <input type="date" id="evento-data" required />
+                <button type="submit" class="btn btn-primary">Adicionar à Escala</button>
+              </form>
+            </div>
+
+            <div class="card">
+              <h2>Lista de Cultos</h2>
+              <ul id="lista-eventos" class="lista-itens" style="margin-bottom: 20px;">
+                <!-- Eventos do mês renderizados aqui -->
+              </ul>
+            </div>
+
+            <!-- Modal/Panel Editor do Evento Ativo -->
+            <div class="card" id="editor-evento" style="display: none; border-color: var(--accent);">
+              <div style="display:flex; justify-content: space-between; align-items:center; margin-bottom: 15px;">
+                <h2 style="margin:0; border:none; color: var(--accent);" id="editor-titulo">Editando Culto</h2>
+                <button id="btn-fechar-editor" class="btn-delete" style="font-size:1.5rem">&times;</button>
+              </div>
+              
+              <div class="form-group">
+                <label for="escala-repertorio">Repertório (Opcional)</label>
+                <textarea id="escala-repertorio" rows="3" placeholder="Ex: 1. Abertura&#10;2. Louvor 1..."></textarea>
+              </div>
+
+              <div class="form-group">
+                <label>Selecionar Equipe</label>
+                <div id="escala-equipe-select" class="equipe-select-list">
+                  <!-- Checkboxes de integrantes gerados via JS -->
+                </div>
+              </div>
+            </div>
+
+          </div>
+
+          <!-- Preview & Export -->
+          <div class="escala-preview card">
+            <div class="preview-header">
+              <h2>Pré-visualização</h2>
+              <button id="btn-gerar-imagem" class="btn btn-secondary">Gerar Imagem do Mês</button>
+            </div>
+            
+            <!-- Elemento que será convertido em Imagem -->
+            <div id="capture-area" class="capture-card">
+              <div class="capture-logo">🎵 Ministério de Louvor</div>
+              <h3 class="render-data" id="render-titulo-mes">Escala Mensal</h3>
+              
+              <div id="render-eventos" class="render-eventos-list">
+                <!-- Eventos renderizados via JS -->
+              </div>
+              
+              <div class="capture-footer">Que Ele cresça e eu diminua.</div>
+            </div>
+
+          </div>
+
+        </div>
+      </section>
+
+    </main>
+  </div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
