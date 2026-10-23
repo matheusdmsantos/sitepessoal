@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@300;400;600;700&family=Outfit:wght@300;400;500;600;700&display=swap" />
   <link href="https://cdn.quilljs.com/1.3.6/quill.snow.css" rel="stylesheet">
-  <link rel="stylesheet" href="css/estudos.css?v=8" />
+  <link rel="stylesheet" href="css/estudos.css?v=9" />
 </head>
 <body class="page-estudos">
 
@@ -501,6 +501,39 @@
     </div>
   </div>
 
+  <!-- ─── MODAL: MATERIAL DE ESTUDO EM PDF (js/estudos.materiais.js) ─── -->
+  <div class="est-modal-overlay" id="est-modal-materiais">
+    <div class="est-modal est-modal-largo" role="dialog" aria-modal="true" aria-labelledby="est-mat-titulo">
+      <div class="est-modal-header" style="margin-bottom: 10px;">
+        <h2 class="est-modal-title" id="est-mat-titulo">Material de estudo</h2>
+        <button class="est-modal-close" id="est-modal-materiais-close" aria-label="Fechar">✕</button>
+      </div>
+      <label class="est-importar-arquivo" for="est-mat-arquivo">
+        <input type="file" id="est-mat-arquivo" accept=".pdf,application/pdf" multiple />
+        <span>📚 Adicionar PDFs</span>
+        <small>Só o nome e o número de páginas são guardados; o arquivo continua no seu computador.</small>
+      </label>
+      <p id="est-mat-status" class="est-importar-status" role="status"></p>
+
+      <div class="est-inc-grade">
+        <div>
+          <h3 class="est-plano-card-title">Prioridade de estudo: mais questões por página</h3>
+          <div id="est-mat-ranking"></div>
+        </div>
+        <div>
+          <h3 class="est-plano-card-title">PDFs → tópicos do edital</h3>
+          <p class="est-plano-sub" style="margin-bottom: 8px;">Um PDF pode cobrir vários tópicos. Informe as páginas de cada um; sem isso, as páginas são divididas igualmente. Em amarelo, PDFs sem tópico.</p>
+          <div id="est-mat-lista" class="est-inc-assuntos"></div>
+        </div>
+      </div>
+
+      <div class="est-importar-acoes" style="margin-top: 20px;">
+        <button type="button" class="est-btn-cancelar" id="est-mat-cancelar">Cancelar</button>
+        <button type="button" class="est-form-submit" id="est-mat-salvar" style="flex: 2; margin-top: 0;" disabled>Salvar material</button>
+      </div>
+    </div>
+  </div>
+
   <!-- ─── MODAL: CONFIGURAR DATA ALVO ─── -->
   <div class="est-date-modal-overlay" id="est-date-modal">
     <div class="est-modal" style="max-width: 400px;">
@@ -869,8 +902,9 @@
     };
   </script>
   <script src="js/estudos.v5.js?v=6"></script>
-  <script src="js/estudos.plano.js?v=4"></script>
-  <script src="js/estudos.importar.js?v=1"></script>
+  <script src="js/estudos.plano.js?v=5"></script>
+  <script src="js/estudos.importar.js?v=2"></script>
   <script src="js/estudos.incidencia.js?v=1"></script>
+  <script src="js/estudos.materiais.js?v=1"></script>
 </body>
 </html>

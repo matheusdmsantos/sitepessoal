@@ -478,5 +478,5 @@
 
   document.addEventListener('DOMContentLoaded', init);
 
-  window.estImportar = { analisar, analisarEdital, disciplinasDoCargo, extrairTextoPdf };
+  window.estImportar = { analisar, analisarEdital, disciplinasDoCargo, extrairTextoPdf, carregarPdfjs };
 })();

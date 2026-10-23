@@ -48,6 +48,9 @@
   let incidencias = [];       // { topico_id, edital_id, disciplina_id, questoes } (planilha do TEC)
   let incPorTopico = {};
   let remotoInc = false;
+  let materiais = [];         // PDFs de estudo ligados aos tópicos (ver MATERIAL)
+  let pagPorTopico = {};
+  let remotoMat = false;
 
   const TABELAS = { metas: () => metas, revisoes: () => revisoes, plano_estudos: () => planos };
 
@@ -160,7 +163,7 @@
       metas = lerLocal('metas');
       revisoes = lerLocal('revisoes');
       planos = lerLocal('plano_estudos');
-      await carregarIncidencias();
+      await carregarExtras();
       garantirSemanaAtual();
       return;
     }
@@ -198,42 +201,67 @@
       studyData = rSessoes.map(linhaParaSessao);
     }
     saveData();
-    await carregarIncidencias();
+    await carregarExtras();
     garantirSemanaAtual();
   }
 
   /* =============================================
+     TABELAS OPCIONAIS (incidencias e materiais)
+     Carregadas à parte: se uma delas ainda não existir no Supabase, só os dados
+     dela ficam neste navegador; o resto do plano continua sincronizando.
+  ============================================= */
+  async function carregarOpcional(tabela, chave) {
+    if (remoto) {
+      const { data, error } = await sb.from(tabela).select('*');
+      if (!error) {
+        const linhas = data || [];
+        // Envia o que tinha sido guardado só aqui antes de a tabela existir
+        const locais = lerLocal(tabela).filter(l => !linhas.some(r => r[chave] === l[chave]));
+        if (locais.length) {
+          const r = await sb.from(tabela).upsert(locais, { onConflict: chave });
+          if (!r.error) { linhas.push(...locais); localStorage.removeItem('est_plano_' + tabela); }
+        } else {
+          localStorage.removeItem('est_plano_' + tabela);
+        }
+        return { linhas, remoto: true };
+      }
+      console.warn(`Tabela ${tabela} indisponível; esses dados ficam só neste navegador.`, error);
+    }
+    return { linhas: lerLocal(tabela), remoto: false };
+  }
+
+  /* Substitui as linhas de uma disciplina. "todas" é a lista completa, guardada no
+     localStorage quando a tabela não existe no Supabase. */
+  async function gravarDaDisciplina(tabela, chave, ehRemoto, discId, linhas, todas) {
+    if (!ehRemoto) {
+      try { localStorage.setItem('est_plano_' + tabela, JSON.stringify(todas)); } catch (e) { console.warn(e); }
+      return true;
+    }
+    const r1 = await sb.from(tabela).delete().eq('disciplina_id', discId);
+    const r2 = linhas.length ? await sb.from(tabela).upsert(linhas, { onConflict: chave }) : { error: null };
+    if (r1.error || r2.error) {
+      console.error(`Erro ao salvar em ${tabela}:`, r1.error || r2.error);
+      return false;
+    }
+    return true;
+  }
+
+  async function carregarExtras() {
+    const [inc, mat] = await Promise.all([carregarOpcional('incidencias', 'topico_id'), carregarOpcional('materiais', 'id')]);
+    incidencias = inc.linhas;
+    remotoInc = inc.remoto;
+    materiais = mat.linhas;
+    remotoMat = mat.remoto;
+    indexarIncidencias();
+    pagPorTopico = contarPaginas(materiais);
+  }
+
+  /* =============================================
      INCIDÊNCIA (planilha do TEC, importada por estudos.incidencia.js)
-     Tabela própria e carregada à parte: se ela ainda não existir no Supabase,
-     só a incidência fica neste navegador; o resto do plano continua sincronizando.
   ============================================= */
   function indexarIncidencias() {
     incPorTopico = {};
     incidencias.forEach(r => { incPorTopico[r.topico_id] = r.questoes; });
-  }
-
-  async function carregarIncidencias() {
-    remotoInc = false;
-    if (remoto) {
-      const { data, error } = await sb.from('incidencias').select('*');
-      if (!error) {
-        remotoInc = true;
-        incidencias = data || [];
-        // Envia o que tinha sido guardado só aqui antes de a tabela existir
-        const locais = lerLocal('incidencias').filter(l => !incidencias.some(r => r.topico_id === l.topico_id));
-        if (locais.length) {
-          const r = await sb.from('incidencias').upsert(locais, { onConflict: 'topico_id' });
-          if (!r.error) { incidencias.push(...locais); localStorage.removeItem('est_plano_incidencias'); }
-        } else {
-          localStorage.removeItem('est_plano_incidencias');
-        }
-        indexarIncidencias();
-        return;
-      }
-      console.warn('Tabela incidencias indisponível; a incidência fica só neste navegador.', error);
-    }
-    incidencias = lerLocal('incidencias');
-    indexarIncidencias();
   }
 
   function incidenciaDaDisciplina(d) {
@@ -257,18 +285,74 @@
     }));
     incidencias = incidencias.filter(r => r.disciplina_id !== disc.id && !ids.has(r.topico_id)).concat(linhas);
     indexarIncidencias();
-    if (remotoInc) {
-      const r1 = await sb.from('incidencias').delete().eq('disciplina_id', disc.id);
-      const r2 = linhas.length ? await sb.from('incidencias').upsert(linhas, { onConflict: 'topico_id' }) : { error: null };
-      if (r1.error || r2.error) {
-        console.error('Erro ao salvar incidência:', r1.error || r2.error);
-        aviso('Não foi possível salvar a incidência no servidor.');
-      }
-    } else {
-      try { localStorage.setItem('est_plano_incidencias', JSON.stringify(incidencias)); } catch (e) { console.warn(e); }
-    }
+    const ok = await gravarDaDisciplina('incidencias', 'topico_id', remotoInc, disc.id, linhas, incidencias);
     renderTudo();
-    aviso('Incidência salva. As próximas semanas já usam; clique em ↻ Regerar para refazer esta semana.');
+    aviso(ok ? 'Incidência salva. As próximas semanas já usam; clique em ↻ Regerar para refazer esta semana.'
+      : 'Não foi possível salvar a incidência no servidor.');
+  }
+
+  /* =============================================
+     MATERIAL (PDFs ligados aos tópicos, por estudos.materiais.js)
+     Cada material: { id, edital_id, disciplina_id, nome, paginas, topicos: [{ topico_id, de, ate }] }.
+     Só o nome e o número de páginas são guardados; o PDF fica no computador do usuário.
+  ============================================= */
+
+  /* Páginas de cada tópico. Um PDF ligado a vários tópicos usa a faixa de páginas
+     informada em cada ligação; as ligações sem faixa dividem igualmente o que sobra. */
+  function contarPaginas(lista) {
+    const r = {};
+    lista.forEach(m => {
+      const total = m.paginas || 0;
+      const faixa = l => (l.de > 0 && l.ate >= l.de ? Math.min(l.ate, total || l.ate) - l.de + 1 : 0);
+      const links = (m.topicos || []).filter(l => l.topico_id);
+      const usadas = links.reduce((a, l) => a + faixa(l), 0);
+      const semFaixa = links.filter(l => !faixa(l)).length;
+      const resto = semFaixa ? Math.max(0, total - usadas) / semFaixa : 0;
+      links.forEach(l => { r[l.topico_id] = (r[l.topico_id] || 0) + (faixa(l) || resto); });
+    });
+    return r;
+  }
+
+  function materiaisDaDisciplina(discId) {
+    return materiais.filter(m => m.disciplina_id === discId);
+  }
+
+  function paginasDoTopico(topicId) {
+    return pagPorTopico[topicId] || 0;
+  }
+
+  /* Ordem de estudo dos tópicos de uma disciplina. Com incidência do TEC, vem primeiro o
+     que rende mais questões por página: muito cobrado e pouco material. Tópico sem PDF
+     conta com a mediana de páginas da disciplina. Sem incidência, fica a ordem do edital.
+     "lista" permite simular materiais ainda não salvos (tela de materiais). */
+  function prioridadeDosTopicos(d, lista) {
+    const pags = lista ? contarPaginas(lista) : pagPorTopico;
+    const inc = incidenciaDaDisciplina(d);
+    const conhecidas = d.topicos.map(t => pags[t.id]).filter(p => p > 0).sort((a, b) => a - b);
+    const mediana = conhecidas.length ? conhecidas[Math.floor(conhecidas.length / 2)] : 0;
+    const itens = d.topicos.map((t, i) => {
+      const questoes = incPorTopico[t.id] || 0;
+      const paginas = pags[t.id] > 0 ? Math.round(pags[t.id]) : 0;
+      const efetivas = paginas || mediana || 1;
+      return { t, i, questoes, paginas, estimado: !paginas && mediana > 0, porPagina: questoes / efetivas, efetivas };
+    });
+    if (inc) itens.sort((a, b) => b.porPagina - a.porPagina || a.efetivas - b.efetivas || a.i - b.i);
+    return { itens, comIncidencia: !!inc, comPaginas: conhecidas.length > 0, mediana };
+  }
+
+  async function salvarMateriais(edital, disc, lista) {
+    const linhas = lista.map(m => ({
+      id: m.id, edital_id: edital.id, disciplina_id: disc.id, nome: m.nome, paginas: m.paginas || 0,
+      topicos: (m.topicos || []).filter(l => l.topico_id)
+        .map(l => ({ topico_id: l.topico_id, de: Number(l.de) || null, ate: Number(l.ate) || null })),
+      criado_em: m.criado_em || new Date().toISOString()
+    }));
+    materiais = materiais.filter(m => m.disciplina_id !== disc.id).concat(linhas);
+    pagPorTopico = contarPaginas(materiais);
+    const ok = await gravarDaDisciplina('materiais', 'id', remotoMat, disc.id, linhas, materiais);
+    renderTudo();
+    aviso(ok ? 'Material salvo. As próximas semanas já usam; clique em ↻ Regerar para refazer esta semana.'
+      : 'Não foi possível salvar o material no servidor.');
   }
 
   /* =============================================
@@ -410,9 +494,9 @@
       .map(d => {
         const cfg = configDisc(plano, d.id);
         const inc = incidenciaDaDisciplina(d);
-        const pendentes = d.topicos.filter(t => !t.estudado && !ctx.usados.has(t.id));
-        // Com incidência do TEC, os tópicos que mais caem vêm primeiro
-        if (inc) pendentes.sort((a, b) => (incPorTopico[b.id] || 0) - (incPorTopico[a.id] || 0));
+        // Com incidência do TEC, primeiro o que mais cai por página de material
+        const pendentes = (inc ? prioridadeDosTopicos(d).itens.map(x => x.t) : d.topicos)
+          .filter(t => !t.estudado && !ctx.usados.has(t.id));
         return { d, cfg, inc, prioridade: cfg.peso * (4 - cfg.nivel), base: BLOCO_MIN[cfg.nivel] || 90, acerto: acertoEsperado(d), pendentes };
       })
       .filter(x => x.cfg.ativa && x.pendentes.length);
@@ -824,6 +908,11 @@
     return ` · <span class="est-plano-inc ${pct >= 10 ? 'alta' : pct < 2 ? 'baixa' : ''}" title="${pct.toFixed(1).replace('.', ',')}% das questões da disciplina no TEC">📊 ${txt}</span>`;
   }
 
+  function seloPaginas(topicId) {
+    const p = Math.round(paginasDoTopico(topicId));
+    return p ? ` · <span title="Páginas de material ligadas a este tópico">📄 ${p} p.</span>` : '';
+  }
+
   function itemMeta(m, { compacto = false } = {}) {
     const ref = acharTopico(m.topico_id);
     const disc = ref ? ref.d.nome : 'Disciplina removida';
@@ -833,7 +922,7 @@
     return `
       <div class="est-plano-item tipo-estudo ${m.concluida ? 'feito' : ''} ${m.previsto ? 'previsto' : ''}">
         <div class="est-plano-item-info">
-          <span class="est-plano-tag">${tag} · ${fmtMin(m.minutos)}${seloIncidencia(m.topico_id)}</span>
+          <span class="est-plano-tag">${tag} · ${fmtMin(m.minutos)}${seloIncidencia(m.topico_id)}${seloPaginas(m.topico_id)}</span>
           <span class="est-plano-item-disc">${escapeHtml(disc)}</span>
           <span class="est-plano-item-top" title="${escapeHtml(top)}">${escapeHtml(top)}</span>
         </div>
@@ -952,7 +1041,7 @@
         <p class="est-plano-sub">Disciplinas com <strong>peso alto</strong> e <strong>nível iniciante</strong> recebem mais metas. O nível também define o tempo de cada tópico (iniciante ${fmtMin(BLOCO_MIN[1])}, intermediário ${fmtMin(BLOCO_MIN[2])}, avançado ${fmtMin(BLOCO_MIN[3])}).</p>
         <div class="est-plano-tabela-wrap">
           <table class="est-plano-tabela">
-            <thead><tr><th>Disciplina</th><th>Peso na prova</th><th>Seu nível</th><th>Incidência (TEC)</th><th>Incluir</th></tr></thead>
+            <thead><tr><th>Disciplina</th><th>Peso na prova</th><th>Seu nível</th><th>Incidência (TEC)</th><th>Material (PDF)</th><th>Incluir</th></tr></thead>
             <tbody>
               ${e.disciplinas.map(d => {
                 const c = configDisc(plano, d.id);
@@ -964,6 +1053,12 @@
                     const inc = incidenciaDaDisciplina(d);
                     return `<button type="button" class="est-plano-btn ${inc ? '' : 'primario'}" onclick="estIncidencia.abrir('${e.id}', '${d.id}')">
                       ${inc ? `✓ ${inc.soma} questões · trocar` : '📊 Importar'}</button>`;
+                  })()}</td>
+                  <td>${(() => {
+                    const lista = materiaisDaDisciplina(d.id);
+                    const pags = lista.reduce((a, m) => a + (m.paginas || 0), 0);
+                    return `<button type="button" class="est-plano-btn ${lista.length ? '' : 'primario'}" onclick="estMateriais.abrir('${e.id}', '${d.id}')">
+                      ${lista.length ? `✓ ${lista.length} PDF${lista.length > 1 ? 's' : ''} · ${pags} p.` : '📚 PDFs'}</button>`;
                   })()}</td>
                   <td><input type="checkbox" name="ativa" ${c.ativa ? 'checked' : ''} aria-label="Incluir ${escapeHtml(d.nome)}"/></td>
                 </tr>`;
@@ -1173,7 +1268,8 @@
       <p class="est-plano-sub est-plano-regra">Como as revisões entram no plano: cada tópico estudado volta para revisão; o intervalo
         dobra com acerto de ${ACERTO_REFORCO}% a ${ACERTO_BOM - 1}%, triplica de ${ACERTO_BOM}% a ${ACERTO_OTIMO - 1}% e quadruplica
         a partir de ${ACERTO_OTIMO}%. Abaixo de ${ACERTO_REFORCO}% entra um reforço. Quando o intervalo passaria de ${INTERVALO_MAX} dias,
-        o tópico está dominado e sai do plano. Revisões ocupam no máximo ${LIMITE_REVISAO_DIA * 100}% do tempo de cada dia.</p>` : ''}
+        o tópico está dominado e sai do plano. Revisões ocupam no máximo ${LIMITE_REVISAO_DIA * 100}% do tempo de cada dia.
+        Nas disciplinas com incidência do TEC, entra primeiro o tópico com mais questões por página de material.</p>` : ''}
     `;
 
     const form = document.getElementById('est-plano-config-form');
@@ -1380,6 +1476,7 @@
     init, renderHoje, renderSecao, topicoConcluido, sessaoCriada, sessaoRemovida,
     abrirConclusao, adiarRevisao, removerMeta, regerarSemana, agendarEstudados,
     agendarReforco, mudarSemana, irParaSemana, alternarConfig, editalTrocado, projetar,
-    incidenciaDaDisciplina, pctIncidencia, salvarIncidencias
+    incidenciaDaDisciplina, pctIncidencia, salvarIncidencias,
+    materiaisDaDisciplina, paginasDoTopico, prioridadeDosTopicos, salvarMateriais
   };
 })();

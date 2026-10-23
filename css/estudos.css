@@ -1848,3 +1848,28 @@ html, body {
 @media (max-width: 768px) {
   .est-inc-grade { grid-template-columns: 1fr; }
 }
+/* ─── Material de estudo em PDF (js/estudos.materiais.js) ─── */
+.est-mat-detalhe { grid-column: 2 / 4; font-size: 0.72rem; color: var(--est-accent); }
+.est-mat-detalhe.sem { color: var(--est-amber); }
+.est-mat-aviso { margin-bottom: 8px; }
+.est-mat-item {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--est-border);
+  border-radius: 10px;
+}
+.est-mat-item.solto { border-color: rgba(251, 191, 36, 0.45); background: var(--est-amber-dim); }
+.est-mat-item > .est-plano-btn { align-self: flex-start; }
+.est-mat-cab { display: grid; grid-template-columns: 1fr auto auto; gap: 8px; align-items: center; }
+.est-mat-nome { font-size: 0.82rem; color: var(--est-silver-bright); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.est-mat-link { display: grid; grid-template-columns: 1fr auto auto; gap: 6px; align-items: center; }
+.est-mat-link .est-form-select { padding: 6px 32px 6px 10px; font-size: 0.78rem; min-width: 0; }
+.est-mat-faixa { display: flex; align-items: center; gap: 4px; font-size: 0.75rem; color: var(--est-accent); }
+.est-mat-faixa .est-form-input { width: 64px; padding: 6px 8px; font-size: 0.78rem; }
+#est-mat-status:empty { display: none; }
+@media (max-width: 480px) {
+  .est-mat-link { grid-template-columns: 1fr auto; }
+  .est-mat-link .est-form-select { grid-column: 1 / 3; }
+}
