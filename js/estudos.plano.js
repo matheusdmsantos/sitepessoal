@@ -19,10 +19,17 @@
      REGRAS DO MÉTODO
   ============================================= */
   const BLOCO_MIN = { 1: 120, 2: 90, 3: 60 };   // minutos por tópico, pelo nível (1 = iniciante)
-  const MIN_REVISAO = 30;                        // tempo reservado para cada revisão do dia
-  const INTERVALOS = [1, 7, 30, 60];             // dias até a revisão 1, 2, 3 e 4
-  const ACERTO_REFORCO = 70;                     // abaixo disso, entra reforço
-  const ACERTO_BOM = 85;                         // acima disso, o intervalo aumenta 50%
+  // Revisões adaptativas: o intervalo até a próxima revisão é multiplicado conforme o acerto
+  // (×2 de 70% a 84%, ×3 de 85% a 94%, ×4 a partir de 95%). Abaixo de 70% entra um reforço.
+  // Quando o próximo intervalo passaria de INTERVALO_MAX, o tópico está dominado e sai da fila.
+  const ACERTO_REFORCO = 70;
+  const ACERTO_BOM = 85;
+  const ACERTO_OTIMO = 95;
+  const INTERVALO_MAX = 120;                     // dias
+  const MIN_REVISAO = 25;                        // duração padrão de uma revisão
+  const MIN_REVISAO_RAPIDA = 15;                 // com acerto de 90% ou mais
+  const MIN_REFORCO = 40;
+  const LIMITE_REVISAO_DIA = 0.5;                // revisões ocupam no máximo metade do tempo do dia
   const PADRAO_DISC = { peso: 2, nivel: 2, ativa: true };
   const NOMES_PESO = { 1: 'Baixo', 2: 'Médio', 3: 'Alto' };
   const NOMES_NIVEL = { 1: 'Iniciante', 2: 'Intermediário', 3: 'Avançado' };
@@ -233,7 +240,7 @@
       .reduce((a, s) => a + (s.timeMinutes || 0), 0);
   }
 
-  /* Usado pelo card "Metas da Semana" da visão geral */
+  /* Usado pelo card "Metas concluídas" da visão geral */
   window.resumoSemanaPlano = function () {
     const e = editalAtivo();
     if (!e) return null;
@@ -244,10 +251,70 @@
   /* =============================================
      GERAÇÃO DAS METAS DA SEMANA
   ============================================= */
-  function gerarSemana(edital, semana) {
-    const plano = planoDe(edital.id);
-    if (!plano || !plano.dias_semana || !plano.dias_semana.length) return [];
+  function diaDeEstudo(plano, dia) {
+    while (!plano.dias_semana.includes(diaDaSemana(dia))) dia = somarDias(dia, 1);
+    return dia;
+  }
 
+  /* Acerto médio da disciplina, usado para prever quantas revisões um tópico ainda vai gerar */
+  function acertoEsperado(disc) {
+    if (!disc) return null;
+    const q = disc.topicos.reduce((a, t) => a + (t.questoesFeitas || 0), 0);
+    const c = disc.topicos.reduce((a, t) => a + (t.questoesCertas || 0), 0);
+    return q >= 10 ? Math.round((c / q) * 100) : null;
+  }
+
+  function reservar(ctx, dia, minutos, item) {
+    ctx.reservas[dia] = (ctx.reservas[dia] || 0) + minutos;
+    ctx.contagem[dia] = (ctx.contagem[dia] || 0) + 1;
+    if (item) (ctx.itens[dia] = ctx.itens[dia] || []).push(item);
+  }
+
+  /* Simula as revisões que um tópico estudado em "dia" vai gerar, com o acerto esperado,
+     até ficar dominado, e as coloca no planejamento respeitando o limite diário. */
+  function reservarRevisoes(ctx, plano, dia, pct, topicoId, discId) {
+    const limite = minutosPorDia(plano) * LIMITE_REVISAO_DIA;
+    let d = dia, etapa = 0, intervalo = 0;
+    for (let i = 0; i < 12; i++) {
+      const prox = proximaRevisao(etapa, intervalo, pct);
+      if (!prox) break;
+      let alvo = diaDeEstudo(plano, somarDias(d, prox.intervalo));
+      for (let k = 0; k < 14 && (ctx.reservas[alvo] || 0) + prox.minutos > limite; k++) {
+        alvo = diaDeEstudo(plano, somarDias(alvo, 1));
+      }
+      reservar(ctx, alvo, prox.minutos, {
+        topico_id: topicoId, disciplina_id: discId, tipo: prox.tipo, etapa: prox.etapa,
+        minutos: prox.minutos, data_prevista: alvo, previsto: true
+      });
+      d = alvo;
+      etapa = prox.etapa;
+      intervalo = prox.intervalo;
+      if (prox.tipo === 'reforco') pct = ACERTO_REFORCO; // supõe que o reforço resolve
+    }
+  }
+
+  /* Estado do planejamento: tópicos já planejados, tempo reservado para revisões
+     por dia e minutos já dados a cada disciplina (para o rodízio). */
+  function novoContexto(edital, plano, semanaBase) {
+    const ctx = { usados: new Set(), reservas: {}, contagem: {}, itens: {}, alocado: {} };
+    const h = hoje();
+    revisoes.filter(r => r.edital_id === edital.id && !r.concluida_em).forEach(r => {
+      reservar(ctx, r.data_prevista < h ? h : r.data_prevista, r.minutos || MIN_REVISAO);
+    });
+    metasDaSemana(edital.id, semanaBase).forEach(m => {
+      ctx.usados.add(m.topico_id);
+      ctx.alocado[m.disciplina_id] = (ctx.alocado[m.disciplina_id] || 0) + m.minutos;
+      if (!m.concluida) {
+        reservarRevisoes(ctx, plano, m.dia, acertoEsperado(edital.disciplinas.find(d => d.id === m.disciplina_id)), m.topico_id, m.disciplina_id);
+      }
+    });
+    return ctx;
+  }
+
+  /* Monta uma semana. A disciplina da vez é a que recebeu menos tempo em relação à sua
+     prioridade (peso × (4 − nível)): as de peso alto andam mais rápido, mas todas giram,
+     como num ciclo de estudos. Cada tópico vai para o primeiro dia em que cabe. */
+  function planejarSemana(edital, plano, semana, ctx) {
     const h = hoje();
     const dias = [];
     for (let i = 0; i < 7; i++) {
@@ -256,64 +323,86 @@
     }
     if (!dias.length) return [];
 
-    // Orçamento de minutos por dia, já descontando as revisões previstas
-    const porDia = (Number(plano.horas_semana) * 60) / plano.dias_semana.length;
-    const orcamento = {};
-    dias.forEach(d => { orcamento[d] = porDia; });
-    revisoes
-      .filter(r => !r.concluida_em && r.edital_id === edital.id)
-      .forEach(r => {
-        const d = r.data_prevista < dias[0] ? dias[0] : r.data_prevista;
-        if (orcamento[d] !== undefined) orcamento[d] = Math.max(0, orcamento[d] - MIN_REVISAO);
-      });
-    const total = Object.values(orcamento).reduce((a, b) => a + b, 0);
+    const porDia = minutosPorDia(plano);
+    const usado = {};
+    metasDaSemana(edital.id, semana).forEach(m => { usado[m.dia] = (usado[m.dia] || 0) + m.minutos; });
+    const cabe = (dia, min) => {
+      const livre = Math.max(0, porDia - (ctx.reservas[dia] || 0));
+      const u = usado[dia] || 0;
+      return u + min <= livre * 1.15 || (u === 0 && livre >= min / 2);
+    };
 
-    // Tópicos pendentes por disciplina, com prioridade = peso × (4 − nível)
-    const jaNaSemana = new Set(metasDaSemana(edital.id, semana).map(m => m.topico_id));
     const fila = edital.disciplinas
       .map(d => {
         const cfg = configDisc(plano, d.id);
-        const pendentes = d.topicos.filter(t => !t.estudado && !jaNaSemana.has(t.id));
-        return { d, cfg, pendentes, prioridade: cfg.peso * (4 - cfg.nivel) };
+        return {
+          d, cfg, prioridade: cfg.peso * (4 - cfg.nivel), bloco: BLOCO_MIN[cfg.nivel] || 90, acerto: acertoEsperado(d),
+          pendentes: d.topicos.filter(t => !t.estudado && !ctx.usados.has(t.id))
+        };
       })
       .filter(x => x.cfg.ativa && x.pendentes.length);
-    if (!fila.length) return [];
+    const vez = x => ((ctx.alocado[x.d.id] || 0) + x.bloco) / x.prioridade;
 
-    const somaPrioridade = fila.reduce((a, x) => a + x.prioridade, 0);
-    fila.forEach(x => {
-      const bloco = BLOCO_MIN[x.cfg.nivel] || 90;
-      const n = Math.max(1, Math.round((total * x.prioridade) / somaPrioridade / bloco));
-      x.itens = x.pendentes.slice(0, n).map(t => ({ d: x.d, t, minutos: bloco }));
-    });
-    fila.sort((a, b) => b.prioridade - a.prioridade);
-
-    // Intercala as disciplinas, como num ciclo de estudos
-    const ordem = [];
-    for (let i = 0, resta = true; resta; i++) {
-      resta = false;
-      fila.forEach(x => { if (x.itens[i]) { ordem.push(x.itens[i]); resta = true; } });
-    }
-
-    // Distribui pelos dias respeitando o orçamento (com 15% de folga)
-    const usado = {};
-    const cabe = (dia, min) => {
-      const u = usado[dia] || 0;
-      return u + min <= orcamento[dia] * 1.15 || (u === 0 && orcamento[dia] >= min / 2);
-    };
     const novas = [];
-    let idx = 0;
-    for (const item of ordem) {
-      while (idx < dias.length && !cabe(dias[idx], item.minutos)) idx++;
-      if (idx >= dias.length) break;
-      const dia = dias[idx];
-      usado[dia] = (usado[dia] || 0) + item.minutos;
+    while (fila.length) {
+      fila.sort((a, b) => vez(a) - vez(b));
+      const x = fila[0];
+      const dia = dias.find(d => cabe(d, x.bloco));
+      if (!dia) { fila.shift(); continue; }   // não cabe mais nesta semana
+      const t = x.pendentes.shift();
+      usado[dia] = (usado[dia] || 0) + x.bloco;
+      ctx.alocado[x.d.id] = (ctx.alocado[x.d.id] || 0) + x.bloco;
+      ctx.usados.add(t.id);
+      reservarRevisoes(ctx, plano, dia, x.acerto, t.id, x.d.id);
       novas.push({
         id: novoId('m'), edital_id: edital.id, semana, dia,
-        disciplina_id: item.d.id, topico_id: item.t.id,
-        tipo: 'estudo', minutos: item.minutos, concluida: false, ordem: novas.length
+        disciplina_id: x.d.id, topico_id: t.id,
+        tipo: 'estudo', minutos: x.bloco, concluida: false, ordem: novas.length
       });
+      if (!x.pendentes.length) fila.shift();
     }
     return novas;
+  }
+
+  function gerarSemana(edital, semana) {
+    const plano = planoDe(edital.id);
+    if (!plano || !plano.dias_semana || !plano.dias_semana.length) return [];
+    return planejarSemana(edital, plano, semana, novoContexto(edital, plano, semana));
+  }
+
+  /* Previsão das próximas semanas até cobrir todo o edital. Não é gravada: é refeita a cada
+     tela, a partir do progresso real, então se ajusta sozinha a atrasos e adiantamentos. */
+  function projetar(edital) {
+    const plano = planoDe(edital.id);
+    if (!plano || !plano.dias_semana || !plano.dias_semana.length) return null;
+    const atual = segundaDe(hoje());
+    const ctx = novoContexto(edital, plano, atual);
+    const ativas = edital.disciplinas.filter(d => configDisc(plano, d.id).ativa);
+    const restantes = () => ativas.reduce((a, d) => a + d.topicos.filter(t => !t.estudado && !ctx.usados.has(t.id)).length, 0);
+    const foraDoPlano = edital.disciplinas.filter(d => !configDisc(plano, d.id).ativa)
+      .reduce((a, d) => a + d.topicos.filter(t => !t.estudado).length, 0);
+
+    const semanas = [];
+    for (let i = 1; i <= 156 && restantes() > 0; i++) {
+      const s = somarDias(atual, 7 * i);
+      semanas.push({ semana: s, metas: planejarSemana(edital, plano, s, ctx).map(m => ({ ...m, previsto: true })) });
+    }
+    const somaSemana = (mapa, s) => {
+      let n = 0;
+      for (let i = 0; i < 7; i++) n += mapa[somarDias(s, i)] || 0;
+      return n;
+    };
+    const revisoesNa = s => somaSemana(ctx.contagem, s);
+    const minutosRevisaoNa = s => somaSemana(ctx.reservas, s);
+    semanas.forEach(w => { w.revisoes = revisoesNa(w.semana); w.minRevisao = minutosRevisaoNa(w.semana); });
+
+    const abertasAtual = metasDaSemana(edital.id, atual).filter(m => !m.concluida);
+    const todas = [...abertasAtual, ...semanas.flatMap(w => w.metas)];
+    const fim = todas.length ? todas.reduce((a, m) => (m.dia > a ? m.dia : a), todas[0].dia) : null;
+    return {
+      semanas, fim, restantes: restantes(), foraDoPlano,
+      itens: ctx.itens, contagem: ctx.contagem, revisoesNa, minutosRevisaoNa
+    };
   }
 
   /* Gera a semana atual automaticamente, se o plano existe e ela ainda está vazia */
@@ -345,33 +434,65 @@
   }
 
   /* =============================================
-     REVISÕES CONDICIONAIS
+     REVISÕES ADAPTATIVAS
   ============================================= */
-  function proximaRevisao(etapaAtual, pct) {
-    if (pct !== null && pct < ACERTO_REFORCO) {
-      return { tipo: 'reforco', etapa: etapaAtual, dias: etapaAtual === 0 ? 1 : 2 };
-    }
-    if (etapaAtual >= INTERVALOS.length) return null;
-    let dias = INTERVALOS[etapaAtual];
-    if (pct !== null && pct >= ACERTO_BOM) dias = Math.round(dias * 1.5);
-    return { tipo: 'revisao', etapa: etapaAtual + 1, dias };
+  function fatorIntervalo(pct) {
+    if (pct === null) return 2.5;          // revisão sem questões: meio-termo
+    if (pct >= ACERTO_OTIMO) return 4;
+    if (pct >= ACERTO_BOM) return 3;
+    return 2;
   }
 
-  /* Empurra a data para o próximo dia de estudo do plano (folgas não recebem revisão) */
-  function proximoDiaDeEstudo(editalId, dia) {
+  function minutosRevisao(pct) {
+    return pct !== null && pct >= 90 ? MIN_REVISAO_RAPIDA : MIN_REVISAO;
+  }
+
+  /* intervaloAnterior = dias até a revisão que acabou de ser feita (0 = tópico recém-estudado).
+     Devolve null quando o tópico está dominado. */
+  function proximaRevisao(etapaAtual, intervaloAnterior, pct) {
+    if (pct !== null && pct < ACERTO_REFORCO) {
+      return { tipo: 'reforco', etapa: etapaAtual, intervalo: etapaAtual === 0 ? 1 : 2, minutos: MIN_REFORCO };
+    }
+    const intervalo = intervaloAnterior
+      ? Math.round(intervaloAnterior * fatorIntervalo(pct))
+      : (pct !== null && pct >= ACERTO_BOM ? 2 : 1);
+    if (intervalo > INTERVALO_MAX) return null;
+    return { tipo: 'revisao', etapa: etapaAtual + 1, intervalo, minutos: minutosRevisao(pct) };
+  }
+
+  function minutosPorDia(plano) {
+    return (Number(plano.horas_semana) * 60) / plano.dias_semana.length;
+  }
+
+  function cargaRevisoes(editalId, dia, ignorarId) {
+    return revisoes
+      .filter(r => r.edital_id === editalId && !r.concluida_em && r.data_prevista === dia && r.id !== ignorarId)
+      .reduce((a, r) => a + (r.minutos || MIN_REVISAO), 0);
+  }
+
+  /* Primeiro dia de estudo, a partir de "dia", em que a revisão cabe no limite diário.
+     É isso que impede as revisões de se acumularem num dia só. */
+  function diaComFolga(editalId, dia, minutos, ignorarId) {
     const plano = planoDe(editalId);
     if (!plano || !plano.dias_semana || !plano.dias_semana.length) return dia;
-    while (!plano.dias_semana.includes(diaDaSemana(dia))) dia = somarDias(dia, 1);
-    return dia;
+    const limite = minutosPorDia(plano) * LIMITE_REVISAO_DIA;
+    const primeiro = diaDeEstudo(plano, dia);
+    let d = primeiro;
+    for (let i = 0; i < 14; i++) {
+      if (cargaRevisoes(editalId, d, ignorarId) + minutos <= limite) return d;
+      d = diaDeEstudo(plano, somarDias(d, 1));
+    }
+    return primeiro;
   }
 
-  function agendarRevisao(ref, etapaAtual, pct, base) {
-    const prox = proximaRevisao(etapaAtual, pct);
+  /* anterior = revisão que acabou de ser concluída, ou null se o tópico acabou de ser estudado */
+  function agendarRevisao(ref, anterior, pct) {
+    const prox = proximaRevisao(anterior ? anterior.etapa : 0, anterior ? (anterior.intervalo || 1) : 0, pct);
     if (!prox) return null;
     const r = {
       id: novoId('r'), edital_id: ref.e.id, disciplina_id: ref.d.id, topico_id: ref.t.id,
-      etapa: prox.etapa, tipo: prox.tipo,
-      data_prevista: proximoDiaDeEstudo(ref.e.id, somarDias(base || hoje(), prox.dias)),
+      etapa: prox.etapa, tipo: prox.tipo, intervalo: prox.intervalo, minutos: prox.minutos,
+      data_prevista: diaComFolga(ref.e.id, somarDias(hoje(), prox.intervalo), prox.minutos),
       concluida_em: null, acerto: null
     };
     revisoes.push(r);
@@ -387,7 +508,7 @@
     abertas.forEach(m => { m.concluida = true; });
     if (abertas.length) gravar('metas', abertas);
     if (!revisaoPendente(topicId)) {
-      agendarRevisao(ref, 0, pct === undefined || pct === null ? pctTopico(ref.t) : pct);
+      agendarRevisao(ref, null, pct === undefined || pct === null ? pctTopico(ref.t) : pct);
     }
     renderTudo();
   }
@@ -398,16 +519,17 @@
     const etapa = Math.max(0, ...revisoes.filter(r => r.topico_id === topicId && r.concluida_em).map(r => r.etapa));
     const r = {
       id: novoId('r'), edital_id: ref.e.id, disciplina_id: ref.d.id, topico_id: topicId,
-      etapa, tipo: 'reforco', data_prevista: proximoDiaDeEstudo(ref.e.id, somarDias(hoje(), 1)),
+      etapa, tipo: 'reforco', intervalo: 1, minutos: MIN_REFORCO,
+      data_prevista: diaComFolga(ref.e.id, somarDias(hoje(), 1), MIN_REFORCO),
       concluida_em: null, acerto: null
     };
     revisoes.push(r);
     gravar('revisoes', r);
     renderTudo();
-    aviso('Reforço agendado para amanhã.');
+    aviso(`Reforço agendado para ${fmtData(r.data_prevista)}.`);
   }
 
-  /* Tópicos marcados como estudados antes do plano existir: até 5 revisões por dia */
+  /* Tópicos marcados como estudados antes do plano existir */
   function topicosSemRevisao(edital) {
     const comRevisao = new Set(revisoes.map(r => r.topico_id));
     const lista = [];
@@ -420,17 +542,19 @@
   function agendarEstudados() {
     const e = editalAtivo();
     if (!e) return;
-    const lista = topicosSemRevisao(e);
-    const novas = lista.map((ref, i) => {
+    // Uma a uma, para cada revisão já contar no limite diário da seguinte
+    const novas = topicosSemRevisao(e).map(ref => {
       const pct = pctTopico(ref.t);
-      return {
+      const prox = proximaRevisao(0, 0, pct);
+      const r = {
         id: novoId('r'), edital_id: e.id, disciplina_id: ref.d.id, topico_id: ref.t.id,
-        etapa: 1, tipo: pct !== null && pct < ACERTO_REFORCO ? 'reforco' : 'revisao',
-        data_prevista: proximoDiaDeEstudo(e.id, somarDias(hoje(), 1 + Math.floor(i / 5))),
+        etapa: prox.etapa, tipo: prox.tipo, intervalo: prox.intervalo, minutos: prox.minutos,
+        data_prevista: diaComFolga(e.id, somarDias(hoje(), 1), prox.minutos),
         concluida_em: null, acerto: null
       };
+      revisoes.push(r);
+      return r;
     });
-    revisoes.push(...novas);
     gravar('revisoes', novas);
     renderTudo();
     aviso(`${novas.length} revisões agendadas.`);
@@ -439,7 +563,7 @@
   function adiarRevisao(id) {
     const r = revisoes.find(x => x.id === id);
     if (!r) return;
-    r.data_prevista = proximoDiaDeEstudo(r.edital_id, somarDias(hoje(), 1));
+    r.data_prevista = diaComFolga(r.edital_id, somarDias(hoje(), 1), r.minutos || MIN_REVISAO, r.id);
     gravar('revisoes', r);
     renderTudo();
   }
@@ -476,14 +600,14 @@
     contextoConclusao = { tipo, id };
 
     const titulo = tipo === 'meta' ? 'Concluir meta'
-      : item.tipo === 'reforco' ? 'Concluir reforço' : `Concluir revisão ${item.etapa}/${INTERVALOS.length}`;
+      : item.tipo === 'reforco' ? 'Concluir reforço' : `Concluir revisão ${item.etapa}`;
     document.getElementById('est-concluir-titulo').textContent = titulo;
     document.getElementById('est-concluir-topico').textContent = `${ref.d.nome} — ${ref.t.nome}`;
     document.getElementById('est-concluir-dica').textContent = tipo === 'meta'
       ? 'Teoria e caderno de questões do tópico. Ao concluir, a primeira revisão é agendada conforme o seu acerto.'
-      : `Refaça o caderno do TEC deste tópico. Abaixo de ${ACERTO_REFORCO}% entra um reforço; a partir de ${ACERTO_BOM}% a próxima revisão fica mais espaçada.`;
+      : `Refaça o caderno do TEC deste tópico. Quanto maior o acerto, mais longe fica a próxima revisão; abaixo de ${ACERTO_REFORCO}% entra um reforço.`;
 
-    const minutos = tipo === 'meta' ? item.minutos : MIN_REVISAO;
+    const minutos = tipo === 'meta' ? item.minutos : item.minutos || MIN_REVISAO;
     document.getElementById('est-concluir-h').value = Math.floor(minutos / 60) || '';
     document.getElementById('est-concluir-m').value = minutos % 60 || '';
     document.getElementById('est-concluir-q').value = '';
@@ -544,10 +668,10 @@
       item.concluida_em = hoje();
       item.acerto = pct;
       gravar('revisoes', item);
-      const prox = agendarRevisao(ref, item.etapa, pct);
+      const prox = agendarRevisao(ref, item, pct);
       aviso(prox
         ? `${prox.tipo === 'reforco' ? 'Reforço' : 'Próxima revisão'} em ${fmtData(prox.data_prevista)}.`
-        : 'Ciclo de revisões do tópico concluído!');
+        : 'Tópico dominado: ele sai da fila de revisões! 🎉');
     }
 
     const { error } = await sb.from('topicos').update(atualizacao).eq('id', t.id);
@@ -594,7 +718,7 @@
   }
 
   function rotuloRevisao(r) {
-    return r.tipo === 'reforco' ? 'Reforço' : `Revisão ${r.etapa}/${INTERVALOS.length}`;
+    return r.tipo === 'reforco' ? 'Reforço' : `Revisão ${r.etapa}`;
   }
 
   function classeAcerto(pct) {
@@ -612,15 +736,16 @@
     const ref = acharTopico(m.topico_id);
     const disc = ref ? ref.d.nome : 'Disciplina removida';
     const top = ref ? ref.t.nome : 'Tópico removido';
-    const atrasada = !m.concluida && m.dia < hoje();
+    const atrasada = !m.concluida && !m.previsto && m.dia < hoje();
+    const tag = m.previsto ? 'Previsto' : m.concluida ? '✓ Feito' : atrasada ? 'Atrasada' : 'Estudo';
     return `
-      <div class="est-plano-item tipo-estudo ${m.concluida ? 'feito' : ''}">
+      <div class="est-plano-item tipo-estudo ${m.concluida ? 'feito' : ''} ${m.previsto ? 'previsto' : ''}">
         <div class="est-plano-item-info">
-          <span class="est-plano-tag">${m.concluida ? '✓ Feito' : atrasada ? 'Atrasada' : 'Estudo'} · ${fmtMin(m.minutos)}</span>
+          <span class="est-plano-tag">${tag} · ${fmtMin(m.minutos)}</span>
           <span class="est-plano-item-disc">${escapeHtml(disc)}</span>
-          <span class="est-plano-item-top">${escapeHtml(top)}</span>
+          <span class="est-plano-item-top" title="${escapeHtml(top)}">${escapeHtml(top)}</span>
         </div>
-        ${m.concluida ? '' : `
+        ${m.concluida || m.previsto ? '' : `
         <div class="est-plano-item-acoes">
           ${compacto ? '' : `<button class="est-plano-btn sutil" onclick="estPlano.removerMeta('${m.id}')" title="Remover meta" aria-label="Remover meta">✕</button>`}
           ${botaoTec(ref && ref.t)}
@@ -635,19 +760,20 @@
     const top = ref ? ref.t.nome : 'Tópico removido';
     const atraso = diasEntre(r.data_prevista, hoje());
     const pct = ref ? pctTopico(ref.t) : null;
+    const quando = r.previsto ? 'previsto' : atraso > 0 ? `${atraso} dia${atraso > 1 ? 's' : ''} de atraso` : fmtData(r.data_prevista);
     return `
-      <div class="est-plano-item tipo-${r.tipo}">
+      <div class="est-plano-item tipo-${r.tipo} ${r.previsto ? 'previsto' : ''}">
         <div class="est-plano-item-info">
-          <span class="est-plano-tag">${rotuloRevisao(r)} · ${atraso > 0 ? `${atraso} dia${atraso > 1 ? 's' : ''} de atraso` : fmtData(r.data_prevista)}</span>
+          <span class="est-plano-tag">${rotuloRevisao(r)} · ${fmtMin(r.minutos || MIN_REVISAO)} · ${quando}</span>
           <span class="est-plano-item-disc">${escapeHtml(disc)}</span>
-          <span class="est-plano-item-top">${escapeHtml(top)}
-            ${pct !== null ? `<span class="est-plano-acerto ${classeAcerto(pct)}">${pct}%</span>` : ''}</span>
+          <span class="est-plano-item-top" title="${escapeHtml(top)}">${escapeHtml(top)}
+            ${pct !== null && !r.previsto ? `<span class="est-plano-acerto ${classeAcerto(pct)}">${pct}%</span>` : ''}</span>
         </div>
-        <div class="est-plano-item-acoes">
+        ${r.previsto ? '' : `<div class="est-plano-item-acoes">
           <button class="est-plano-btn sutil" onclick="estPlano.adiarRevisao('${r.id}')" title="Adiar para amanhã">Adiar</button>
           ${botaoTec(ref && ref.t)}
           <button class="est-plano-btn primario" onclick="estPlano.abrirConclusao('revisao', '${r.id}')">Concluir</button>
-        </div>
+        </div>`}
       </div>`;
   }
 
@@ -703,7 +829,7 @@
         <div class="est-plano-lista">
           ${revHoje.map(itemRevisao).join('')}
           ${metasHoje.map(m => itemMeta(m, { compacto: true })).join('')}
-          ${!revHoje.length && !metasHoje.length ? '<p class="est-plano-vazio">Nenhuma meta para hoje. Veja a semana em “Metas da Semana”.</p>' : ''}
+          ${!revHoje.length && !metasHoje.length ? '<p class="est-plano-vazio">Nenhuma meta para hoje. Veja a semana em “Planejamento Semanal”.</p>' : ''}
         </div>
       </div>`;
   }
@@ -780,6 +906,67 @@
     await regerarSemana();
   }
 
+  function fmtDataLonga(str) {
+    const [a, m, d] = str.split('-');
+    return `${d}/${m}/${a}`;
+  }
+
+  /* Frase com a data em que o plano termina o edital, comparada com a prova */
+  function resumoProjecao(projecao) {
+    if (!projecao) return '';
+    const fora = projecao.foraDoPlano
+      ? ` ${projecao.foraDoPlano} tópico${projecao.foraDoPlano > 1 ? 's' : ''} de disciplinas fora do plano não entram na conta.` : '';
+    if (projecao.restantes > 0) {
+      return `Com as horas atuais, o plano não cobre o edital em 3 anos: aumente as horas por semana.${fora}`;
+    }
+    if (!projecao.fim) return `Todos os tópicos das disciplinas do plano já foram estudados. Agora o foco é revisar e fazer questões.${fora}`;
+    const semanas = Math.max(1, Math.ceil((diasEntre(segundaDe(hoje()), projecao.fim) + 1) / 7));
+    const folga = diasEntre(projecao.fim, getTargetDate());
+    return `Pelo planejamento, o último tópico novo é estudado em <strong>${fmtDataLonga(projecao.fim)}</strong>
+      (${semanas} semana${semanas > 1 ? 's' : ''}, já reservando tempo para as revisões),
+      ${folga >= 0
+        ? `<span class="est-plano-acerto bom">${folga} dias antes da prova</span>.`
+        : `<span class="est-plano-acerto ruim">${-folga} dias depois da prova</span>. Aumente as horas semanais ou desmarque disciplinas de peso baixo.`}${fora}`;
+  }
+
+  function htmlCronograma(e, plano, projecao, atual) {
+    if (!projecao) return '';
+    const prova = getTargetDate();
+    const nomeDisc = id => (e.disciplinas.find(d => d.id === id) || { nome: '?' }).nome;
+    const linha = (semana, lista, revs, minRev, rotulo) => {
+      const porDisc = {};
+      lista.forEach(m => { porDisc[m.disciplina_id] = (porDisc[m.disciplina_id] || 0) + 1; });
+      const discs = Object.entries(porDisc).sort((a, b) => b[1] - a[1]);
+      const min = lista.reduce((a, m) => a + m.minutos, 0) + minRev;
+      return `
+        <tr class="${semana === semanaVista ? 'atual' : ''} ${somarDias(semana, 6) > prova ? 'apos-prova' : ''}" onclick="estPlano.irParaSemana('${semana}')" tabindex="0"
+          onkeydown="if(event.key==='Enter')estPlano.irParaSemana('${semana}')">
+          <td><strong>${fmtData(semana)} – ${fmtData(somarDias(semana, 6))}</strong>${rotulo ? ` <span class="est-plano-sub">${rotulo}</span>` : ''}</td>
+          <td>${lista.length || '—'}</td>
+          <td>${revs || '—'}</td>
+          <td>${min ? fmtMin(min) : '—'}</td>
+          <td class="est-plano-chips">${discs.slice(0, 4).map(([id, n]) => `<span>${escapeHtml(nomeDisc(id))}${n > 1 ? ` ×${n}` : ''}</span>`).join('')}${discs.length > 4 ? `<span>+${discs.length - 4}</span>` : ''}</td>
+        </tr>`;
+    };
+    let ultima = projecao.semanas.length;
+    while (ultima > 0 && !projecao.semanas[ultima - 1].metas.length) ultima--;
+    return `
+      <div class="est-plano-card">
+        <h3 class="est-plano-card-title">📆 Planejamento até o fim do edital</h3>
+        <p class="est-plano-texto" style="margin-bottom: 14px;">${resumoProjecao(projecao)}</p>
+        <div class="est-plano-tabela-wrap">
+          <table class="est-plano-tabela est-plano-cronograma">
+            <thead><tr><th>Semana</th><th>Tópicos novos</th><th>Revisões</th><th>Tempo total</th><th>Disciplinas dos tópicos novos</th></tr></thead>
+            <tbody>
+              ${linha(atual, metasDaSemana(e.id, atual), projecao.revisoesNa(atual), projecao.minutosRevisaoNa(atual), 'atual')}
+              ${projecao.semanas.slice(0, ultima).map(w => linha(w.semana, w.metas, w.revisoes, w.minRevisao, '')).join('')}
+            </tbody>
+          </table>
+        </div>
+        <p class="est-plano-sub" style="margin-top: 10px;">Clique numa semana para ver os dias. Semanas em vermelho terminam depois da data da prova (${fmtDataLonga(prova)}).</p>
+      </div>`;
+  }
+
   function renderMetas() {
     const el = document.getElementById('est-plano-metas');
     if (!el) return;
@@ -792,19 +979,35 @@
     const h = hoje();
     const atual = segundaDe(h);
     if (!semanaVista) semanaVista = atual;
-    const lista = metasDaSemana(e.id, semanaVista);
+    const projecao = plano ? projetar(e) : null;
+    const prevista = semanaVista > atual;
+    const semanaPrevista = prevista && projecao ? projecao.semanas.find(w => w.semana === semanaVista) : null;
+    const lista = prevista ? (semanaPrevista ? semanaPrevista.metas : []) : metasDaSemana(e.id, semanaVista);
     const fim = somarDias(semanaVista, 6);
-    const estudado = minutosEstudados(semanaVista, fim);
     const metaMin = plano ? Number(plano.horas_semana) * 60 : 0;
 
+    // Revisões fazem parte do mesmo planejamento: as já agendadas e as previstas pela projeção
+    const revisoesDoDia = dia => {
+      if (dia < h) return [];
+      const reais = revisoes.filter(r => r.edital_id === e.id && !r.concluida_em &&
+        (r.data_prevista === dia || (dia === h && r.data_prevista < h)));
+      const previstas = projecao ? (projecao.itens[dia] || []) : [];
+      return [...reais, ...previstas];
+    };
     const dias = [];
     for (let i = 0; i < 7; i++) dias.push(somarDias(semanaVista, i));
+    const revSemana = dias.flatMap(revisoesDoDia);
+    const revFeitas = revisoes.filter(r => r.edital_id === e.id && r.concluida_em && r.concluida_em >= semanaVista && r.concluida_em <= fim).length;
+    const minPrevistos = lista.filter(m => !m.concluida).reduce((a, m) => a + m.minutos, 0) +
+      revSemana.reduce((a, r) => a + (r.minutos || MIN_REVISAO), 0);
+    const estudado = prevista ? minPrevistos : minutosEstudados(semanaVista, fim);
+    const semRevisao = plano ? topicosSemRevisao(e) : [];
 
     el.innerHTML = `
       ${bannerLocal()}
       <div class="est-plano-topo">
         <div>
-          <h2 class="est-plano-titulo">🎯 Metas da Semana</h2>
+          <h2 class="est-plano-titulo">🗓️ Planejamento Semanal</h2>
           <span class="est-plano-sub">${escapeHtml(e.titulo)} · troque o edital em “Edital Verticalizado”</span>
         </div>
         <div class="est-plano-topo-acoes">
@@ -822,115 +1025,62 @@
 
       ${plano ? `
       <div class="est-plano-kpis">
+        ${prevista ? `
+        <div class="est-plano-kpi"><span>Tempo previsto</span><strong>${fmtMin(estudado)} <small>/ ${fmtMin(metaMin)}</small></strong>${barra(metaMin ? estudado / metaMin * 100 : 0, 'blue')}</div>
+        <div class="est-plano-kpi"><span>Tópicos novos</span><strong>${lista.length}</strong></div>
+        <div class="est-plano-kpi"><span>Revisões</span><strong>${revSemana.length}</strong></div>` : `
         <div class="est-plano-kpi"><span>Horas na semana</span><strong>${fmtMin(estudado)} <small>/ ${fmtMin(metaMin)}</small></strong>${barra(metaMin ? estudado / metaMin * 100 : 0, 'blue')}</div>
-        <div class="est-plano-kpi"><span>Metas concluídas</span><strong>${lista.filter(m => m.concluida).length} <small>/ ${lista.length}</small></strong>${barra(lista.length ? lista.filter(m => m.concluida).length / lista.length * 100 : 0)}</div>
-        <div class="est-plano-kpi"><span>Revisões na semana</span><strong>${revisoes.filter(r => r.edital_id === e.id && r.data_prevista >= semanaVista && r.data_prevista <= fim).length}</strong></div>
-      </div>
-
-      ${semanaVista > atual ? '<p class="est-plano-vazio">As metas desta semana são geradas automaticamente quando ela começar.</p>' : ''}
-      ${semanaVista === atual && !lista.length ? '<p class="est-plano-vazio">Nenhuma meta gerada: todos os tópicos das disciplinas incluídas já estão estudados, ou não sobraram dias de estudo nesta semana.</p>' : ''}
-
-      <div class="est-plano-semana">
-        ${dias.map(dia => {
-          const doDia = lista.filter(m => m.dia === dia).sort((a, b) => a.ordem - b.ordem);
-          const revDia = revisoes.filter(r => r.edital_id === e.id && !r.concluida_em &&
-            (r.data_prevista === dia || (dia === h && r.data_prevista < h)));
-          const previsto = doDia.reduce((a, m) => a + m.minutos, 0);
-          const feito = minutosEstudados(dia, dia);
-          const folga = !plano.dias_semana.includes(diaDaSemana(dia));
-          return `
-            <div class="est-plano-dia ${dia === h ? 'hoje' : ''} ${dia < h ? 'passado' : ''}">
-              <div class="est-plano-dia-head">
-                <strong>${DIAS_CURTOS[diaDaSemana(dia)]} ${fmtData(dia)}</strong>
-                <span>${feito ? fmtMin(feito) + ' feitos' : previsto ? fmtMin(previsto) + ' previstos' : folga ? 'folga' : ''}</span>
-              </div>
-              ${revDia.map(itemRevisao).join('')}
-              ${doDia.map(m => itemMeta(m)).join('')}
-              ${!revDia.length && !doDia.length ? '<span class="est-plano-dia-vazio">—</span>' : ''}
-            </div>`;
-        }).join('')}
-      </div>` : ''}
-    `;
-
-    const form = document.getElementById('est-plano-config-form');
-    if (form) form.addEventListener('submit', ev => { ev.preventDefault(); salvarConfig(form, e); });
-  }
-
-  /* =============================================
-     SEÇÃO: REVISÕES
-  ============================================= */
-  function renderRevisoes() {
-    const el = document.getElementById('est-plano-revisoes');
-    if (!el) return;
-    const e = editalAtivo();
-    if (!e) {
-      el.innerHTML = '<p class="est-plano-vazio">Cadastre um edital para usar as revisões.</p>';
-      return;
-    }
-    const h = hoje();
-    const em7 = somarDias(h, 7);
-    const pend = revisoes
-      .filter(r => r.edital_id === e.id && !r.concluida_em)
-      .sort((a, b) => a.data_prevista.localeCompare(b.data_prevista));
-    const grupos = [
-      ['Atrasadas', pend.filter(r => r.data_prevista < h)],
-      ['Hoje', pend.filter(r => r.data_prevista === h)],
-      ['Próximos 7 dias', pend.filter(r => r.data_prevista > h && r.data_prevista <= em7)],
-      ['Mais adiante', pend.filter(r => r.data_prevista > em7)]
-    ];
-    const semRevisao = topicosSemRevisao(e);
-    const feitas = revisoes
-      .filter(r => r.edital_id === e.id && r.concluida_em)
-      .sort((a, b) => b.concluida_em.localeCompare(a.concluida_em))
-      .slice(0, 10);
-
-    el.innerHTML = `
-      ${bannerLocal()}
-      <div class="est-plano-topo">
-        <div>
-          <h2 class="est-plano-titulo">📅 Revisões e Reforços</h2>
-          <span class="est-plano-sub">Revisões em ${INTERVALOS.join(', ')} dias. Abaixo de ${ACERTO_REFORCO}% de acerto entra um reforço; a partir de ${ACERTO_BOM}% o intervalo aumenta 50%.</span>
-        </div>
-      </div>
-
-      <div class="est-plano-kpis">
-        ${grupos.slice(0, 3).map(([nome, l]) => `<div class="est-plano-kpi ${nome === 'Atrasadas' && l.length ? 'alerta' : ''}"><span>${nome}</span><strong>${l.length}</strong></div>`).join('')}
+        <div class="est-plano-kpi"><span>Tópicos novos</span><strong>${lista.filter(m => m.concluida).length} <small>/ ${lista.length}</small></strong>${barra(lista.length ? lista.filter(m => m.concluida).length / lista.length * 100 : 0)}</div>
+        <div class="est-plano-kpi"><span>Revisões</span><strong>${revFeitas} <small>/ ${revFeitas + revSemana.length}</small></strong>${barra(revFeitas + revSemana.length ? revFeitas / (revFeitas + revSemana.length) * 100 : 0, 'amber')}</div>`}
       </div>
 
       ${semRevisao.length ? `
       <div class="est-plano-cta">
         <div>
-          <strong>${semRevisao.length} tópico${semRevisao.length > 1 ? 's' : ''} estudado${semRevisao.length > 1 ? 's' : ''} sem revisão</strong>
-          <p>Foram marcados antes do plano existir. Posso agendar a primeira revisão deles, até 5 por dia a partir de amanhã.</p>
+          <strong>${semRevisao.length} tópico${semRevisao.length > 1 ? 's' : ''} estudado${semRevisao.length > 1 ? 's' : ''} sem revisão no plano</strong>
+          <p>Foram marcados antes do plano existir. Coloco a primeira revisão deles no planejamento a partir de amanhã, sem passar do limite diário.</p>
         </div>
-        <button class="est-btn-register" onclick="estPlano.agendarEstudados()">Agendar revisões</button>
+        <button class="est-btn-register" onclick="estPlano.agendarEstudados()">Incluir no plano</button>
       </div>` : ''}
 
-      ${grupos.map(([nome, l]) => l.length ? `
-        <div class="est-plano-card">
-          <h3 class="est-plano-card-title">${nome} <span class="est-plano-sub">(${l.length})</span></h3>
-          <div class="est-plano-lista">${(nome === 'Mais adiante' ? l.slice(0, 20) : l).map(itemRevisao).join('')}</div>
-        </div>` : '').join('')}
+      ${prevista ? `<p class="est-plano-vazio">${lista.length || revSemana.length
+        ? 'Previsão: os tópicos novos são confirmados quando a semana começar, e as revisões mudam conforme o seu acerto até lá.'
+        : 'Nada previsto para esta semana: nessa altura o edital já foi estudado e as revisões dos tópicos acabaram.'}</p>` : ''}
+      ${semanaVista === atual && !lista.length ? '<p class="est-plano-vazio">Nenhum tópico novo nesta semana: todos os tópicos das disciplinas incluídas já estão estudados, ou não sobraram dias de estudo.</p>' : ''}
 
-      ${!pend.length && !semRevisao.length ? '<p class="est-plano-vazio">Nenhuma revisão pendente. Elas aparecem aqui quando você conclui um tópico.</p>' : ''}
-
-      ${feitas.length ? `
-      <div class="est-plano-card">
-        <h3 class="est-plano-card-title">Últimas concluídas</h3>
-        <div class="est-plano-lista">
-          ${feitas.map(r => {
-            const ref = acharTopico(r.topico_id);
-            return `<div class="est-plano-item feito">
-              <div class="est-plano-item-info">
-                <span class="est-plano-tag">${rotuloRevisao(r)} · ${fmtData(r.concluida_em)}</span>
-                <span class="est-plano-item-top">${escapeHtml(ref ? ref.t.nome : 'Tópico removido')}</span>
+      <div class="est-plano-semana">
+        ${dias.map(dia => {
+          const doDia = lista.filter(m => m.dia === dia).sort((a, b) => a.ordem - b.ordem);
+          const revDia = revisoesDoDia(dia);
+          const previsto = doDia.filter(m => !m.concluida).reduce((a, m) => a + m.minutos, 0) +
+            revDia.reduce((a, r) => a + (r.minutos || MIN_REVISAO), 0);
+          const feito = prevista ? 0 : minutosEstudados(dia, dia);
+          const folga = !plano.dias_semana.includes(diaDaSemana(dia));
+          const resumo = [feito ? fmtMin(feito) + ' feitos' : '', previsto ? fmtMin(previsto) + ' previstos' : '']
+            .filter(Boolean).join(' · ') || (folga ? 'folga' : '');
+          return `
+            <div class="est-plano-dia ${dia === h ? 'hoje' : ''} ${dia < h ? 'passado' : ''}">
+              <div class="est-plano-dia-head">
+                <strong>${DIAS_CURTOS[diaDaSemana(dia)]} ${fmtData(dia)}</strong>
+                <span>${resumo}</span>
               </div>
-              ${r.acerto !== null && r.acerto !== undefined ? `<span class="est-plano-acerto ${classeAcerto(r.acerto)}">${r.acerto}%</span>` : ''}
+              ${doDia.map(m => itemMeta(m)).join('')}
+              ${revDia.map(itemRevisao).join('')}
+              ${!revDia.length && !doDia.length ? '<span class="est-plano-dia-vazio">—</span>' : ''}
             </div>`;
-          }).join('')}
-        </div>
-      </div>` : ''}
+        }).join('')}
+      </div>
+
+      ${htmlCronograma(e, plano, projecao, atual)}
+
+      <p class="est-plano-sub est-plano-regra">Como as revisões entram no plano: cada tópico estudado volta para revisão; o intervalo
+        dobra com acerto de ${ACERTO_REFORCO}% a ${ACERTO_BOM - 1}%, triplica de ${ACERTO_BOM}% a ${ACERTO_OTIMO - 1}% e quadruplica
+        a partir de ${ACERTO_OTIMO}%. Abaixo de ${ACERTO_REFORCO}% entra um reforço. Quando o intervalo passaria de ${INTERVALO_MAX} dias,
+        o tópico está dominado e sai do plano. Revisões ocupam no máximo ${LIMITE_REVISAO_DIA * 100}% do tempo de cada dia.</p>` : ''}
     `;
+
+    const form = document.getElementById('est-plano-config-form');
+    if (form) form.addEventListener('submit', ev => { ev.preventDefault(); salvarConfig(form, e); });
   }
 
   /* =============================================
@@ -962,27 +1112,28 @@
     e.disciplinas.forEach(d => d.topicos.forEach(t => { if (!t.estudado) pendentes++; }));
     if (!pendentes) return 'Todos os tópicos do edital já foram estudados. Agora o foco é revisar e fazer questões.';
 
+    // Pelo plano: a mesma projeção semana a semana do quadro de Metas
+    const partes = [];
+    if (plano) partes.push(resumoProjecao(projetar(e)));
+
+    // Pelo ritmo real das últimas 4 semanas, para comparar com o plano
     const desde = somarDias(hoje(), -28);
     const concluidos = new Set([
       ...studyData.filter(s => s.metaDone && s.topicId && s.date >= desde).map(s => s.topicId),
       ...metas.filter(m => m.edital_id === e.id && m.concluida && m.dia >= desde).map(m => m.topico_id)
     ]);
-    let ritmo = concluidos.size / 4;
-    let fonte = 'no seu ritmo das últimas 4 semanas';
-    if (!ritmo && plano) {
-      ritmo = metasDaSemana(e.id, segundaDe(hoje())).length;
-      fonte = 'se você cumprir as metas planejadas';
+    const ritmo = concluidos.size / 4;
+    if (ritmo) {
+      const fim = somarDias(hoje(), Math.ceil((pendentes / ritmo) * 7));
+      const folga = diasEntre(fim, getTargetDate());
+      partes.push(`No seu ritmo real das últimas 4 semanas (${ritmo.toFixed(1).replace('.', ',')} tópicos por semana),
+        os ${pendentes} tópicos restantes terminam em <strong>${fmtDataLonga(fim)}</strong>,
+        ${folga >= 0
+          ? `<span class="est-plano-acerto bom">${folga} dias antes da prova</span>.`
+          : `<span class="est-plano-acerto ruim">${-folga} dias depois da prova</span>.`}`);
     }
-    if (!ritmo) return `Faltam ${pendentes} tópicos. Conclua algumas metas para o painel estimar quando o edital termina.`;
-
-    const fim = somarDias(hoje(), Math.ceil((pendentes / ritmo) * 7));
-    const folga = diasEntre(fim, getTargetDate());
-    const [a, m, d] = fim.split('-');
-    return `Faltam <strong>${pendentes} tópicos</strong> (${ritmo.toFixed(1).replace('.', ',')} por semana ${fonte}).
-      Previsão de término: <strong>${d}/${m}/${a}</strong>,
-      ${folga >= 0
-        ? `<span class="est-plano-acerto bom">${folga} dias antes da prova</span>`
-        : `<span class="est-plano-acerto ruim">${-folga} dias depois da prova</span>. Aumente as horas semanais ou o peso das disciplinas prioritárias.`}`;
+    if (!partes.length) return `Faltam ${pendentes} tópicos. Monte o plano em “Planejamento Semanal” para ver quando o edital termina.`;
+    return partes.join('<br><br>');
   }
 
   function renderDesempenho() {
@@ -1092,7 +1243,6 @@
   function renderSecao(secao) {
     if (secao === 'inicio') renderHoje();
     if (secao === 'metas') renderMetas();
-    if (secao === 'revisoes') renderRevisoes();
     if (secao === 'desempenho') renderDesempenho();
   }
 
@@ -1105,6 +1255,13 @@
   function mudarSemana(delta) {
     semanaVista = somarDias(semanaVista || segundaDe(hoje()), delta * 7);
     renderMetas();
+  }
+
+  function irParaSemana(semana) {
+    semanaVista = semana;
+    renderMetas();
+    const sec = document.getElementById('est-section-metas');
+    if (sec) sec.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
   function alternarConfig() {
@@ -1125,6 +1282,6 @@
   window.estPlano = {
     init, renderHoje, renderSecao, topicoConcluido, sessaoCriada, sessaoRemovida,
     abrirConclusao, adiarRevisao, removerMeta, regerarSemana, agendarEstudados,
-    agendarReforco, mudarSemana, alternarConfig, editalTrocado
+    agendarReforco, mudarSemana, irParaSemana, alternarConfig, editalTrocado, projetar
   };
 })();

@@ -59,6 +59,12 @@ create table if not exists public.revisoes (
   tipo           text not null default 'revisao',   -- revisao | reforco
   data_prevista  date not null,
   concluida_em   date,
-  acerto         integer                            -- % de acerto na revisão
+  acerto         integer,                           -- % de acerto na revisão
+  intervalo      integer,                           -- dias desde a etapa anterior (revisão adaptativa)
+  minutos        integer                            -- duração prevista
 );
 create index if not exists revisoes_data_idx on public.revisoes (data_prevista);
+
+-- Para quem já tinha rodado uma versão anterior deste script
+alter table public.revisoes add column if not exists intervalo integer;
+alter table public.revisoes add column if not exists minutos integer;

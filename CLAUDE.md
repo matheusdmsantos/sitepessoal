@@ -137,8 +137,9 @@ A página usa `<body class="auth-pending">` (com `visibility: hidden`) e remove 
 - [ ] Repositório do GitHub passado para privado.
 
 **Plano semanal no Painel de Estudos (branch `feat/plano-semanal`, ainda não publicada).** Inspirado na Guruja:
-- *Metas da Semana*: horas/semana, dias de estudo, peso e nível por disciplina → tópicos pendentes distribuídos pelos dias (prioridade = peso × (4 − nível); tempo do tópico pelo nível: 120/90/60 min), intercalando disciplinas.
-- *Revisões e Reforços*: intervalos 1/7/30/60 dias; acerto < 70% agenda reforço, ≥ 85% aumenta o intervalo em 50%; folgas do plano não recebem revisão.
+- *Planejamento Semanal* (seção `metas`): um planejamento só, com tópicos novos e revisões juntos em cada dia. Horas/semana, dias de estudo, peso e nível por disciplina; rodízio ponderado (a disciplina da vez é a que recebeu menos tempo em relação a peso × (4 − nível)); tempo do tópico pelo nível: 120/90/60 min.
+- Só a semana atual é gravada (`metas`). As seguintes são uma projeção recalculada a cada tela (`projetar()`), até cobrir o edital, já reservando as revisões que cada tópico vai gerar (com o acerto médio da disciplina).
+- *Revisões adaptativas*: o intervalo é multiplicado por 2 (70–84%), 3 (85–94%) ou 4 (≥ 95%); abaixo de 70% entra reforço (40 min); acima de 120 dias o tópico está dominado e sai do plano. Duração 15 min (≥ 90%) ou 25 min. Revisões ocupam no máximo 50% do tempo do dia (`diaComFolga`). A antiga tela "Revisões e Reforços" foi removida.
 - *Desempenho*: horas por semana × meta, média diária, acerto por disciplina, pontos fracos e previsão de término do edital.
 - Regras e constantes ficam no topo de `js/estudos.plano.js`.
 - *Importar edital*: PDF ou texto → recorta o conteúdo programático até o primeiro ANEXO, separa "CARGO N", aplica "(EXCETO/SOMENTE PARA O CARGO …)", agrupa subitens no tópico principal (ou separa, por opção) e sugere a data de "Aplicação das provas". Testado com o edital do TCE-MA (Cebraspe): 16 cargos; cargo 13 com 15 disciplinas e 135 tópicos.

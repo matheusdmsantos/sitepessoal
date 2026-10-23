@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@300;400;600;700&family=Outfit:wght@300;400;500;600;700&display=swap" />
   <link href="https://cdn.quilljs.com/1.3.6/quill.snow.css" rel="stylesheet">
-  <link rel="stylesheet" href="css/estudos.css?v=5" />
+  <link rel="stylesheet" href="css/estudos.css?v=7" />
 </head>
 <body class="page-estudos">
 
@@ -52,13 +52,8 @@
       </button>
       
       <button class="est-sidebar-item" data-section="metas">
-        <span class="est-sidebar-icon">🎯</span>
-        <span>Metas da Semana</span>
-      </button>
-
-      <button class="est-sidebar-item" data-section="revisoes">
-        <span class="est-sidebar-icon">📅</span>
-        <span>Revisões e Reforços</span>
+        <span class="est-sidebar-icon">🗓️</span>
+        <span>Planejamento Semanal</span>
       </button>
 
       <button class="est-sidebar-item" data-section="desempenho">
@@ -333,12 +328,8 @@
       </section>
 
       <!-- ─── SEÇÕES DO PLANO (renderizadas por estudos.plano.js) ─── -->
-      <section id="est-section-metas" class="est-placeholder-section est-plano-section" data-section="metas" aria-label="Metas da semana">
+      <section id="est-section-metas" class="est-placeholder-section est-plano-section" data-section="metas" aria-label="Planejamento semanal">
         <div id="est-plano-metas"></div>
-      </section>
-
-      <section id="est-section-revisoes" class="est-placeholder-section est-plano-section" data-section="revisoes" aria-label="Revisões e reforços">
-        <div id="est-plano-revisoes"></div>
       </section>
 
       <section id="est-section-desempenho" class="est-placeholder-section est-plano-section" data-section="desempenho" aria-label="Desempenho">
@@ -843,7 +834,7 @@
     };
   </script>
   <script src="js/estudos.v5.js?v=6"></script>
-  <script src="js/estudos.plano.js?v=1"></script>
+  <script src="js/estudos.plano.js?v=3"></script>
   <script src="js/estudos.importar.js?v=1"></script>
 </body>
 </html>

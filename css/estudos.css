@@ -1763,3 +1763,36 @@ html, body {
   .est-importar-disc-head { flex-wrap: wrap; }
   .est-importar-disc .est-importar-nome { flex-basis: calc(100% - 30px); }
 }
+/* Semanas previstas e quadro do planejamento completo */
+.est-plano-item.previsto { border-style: dashed; border-left-style: solid; opacity: 0.85; }
+.est-plano-item.previsto .est-plano-tag { color: var(--est-accent-muted); }
+.est-plano-dia-rev { color: var(--est-purple) !important; }
+.est-plano-cronograma tbody tr { cursor: pointer; transition: var(--est-ease); }
+.est-plano-cronograma tbody tr:hover,
+.est-plano-cronograma tbody tr:focus-visible { background: var(--est-bg-glass); outline: none; }
+.est-plano-cronograma tbody tr.atual td { background: var(--est-blue-dim); }
+.est-plano-cronograma tbody tr.apos-prova td:first-child { box-shadow: inset 3px 0 0 var(--est-red); }
+.est-plano-cronograma tbody tr.apos-prova td:first-child strong { color: var(--est-red); }
+.est-plano-cronograma td:first-child { min-width: 150px; white-space: nowrap; }
+.est-plano-chips { display: flex; flex-wrap: wrap; gap: 4px; }
+.est-plano-chips span {
+  font-size: 0.7rem;
+  padding: 2px 8px;
+  border-radius: var(--est-r-full);
+  background: var(--est-silver-dim);
+  color: var(--est-silver);
+  white-space: nowrap;
+}
+/* Nomes longos de tópico não esticam as colunas dos dias */
+.est-plano-dia .est-plano-item-top {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.est-plano-dia .est-plano-item-disc {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.est-plano-regra { line-height: 1.6; max-width: 900px; }

@@ -38,7 +38,8 @@ const EST_CONFIG = {
 ============================================= */
 let studyData = [];
 let currentSection = localStorage.getItem('est_last_section') || 'inicio';
-if (currentSection === 'ciclo') currentSection = 'metas'; // seção antiga, virou "Metas da Semana"
+// Seções antigas que viraram o "Planejamento Semanal"
+if (currentSection === 'ciclo' || currentSection === 'revisoes') currentSection = 'metas';
 
 /* =============================================
    INICIALIZAÇÃO
