@@ -21,6 +21,7 @@ Site pessoal que funciona como **repositório de aplicações próprias**. Ele t
   - Quill 1.3.6
   - html2pdf 0.10.1, carregado sob demanda
   - html2canvas 1.4.1 (só no app de louvor)
+  - pdf.js 3.11.174 (cdnjs), carregado sob demanda na importação de edital; o worker roda na própria página
 - Fontes do Google carregadas por `<link>` no `<head>`, **nunca** por `@import` no CSS.
 - O `netlify.toml` define `publish = "."`, os headers de segurança e o cache de `/assets/*` por 30 dias. Por causa desse cache, ao trocar uma imagem é preciso **trocar o nome do arquivo**.
 
@@ -42,6 +43,8 @@ js/
   main.js             portfólio
   estudos.v5.js       Painel de Estudos (~97 KB)
   estudos.plano.js    Metas da semana, revisões condicionais e desempenho (carregado depois do v5)
+  estudos.importar.js Importa edital de PDF (pdf.js 3.11.174 sob demanda) ou texto, com tela de revisão
+editais/              PDFs de teste; fora do git (.gitignore) para não serem publicados
 assets/               imagens
 apps/
   _modelo/            template de app novo, já com login
@@ -138,6 +141,7 @@ A página usa `<body class="auth-pending">` (com `visibility: hidden`) e remove 
 - *Revisões e Reforços*: intervalos 1/7/30/60 dias; acerto < 70% agenda reforço, ≥ 85% aumenta o intervalo em 50%; folgas do plano não recebem revisão.
 - *Desempenho*: horas por semana × meta, média diária, acerto por disciplina, pontos fracos e previsão de término do edital.
 - Regras e constantes ficam no topo de `js/estudos.plano.js`.
+- *Importar edital*: PDF ou texto → recorta o conteúdo programático até o primeiro ANEXO, separa "CARGO N", aplica "(EXCETO/SOMENTE PARA O CARGO …)", agrupa subitens no tópico principal (ou separa, por opção) e sugere a data de "Aplicação das provas". Testado com o edital do TCE-MA (Cebraspe): 16 cargos; cargo 13 com 15 disciplinas e 135 tópicos.
 - Pendente: rodar `supabase/estudos-plano.sql` e depois `supabase/rls.sql`.
 
 **Otimização de desempenho: aplicada** (commit `perf: aplica otimização preparada`, na mesma branch). O conteúdo era este:

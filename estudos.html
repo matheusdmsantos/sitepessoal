@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@300;400;600;700&family=Outfit:wght@300;400;500;600;700&display=swap" />
   <link href="https://cdn.quilljs.com/1.3.6/quill.snow.css" rel="stylesheet">
-  <link rel="stylesheet" href="css/estudos.css?v=4" />
+  <link rel="stylesheet" href="css/estudos.css?v=5" />
 </head>
 <body class="page-estudos">
 
@@ -500,22 +500,55 @@
 
       <form id="est-edital-form">
         <div class="est-form-group">
-          <label class="est-form-label" for="est-edital-title">Título do Edital *</label>
-          <input type="text" id="est-edital-title" class="est-form-input" placeholder="Ex: TCE-PI 2026 - Engenharia Civil" required />
+          <label class="est-form-label" for="est-edital-title">Título do Edital</label>
+          <input type="text" id="est-edital-title" class="est-form-input" placeholder="Ex: TCE-MA 2026 - Auditor Engenharia" />
         </div>
 
         <div class="est-form-group">
-          <label class="est-form-label" for="est-edital-text">Importação Inteligente</label>
-          <p style="font-size: 0.85rem; color: var(--est-silver-dim); margin-bottom: 10px; line-height: 1.4;">
-            Cole aqui o bloco de disciplinas e conhecimentos do edital. O sistema tentará separar as disciplinas (normalmente em MAIÚSCULO) e os tópicos (normalmente numerados). Após importar, você poderá editar, adicionar e excluir itens individualmente na tela.
-          </p>
-          <textarea id="est-edital-text" class="est-form-input" style="min-height: 200px; resize: vertical;" placeholder="Cole o texto do edital aqui..."></textarea>
+          <span class="est-form-label">Importar do PDF do edital</span>
+          <label class="est-importar-arquivo" for="est-edital-pdf">
+            <input type="file" id="est-edital-pdf" accept="application/pdf,.pdf" />
+            <span>📄 Escolher PDF</span>
+            <small>O arquivo é lido aqui no navegador e não é enviado para nenhum servidor.</small>
+          </label>
+          <div id="est-importar-status" class="est-importar-status" role="status" style="display:none;"></div>
+        </div>
+
+        <div class="est-form-group">
+          <label class="est-form-label" for="est-edital-text">Ou cole o texto do conteúdo programático</label>
+          <textarea id="est-edital-text" class="est-form-input" style="min-height: 160px; resize: vertical;" placeholder="LÍNGUA PORTUGUESA: 1 Compreensão de textos. 2 ..."></textarea>
         </div>
 
         <button type="submit" class="est-form-submit">
-          Importar e Criar Edital
+          Analisar e revisar
         </button>
       </form>
+
+      <!-- Etapa 2: revisão do que foi lido (js/estudos.importar.js) -->
+      <div id="est-importar-revisao" style="display:none;">
+        <div class="est-form-group">
+          <label class="est-form-label" for="est-importar-titulo">Título do Edital *</label>
+          <input type="text" id="est-importar-titulo" class="est-form-input" />
+        </div>
+        <div class="est-form-group" id="est-importar-cargo-grupo">
+          <label class="est-form-label" for="est-importar-cargo">Cargo</label>
+          <select id="est-importar-cargo" class="est-form-select"></select>
+          <small class="est-importar-ajuda">Entram as disciplinas comuns que valem para o cargo e as específicas dele.</small>
+        </div>
+        <label class="est-form-checkbox" style="margin-bottom: 16px;">
+          <input type="checkbox" id="est-importar-separar" />
+          <span>Separar subitens (1.1, 1.2…) em tópicos próprios</span>
+        </label>
+        <div id="est-importar-datas" class="est-form-group"></div>
+
+        <p id="est-importar-resumo" class="est-importar-resumo"></p>
+        <div id="est-importar-lista" class="est-importar-lista"></div>
+
+        <div class="est-importar-acoes">
+          <button type="button" class="est-btn-cancelar" id="est-importar-voltar">Voltar</button>
+          <button type="button" class="est-form-submit" id="est-importar-criar" style="flex: 2; margin-top: 0;">Criar edital</button>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -811,5 +844,6 @@
   </script>
   <script src="js/estudos.v5.js?v=6"></script>
   <script src="js/estudos.plano.js?v=1"></script>
+  <script src="js/estudos.importar.js?v=1"></script>
 </body>
 </html>

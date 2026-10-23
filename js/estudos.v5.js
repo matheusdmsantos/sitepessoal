@@ -1106,6 +1106,8 @@ function initEditalUI() {
       e.preventDefault();
       const title = document.getElementById('est-edital-title').value.trim();
       const text = document.getElementById('est-edital-text').value;
+      // Com texto, abre a tela de revisão (js/estudos.importar.js) antes de criar
+      if (text.trim()) { window.estImportar.analisar(title, text); return; }
       if (!title) return;
       importEdital(title, text);
       form.reset();

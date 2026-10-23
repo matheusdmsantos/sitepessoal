@@ -1692,3 +1692,74 @@ html, body {
   .est-activity-panel { min-height: 320px; }
   .est-toast { bottom: 72px; }
 }
+/* =============================================
+   IMPORTAÇÃO DE EDITAL (js/estudos.importar.js)
+============================================= */
+.est-modal.est-modal-largo { max-width: 860px !important; }
+.est-importar-arquivo {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 14px 16px;
+  border: 1px dashed var(--est-border-silver);
+  border-radius: 12px;
+  cursor: pointer;
+  transition: var(--est-ease);
+}
+.est-importar-arquivo:hover,
+.est-importar-arquivo:focus-within { border-color: var(--est-border-glow); background: var(--est-bg-glass); }
+.est-importar-arquivo input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.est-importar-arquivo span {
+  padding: 8px 16px;
+  border-radius: var(--est-r-full);
+  background: var(--est-blue-dim);
+  color: var(--est-blue);
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+.est-importar-arquivo small,
+.est-importar-ajuda { font-size: 0.75rem; color: var(--est-accent); line-height: 1.4; }
+.est-importar-ajuda { display: block; margin-top: 6px; }
+.est-importar-arquivo:focus-within span { outline: 2px solid var(--est-blue); outline-offset: 2px; }
+.est-importar-status {
+  margin-top: 10px;
+  font-size: 0.82rem;
+  color: var(--est-green);
+}
+.est-importar-status.erro { color: var(--est-red); }
+.est-importar-opcao {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 8px 2px;
+  font-size: 0.82rem;
+  color: var(--est-silver);
+  cursor: pointer;
+  line-height: 1.4;
+}
+.est-importar-opcao input { margin-top: 3px; accent-color: var(--est-blue); }
+.est-importar-opcao strong { color: var(--est-silver-bright); }
+.est-importar-resumo { font-size: 0.85rem; color: var(--est-silver-bright); margin-bottom: 10px; }
+.est-importar-lista { display: flex; flex-direction: column; gap: 8px; margin-bottom: 20px; }
+.est-importar-disc {
+  border: 1px solid var(--est-border);
+  border-radius: 12px;
+  background: rgba(20, 22, 36, 0.45);
+  padding: 8px 10px;
+}
+.est-importar-disc-head { display: flex; align-items: center; gap: 10px; }
+.est-importar-disc-head input[type="checkbox"] { width: 18px; height: 18px; flex-shrink: 0; accent-color: var(--est-green); }
+.est-importar-disc .est-importar-nome { padding: 8px 12px; font-size: 0.86rem; flex: 1; min-width: 0; }
+.est-importar-disc .est-importar-topicos {
+  margin-top: 8px;
+  font-size: 0.8rem;
+  line-height: 1.5;
+  resize: vertical;
+}
+.est-importar-disc:has(.est-importar-incluir:not(:checked)) { opacity: 0.5; }
+.est-importar-acoes { display: flex; gap: 12px; }
+@media (max-width: 480px) {
+  .est-importar-disc-head { flex-wrap: wrap; }
+  .est-importar-disc .est-importar-nome { flex-basis: calc(100% - 30px); }
+}
