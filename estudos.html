@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@300;400;600;700&family=Outfit:wght@300;400;500;600;700&display=swap" />
   <link href="https://cdn.quilljs.com/1.3.6/quill.snow.css" rel="stylesheet">
-  <link rel="stylesheet" href="css/estudos.css?v=11" />
+  <link rel="stylesheet" href="css/estudos.css?v=12" />
 </head>
 <body class="page-estudos">
 
@@ -256,62 +256,8 @@
 
       </section>
 
-      <section id="est-section-resumos" class="est-placeholder-section est-resumos-section" data-section="resumos">
-
-        <!-- ── BARRA SUPERIOR ───────────────────────────────────────── -->
-        <div class="est-resumos-toolbar">
-          <div class="est-resumos-toolbar-inner">
-            <div class="est-resumos-fields">
-              <div class="est-resumos-field-group">
-                <label for="res-materia">Matéria</label>
-                <input type="text" id="res-materia" list="res-datalist-materias" placeholder="Ex: Direito Constitucional" />
-                <datalist id="res-datalist-materias">
-                  <option value="Língua Portuguesa">
-                  <option value="Competências Digitais e Informática Aplicada">
-                  <option value="Raciocínio Lógico">
-                  <option value="Direito Administrativo">
-                  <option value="Direito Constitucional">
-                  <option value="Controle Externo">
-                  <option value="Legislação Específica">
-                  <option value="História do Estado do Maranhão">
-                  <option value="Geografia do Estado do Maranhão">
-                  <option value="Noções de Direitos Humanos">
-                  <option value="Obras - Planejamento, Normas, Fiscalização e Legislação">
-                  <option value="Obras de Edificações">
-                  <option value="Obras Hídricas">
-                  <option value="Obras Rodoviárias">
-                  <option value="Auditoria do Setor Público">
-                </datalist>
-              </div>
-              <div class="est-resumos-field-group">
-                <label for="res-topico">Tópico *</label>
-                <input type="text" id="res-topico" placeholder="Ex: Direitos Fundamentais" />
-              </div>
-              <div class="est-resumos-field-group">
-                <label for="res-subtopico">Subtópico</label>
-                <input type="text" id="res-subtopico" placeholder="Ex: Nacionalidade (opcional)" />
-              </div>
-            </div>
-            <div class="est-resumos-actions">
-              <button type="button" id="res-btn-limpar" class="est-resumos-btn-limpar">🗑️ Limpar</button>
-              <button type="button" id="res-btn-salvar" class="est-resumos-btn-salvar">💾 Salvar no Word</button>
-            </div>
-          </div>
-          <div id="res-status" class="est-resumos-status" style="display:none;"></div>
-          <div class="est-resumos-info">
-            <span class="est-resumos-info-dot"></span>
-            Salvo em <code>C:\Users\matheus.santos\Desktop\Matheus\Estudo\Resumos\{Matéria}.docx</code>
-            &nbsp;·&nbsp; servidor: <strong>http://localhost:5000</strong>
-          </div>
-        </div>
-
-        <!-- ── ÁREA DE EDIÇÃO (estilo folha Word) ──────────────────── -->
-        <div class="est-resumos-page-area">
-          <div class="est-word-page">
-            <div id="res-editor"></div>
-          </div>
-        </div>
-
+      <section id="est-section-resumos" class="est-placeholder-section est-resumos-section" data-section="resumos" aria-label="Meus resumos">
+        <div id="est-resumos" class="est-res"></div>
       </section>
 
       <section id="est-section-historico" class="est-placeholder-section" data-section="historico">
@@ -786,7 +732,7 @@
           <span class="est-sessao-disc" id="est-sessao-disc"></span>
           <h2 class="est-sessao-topico" id="est-sessao-topico"></h2>
         </div>
-        <div class="est-sessao-crono">
+        <div class="est-sessao-crono" id="est-sessao-crono">
           <div class="est-sessao-relogio" id="est-sessao-relogio">
             <span class="est-sessao-fase" id="est-sessao-fase">Tempo estudado</span>
             <strong class="est-sessao-tempo" id="est-sessao-tempo" aria-live="off">00:00</strong>
@@ -801,6 +747,7 @@
         </div>
         <div class="est-sessao-acoes">
           <span class="est-sessao-status" id="est-sessao-status" role="status"></span>
+          <button type="button" class="est-plano-btn" id="est-sessao-ver-materia" title="Ver este assunto no resumo geral da matéria">📚 Resumo da matéria</button>
           <button type="button" class="est-plano-btn primario" id="est-sessao-concluir">Concluir</button>
           <button type="button" class="est-modal-close" id="est-sessao-fechar" aria-label="Fechar e salvar">✕</button>
         </div>
@@ -816,119 +763,6 @@
         <div class="est-sessao-folha">
           <input type="text" class="est-sessao-pag-titulo" id="est-sessao-pag-titulo" aria-label="Título da página" maxlength="80" />
           <div id="est-sessao-editor"></div>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- Modal de Resumo (Quill) -->
-  <div class="est-modal-overlay" id="est-modal-resumo" aria-hidden="true">
-    <div class="est-modal" role="dialog" style="max-width: 1600px; width: 98%; height: 96vh; padding: 20px; display: flex; flex-direction: column;">
-      <div class="est-modal-header" style="flex-shrink: 0; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
-        <div style="flex: 1; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; min-width: 0;">
-          <h2 class="est-modal-title" style="margin: 0; font-size: 1.25rem;">Resumo: <span id="est-resumo-topic-name" style="color: var(--est-primary);"></span></h2>
-          <div style="display: flex; align-items: center; gap: 8px;">
-            <label for="est-resumo-subtopic-input" style="font-size: 0.8rem; color: var(--est-silver); white-space: nowrap;">Subtópico (Word):</label>
-            <input type="text" id="est-resumo-subtopic-input" class="est-form-input" placeholder="Ex: Nacionalidade (opcional)" style="padding: 6px 10px; font-size: 0.85rem; width: 220px; background: rgba(0,0,0,0.3); height: 32px;" />
-          </div>
-        </div>
-        <button class="est-modal-close" id="est-modal-resumo-close" aria-label="Fechar modal" style="margin-left: 10px;">✕</button>
-      </div>
-      
-      <div class="est-resumo-editor-wrapper" style="flex: 1; display: flex; flex-direction: column; overflow: hidden; margin-top: 10px; background: #fff; border-radius: 8px;">
-        <div id="est-resumo-editor" style="flex: 1; overflow-y: auto; color: #000; font-size: 12pt;"></div>
-      </div>
-      
-      <div style="flex-shrink: 0; margin-top: 20px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
-        <div>
-          <button type="button" class="est-btn-icon" id="est-btn-delete-resumo" title="Excluir Resumo" style="color: var(--est-red); border: 1px solid rgba(239,68,68,0.3); padding: 8px 12px; border-radius: 6px; width: auto; height: auto;">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 6px;"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
-            Excluir
-          </button>
-        </div>
-        <div style="display: flex; gap: 10px; flex-wrap: wrap; align-items: center;">
-          <button type="button" class="est-btn-icon" id="est-btn-export-pdf" title="Exportar para PDF local" style="background: rgba(255,255,255,0.05); border: 1px solid var(--est-border); padding: 8px 12px; border-radius: 6px; width: auto; height: auto; color: var(--est-silver);">
-            📄 PDF
-          </button>
-          <button type="button" class="est-btn-icon" id="est-btn-export-docx" title="Baixar Arquivo .doc" style="background: rgba(255,255,255,0.05); border: 1px solid var(--est-border); padding: 8px 12px; border-radius: 6px; width: auto; height: auto; color: var(--est-silver);">
-            📝 Baixar .doc
-          </button>
-          <button type="button" class="est-btn-icon" id="est-btn-export-python-docx" title="Enviar diretamente para o Word .docx no seu PC via Python" style="background: rgba(46, 125, 50, 0.2); border: 1px solid rgba(76, 175, 80, 0.4); padding: 8px 14px; border-radius: 6px; width: auto; height: auto; color: #4ade80; font-weight: 600; display: flex; align-items: center; gap: 6px;">
-            💾 Salvar em .DOCX (Python)
-          </button>
-          <button type="button" class="est-form-submit" id="est-btn-save-resumo" style="width: auto; padding: 12px 28px; margin-top: 0;">Salvar Resumo</button>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- ─── MODAL: CRIAR NOVO RESUMO ─── -->
-  <div class="est-modal-overlay" id="est-modal-novo-resumo" aria-hidden="true">
-    <div class="est-modal" role="dialog" style="max-width: 500px;">
-      <div class="est-modal-header" style="margin-bottom: 20px;">
-        <h2 class="est-modal-title">Criar / Abrir Resumo</h2>
-        <button class="est-modal-close" id="est-modal-novo-resumo-close">✕</button>
-      </div>
-
-      <form id="est-form-novo-resumo">
-        <div class="est-form-group">
-          <label class="est-form-label" for="est-novo-resumo-materia">Matéria (Nome do Arquivo Word) *</label>
-          <input type="text" id="est-novo-resumo-materia" class="est-form-input" list="est-datalist-materias" placeholder="Ex: Direito Constitucional" required />
-          <datalist id="est-datalist-materias"></datalist>
-          <span style="font-size: 0.78rem; color: var(--est-silver-dim); margin-top: 6px; display: block; line-height: 1.4;">
-            Esta matéria será o nome do arquivo Word (<code>.docx</code>). Se o arquivo já existir, o novo resumo será inserido nele.
-          </span>
-        </div>
-
-        <div class="est-form-group">
-          <label class="est-form-label" for="est-novo-resumo-topico">Assunto / Tópico Principal *</label>
-          <input type="text" id="est-novo-resumo-topico" class="est-form-input" placeholder="Ex: Direitos Fundamentais" required />
-        </div>
-
-        <div class="est-form-group">
-          <label class="est-form-label" for="est-novo-resumo-subtopico">Subtópico (Opcional)</label>
-          <input type="text" id="est-novo-resumo-subtopico" class="est-form-input" placeholder="Ex: Nacionalidade" />
-        </div>
-
-        <div style="display: flex; gap: 12px; margin-top: 25px;">
-          <button type="button" class="est-btn-cancelar" id="est-btn-novo-resumo-cancelar">Cancelar</button>
-          <button type="submit" class="est-form-submit" style="flex: 1; margin-top: 0; background: var(--est-primary);">Abrir / Criar Resumo</button>
-        </div>
-      </form>
-    </div>
-  </div>
-
-  <!-- ─── MODAL: EXPORTAR DISCIPLINA ─── -->
-  <div class="est-date-modal-overlay" id="est-export-disc-modal">
-    <div class="est-date-modal-content" style="max-width: 500px;">
-      <h3 style="color: #fff; font-size: 1.25rem; font-weight: 500; margin-bottom: 20px;">Exportar Disciplina</h3>
-      
-      <div class="est-form-group">
-        <label class="est-form-label">Selecione o Edital</label>
-        <select id="est-export-edital-select" class="est-form-select"></select>
-      </div>
-
-      <div class="est-form-group">
-        <label class="est-form-label">Selecione a Disciplina</label>
-        <select id="est-export-disc-select" class="est-form-select" disabled>
-          <option value="">Selecione primeiro o edital...</option>
-        </select>
-      </div>
-
-      <div style="display: flex; flex-direction: column; gap: 10px; margin-top: 25px;">
-        <button type="button" class="est-form-submit" onclick="exportarDisciplinaPythonWord()" style="width: 100%; padding: 12px; margin-top: 0; background: rgba(46, 125, 50, 0.2); border: 1px solid rgba(76, 175, 80, 0.4); color: #4ade80; font-weight: 600;">
-          💾 Gerar Documento .DOCX (Servidor Python)
-        </button>
-        <div style="display: flex; gap: 10px;">
-          <button type="button" class="est-btn-cancelar" onclick="document.getElementById('est-export-disc-modal').classList.remove('active');">
-            Cancelar
-          </button>
-          <button type="button" class="est-form-submit" onclick="exportarDisciplinaWord()" style="flex: 1; padding: 10px; margin-top: 0; background: var(--est-primary); font-size: 0.85rem;">
-            Baixar .doc
-          </button>
-          <button type="button" class="est-form-submit" onclick="exportarDisciplinaPDF()" style="flex: 1; padding: 10px; margin-top: 0; background: var(--est-primary); font-size: 0.85rem;">
-            Baixar PDF
-          </button>
         </div>
       </div>
     </div>
@@ -959,9 +793,10 @@
       return window.__html2pdfPromise;
     };
   </script>
-  <script src="js/estudos.v5.js?v=7"></script>
-  <script src="js/estudos.plano.js?v=7"></script>
-  <script src="js/estudos.sessao.js?v=1"></script>
+  <script src="js/estudos.v5.js?v=8"></script>
+  <script src="js/estudos.plano.js?v=8"></script>
+  <script src="js/estudos.sessao.js?v=2"></script>
+  <script src="js/estudos.resumos.js?v=1"></script>
   <script src="js/estudos.importar.js?v=2"></script>
   <script src="js/estudos.incidencia.js?v=1"></script>
   <script src="js/estudos.materiais.js?v=1"></script>

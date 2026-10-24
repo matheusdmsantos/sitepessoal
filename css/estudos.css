@@ -2035,3 +2035,206 @@ html, body {
 @media (prefers-reduced-motion: reduce) {
   .est-sessao-progresso > div { transition: none; }
 }
+
+/* ─── MEUS RESUMOS (js/estudos.resumos.js) ─── */
+.est-placeholder-section.est-resumos-section {
+  align-items: stretch;
+  justify-content: flex-start;
+  text-align: left;
+  padding: 24px 28px;
+  gap: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+.est-res { flex: 1; min-height: 0; display: flex; gap: 20px; }
+
+.est-res-lado {
+  width: 300px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border: 1px solid var(--est-border);
+  border-radius: var(--est-r-md);
+  background: rgba(20, 22, 36, 0.45);
+}
+.est-res-lado-topo { padding: 16px 14px 12px; border-bottom: 1px solid var(--est-border); }
+.est-res-lado-topo h2 {
+  font-family: var(--est-font-display);
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: var(--est-silver-bright);
+  margin-bottom: 10px;
+}
+.est-res-busca {
+  width: 100%;
+  background: rgba(20, 22, 36, 0.8);
+  border: 1px solid var(--est-border);
+  border-radius: var(--est-r-sm);
+  padding: 8px 12px;
+  font-size: 0.85rem;
+  color: var(--est-silver-bright);
+  font-family: var(--est-font-body);
+  outline: none;
+}
+.est-res-busca:focus-visible { border-color: var(--est-blue); }
+.est-res-lista { flex: 1; min-height: 0; overflow-y: auto; padding: 8px; scrollbar-width: thin; scrollbar-color: var(--est-accent-faint) transparent; }
+.est-res-lista-info { font-size: 0.8rem; color: var(--est-accent); padding: 8px 6px; line-height: 1.5; }
+
+.est-res-materia { border-radius: var(--est-r-sm); }
+.est-res-materia + .est-res-materia { margin-top: 2px; }
+.est-res-materia-btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 9px 10px;
+  border-radius: var(--est-r-sm);
+  text-align: left;
+  color: var(--est-silver);
+  font-size: 0.86rem;
+  transition: background var(--est-ease);
+}
+.est-res-materia-btn:hover { background: var(--est-silver-glow); }
+.est-res-materia.ativa .est-res-materia-btn { background: var(--est-blue-dim); color: var(--est-silver-bright); font-weight: 600; }
+.est-res-materia-nome { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.est-res-materia-conta { font-size: 0.7rem; color: var(--est-accent); font-variant-numeric: tabular-nums; flex-shrink: 0; font-weight: 500; }
+
+.est-res-arvore { list-style: none; margin: 4px 0 8px; padding: 0; }
+.est-res-arvore button {
+  width: 100%;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 5px 8px;
+  border-radius: 6px;
+  text-align: left;
+  font-size: 0.78rem;
+  line-height: 1.35;
+  color: var(--est-accent);
+}
+.est-res-arvore button:hover { background: var(--est-silver-glow); color: var(--est-silver-bright); }
+.est-res-arvore li.nivel-1 button { padding-left: 14px; }
+.est-res-arvore li.nivel-2 button { padding-left: 28px; }
+.est-res-arvore li.nivel-3 button { padding-left: 42px; }
+.est-res-arvore li.tem button { color: var(--est-silver-bright); }
+.est-res-arvore-nome { overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.est-res-ponto {
+  width: 7px;
+  height: 7px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  border: 1px solid var(--est-accent-muted);
+  transform: translateY(-1px);
+}
+.est-res-arvore li.tem .est-res-ponto { background: var(--est-green); border-color: var(--est-green); }
+
+.est-res-achado {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 9px 10px;
+  border-radius: var(--est-r-sm);
+  text-align: left;
+}
+.est-res-achado:hover { background: var(--est-silver-glow); }
+.est-res-achado-disc { font-size: 0.68rem; color: var(--est-accent); text-transform: uppercase; letter-spacing: 0.05em; }
+.est-res-achado-top { font-size: 0.84rem; color: var(--est-silver-bright); }
+.est-res-achado-trecho { font-size: 0.75rem; color: var(--est-accent); line-height: 1.4; }
+
+.est-res-principal { flex: 1; min-width: 0; min-height: 0; overflow-y: auto; scrollbar-width: thin; scrollbar-color: var(--est-accent-faint) transparent; }
+.est-res-topo {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+  padding: 0 0 12px;
+  background: var(--est-bg-deep);
+}
+.est-res-topo-info { display: flex; flex-direction: column; gap: 2px; }
+.est-res-topo-conta { font-size: 0.82rem; color: var(--est-silver); }
+.est-res-topo-acoes { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.est-res-topo-acoes .est-plano-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.est-res-todos { display: flex; align-items: center; gap: 6px; font-size: 0.78rem; color: var(--est-silver); cursor: pointer; margin-right: 6px; }
+
+/* A folha imita uma página: fundo branco e largura de leitura.
+   Os seletores começam em .est-res-folha para vencer os tamanhos de título do quill.snow.css */
+.est-res-folha {
+  background: #fff;
+  border-radius: var(--est-r-sm);
+  max-width: 900px;
+  margin: 0 auto 40px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
+}
+.est-res-folha .ql-editor.est-res-doc {
+  height: auto;
+  overflow: visible;
+  padding: 48px 56px 64px;
+  color: #111;
+  font-size: 12pt;
+  line-height: 1.55;
+  white-space: normal;
+  cursor: default;
+}
+.est-res-folha .est-res-doc h1 { font-size: 2em; color: #1f3864; margin-bottom: 0.4em; padding-bottom: 0.3em; border-bottom: 2px solid #c7d2fe; }
+.est-res-folha .est-res-doc h2 { font-size: 1.5em; color: #2f5496; margin-top: 1.4em; }
+.est-res-folha .est-res-doc h3 { font-size: 1.22em; color: #2f5496; margin-top: 1.1em; }
+.est-res-folha .est-res-doc h4 { font-size: 1.06em; color: #1f3864; margin-top: 1em; }
+.est-res-folha .est-res-doc h5, .est-res-folha .est-res-doc h6 { font-size: 1em; color: #1f3864; margin-top: 0.8em; }
+.est-res-folha .est-res-doc .est-pagina { color: #6b7280; font-weight: 600; border-bottom: 1px dashed #d1d5db; padding-bottom: 2px; }
+.est-res-folha .est-res-doc img { max-width: 100%; height: auto; }
+
+.est-res-assunto { scroll-margin-top: 70px; border-radius: 6px; }
+.est-res-assunto.destaque { animation: est-res-pisca 1.6s ease; }
+@keyframes est-res-pisca { 0%, 40% { background: #eef2ff; } 100% { background: transparent; } }
+.est-res-assunto-topo { display: flex; align-items: baseline; gap: 12px; }
+.est-res-assunto-topo > :first-child { flex: 1; min-width: 0; }
+.est-res-assunto.sem-resumo .est-res-assunto-topo > :first-child { color: #9ca3af; }
+.est-res-assunto-acoes { display: flex; gap: 4px; flex-shrink: 0; opacity: 0; transition: opacity 0.2s; }
+.est-res-assunto:hover .est-res-assunto-acoes,
+.est-res-assunto-acoes:focus-within,
+.est-res-assunto.sem-resumo .est-res-assunto-acoes { opacity: 1; }
+.est-res-assunto-acoes button {
+  font-size: 0.72rem;
+  font-family: var(--est-font-body);
+  padding: 3px 9px;
+  border-radius: 6px;
+  border: 1px solid #d1d5db;
+  color: #374151;
+  background: #fff;
+}
+.est-res-assunto-acoes button:hover { border-color: #6366f1; color: #4338ca; }
+.est-res-assunto-acoes button.perigo:hover { border-color: #ef4444; color: #b91c1c; }
+.est-res-assunto-acoes button:focus-visible { outline: 2px solid #6366f1; outline-offset: 1px; }
+
+.est-res-vazio {
+  max-width: 520px;
+  margin: 60px auto;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  color: var(--est-silver);
+}
+.est-res-vazio > span { font-size: 2.6rem; opacity: 0.5; }
+.est-res-vazio .sutil { font-size: 0.85rem; color: var(--est-accent); line-height: 1.5; }
+
+@media (max-width: 900px) {
+  .est-placeholder-section.est-resumos-section { overflow-y: auto; padding: 16px; }
+  .est-res { flex-direction: column; flex: none; }
+  .est-res-lado { width: 100%; max-height: 45vh; }
+  .est-res-principal { overflow: visible; }
+  .est-res-topo { position: static; }
+  .est-res-folha .ql-editor.est-res-doc { padding: 24px 18px 32px; }
+  .est-res-assunto-acoes { opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .est-res-assunto.destaque { animation: none; }
+}

@@ -14,6 +14,7 @@
   const AUTOSAVE_MS = 2000;
   const TITULO_PADRAO = 'Anotações';
   const CHAVE_CRONO = 'est_crono';           // { [id da meta/revisão]: estado do cronômetro }
+  const TAMANHOS = ['8pt', '9pt', '10pt', '11pt', '12pt', '14pt', '16pt', '18pt', '20pt', '22pt', '24pt', '26pt', '28pt', '36pt', '48pt', '72pt'];
 
   // Título de página: precisa existir antes do Quill de "Meus Resumos" ser criado,
   // senão ele troca o <h1 class="est-pagina"> por um título comum e as páginas se perdem.
@@ -24,10 +25,15 @@
     TituloPagina.tagName = 'H1';
     TituloPagina.className = 'est-pagina';
     Quill.register(TituloPagina, true);
+
+    // Tamanhos de fonte em pontos, como no Word
+    const Size = Quill.import('attributors/style/size');
+    Size.whitelist = TAMANHOS;
+    Quill.register(Size, true);
   }
 
   let quill = null;
-  let ctx = null;            // { tipo, id, disc, topico, minutos, concluida }
+  let ctx = null;            // { tipo, id, disc, topico, minutos, concluida }; sem id = só o resumo, sem cronômetro
   let paginas = [];          // [{ titulo, html, semTitulo }]
   let atual = 0;
   let ultimoSalvo = '';
@@ -192,7 +198,7 @@
   }
 
   function renderCrono() {
-    if (!ctx) return;
+    if (!ctx || !ctx.id) return;
     const c = crono();
     if (atualizarCrono(c) && c.rodando) bipe();
     gravarCrono(ctx.id, c);
@@ -278,13 +284,12 @@
   ============================================= */
   function criarEditor() {
     if (quill || typeof Quill === 'undefined') return;
-    const tamanhos = ['8pt', '9pt', '10pt', '11pt', '12pt', '14pt', '16pt', '18pt', '20pt', '22pt', '24pt', '26pt', '28pt', '36pt', '48pt', '72pt'];
     quill = new Quill('#est-sessao-editor', {
       theme: 'snow',
       placeholder: 'Escreva aqui enquanto estuda… Cole imagens com Ctrl+V.',
       modules: {
         toolbar: [
-          [{ 'font': [] }, { 'size': tamanhos }],
+          [{ 'font': [] }, { 'size': TAMANHOS }],
           [{ 'header': [2, 3, 4, false] }],
           ['bold', 'italic', 'underline', 'strike'],
           [{ 'color': [] }, { 'background': [] }],
@@ -298,15 +303,18 @@
     quill.on('text-change', (delta, old, fonte) => { if (fonte === 'user') agendarSalvar(); });
   }
 
-  /* dados = { tipo: 'meta' | 'revisao', id, disc, topico, rotulo, minutos, concluida } */
+  /* dados = { tipo: 'meta' | 'revisao', id, disc, topico, rotulo, minutos, concluida }
+     Sem id, abre só o resumo (Edital Verticalizado e Meus Resumos). */
   function abrir(dados) {
     criarEditor();
     if (!quill) return;
+    if (ctx) salvar();
     ctx = dados;
     $('est-sessao-rotulo').textContent = dados.rotulo;
     $('est-sessao-disc').textContent = dados.disc;
     $('est-sessao-topico').textContent = dados.topico;
-    $('est-sessao-concluir').style.display = dados.concluida ? 'none' : '';
+    $('est-sessao-crono').style.display = dados.id ? '' : 'none';
+    $('est-sessao-concluir').style.display = dados.id && !dados.concluida ? '' : 'none';
 
     const salvo = (resumosMap[makeResumoKey(dados.disc, dados.topico)] || {}).conteudo || '';
     ultimoSalvo = salvo;
@@ -315,9 +323,11 @@
     mostrarPagina(0);
     status(vazio(salvo) ? '' : 'Salvo');
 
-    renderCrono();
     clearInterval(tick);
-    tick = setInterval(renderCrono, 1000);
+    if (dados.id) {
+      renderCrono();
+      tick = setInterval(renderCrono, 1000);
+    }
     $('est-modal-sessao').classList.add('active');
     $('est-modal-sessao').setAttribute('aria-hidden', 'false');
     setTimeout(() => quill.focus(), 50);
@@ -329,8 +339,21 @@
     clearInterval(tick);
     $('est-modal-sessao').classList.remove('active');
     $('est-modal-sessao').setAttribute('aria-hidden', 'true');
+    const comCrono = !!ctx.id;
     ctx = null;
-    window.estPlano.renderTudo(); // atualiza o selo ⏱ na lista
+    if (comCrono) window.estPlano.renderTudo(); // atualiza o selo ⏱ na lista
+    if (window.estResumos) window.estResumos.render();
+  }
+
+  function abrirResumo(disc, topico) {
+    abrir({ disc, topico, rotulo: 'Resumo' });
+  }
+
+  async function verMateria() {
+    if (!ctx) return;
+    const { disc, topico } = ctx;
+    await fechar();
+    if (window.estResumos) window.estResumos.irPara(disc, topico);
   }
 
   async function concluir() {
@@ -352,6 +375,7 @@
     $('est-sessao-zerar').addEventListener('click', zerar);
     $('est-sessao-pomodoro').addEventListener('change', alternarPomodoro);
     $('est-sessao-nova-pag').addEventListener('click', novaPagina);
+    $('est-sessao-ver-materia').addEventListener('click', verMateria);
     const titulo = $('est-sessao-pag-titulo');
     titulo.addEventListener('input', renomear);
     titulo.addEventListener('keydown', ev => { if (ev.key === 'Enter') { ev.preventDefault(); quill.focus(); } });
@@ -364,7 +388,7 @@
   document.addEventListener('DOMContentLoaded', init);
 
   window.estSessao = {
-    abrir, fechar, minutosDe, selo,
+    abrir, abrirResumo, fechar, minutosDe, selo, separarPaginas,
     irPagina: mostrarPagina, apagarPagina,
     zerarCrono: id => gravarCrono(id, null)
   };

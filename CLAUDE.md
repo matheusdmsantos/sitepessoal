@@ -21,6 +21,7 @@ Site pessoal que funciona como **repositório de aplicações próprias**. Ele t
   - Quill 1.3.6
   - html2pdf 0.10.1, carregado sob demanda
   - html2canvas 1.4.1 (só no app de louvor)
+  - html-docx-js 0.3.1 (jsdelivr), carregado sob demanda na exportação de resumos para Word
   - pdf.js 3.11.174 (cdnjs), carregado sob demanda na importação de edital; o worker roda na própria página
   - SheetJS (xlsx) 0.18.5 (cdnjs), carregado sob demanda na importação de incidência do TEC
 - Fontes do Google carregadas por `<link>` no `<head>`, **nunca** por `@import` no CSS.
@@ -47,7 +48,8 @@ js/
   estudos.importar.js Importa edital de PDF (pdf.js 3.11.174 sob demanda) ou texto, com tela de revisão
   estudos.incidencia.js Importa a planilha de incidência do TEC e liga assuntos a tópicos
   estudos.materiais.js PDFs de estudo por disciplina: páginas e ligação aos tópicos
-  estudos.sessao.js   Janela de estudo da meta: cronômetro (livre/Pomodoro) e resumo em páginas
+  estudos.sessao.js   Janela de estudo/resumo: cronômetro (livre/Pomodoro, só pelo plano) e resumo em páginas
+  estudos.resumos.js  Meus Resumos: resumo geral da matéria montado dos resumos dos assuntos; exporta Word/PDF
 editais/              PDFs de teste; fora do git (.gitignore) para não serem publicados
 assets/               imagens
 apps/
@@ -156,7 +158,13 @@ A página usa `<body class="auth-pending">` (com `visibility: hidden`) e remove 
 
 **Janela de estudo (branch `feat/janela-estudo`).** Clicar no texto de uma meta ou revisão do plano abre `js/estudos.sessao.js`:
 - *Cronômetro* livre ou Pomodoro 25/5 (bipe na troca; só o foco conta). O estado fica em `localStorage['est_crono']` por id da meta/revisão, guardado como horários, então continua certo com a janela fechada. A lista mostra o selo "⏱ N min". O "Concluir" (da janela ou do item) preenche o tempo com o cronômetro, que é zerado ao salvar a conclusão.
-- *Resumo em páginas*: é o mesmo resumo de "Meus Resumos" (tabela `resumos`, gravado por `salvarResumo` do v5). Cada página começa com `<h1 class="est-pagina">`; o que vem antes do primeiro título é a primeira página (resumos antigos ficam intactos). O blot `pagina` é registrado no Quill antes do `initResumoUI`, para o editor de "Meus Resumos" não apagar as marcas. Salva sozinho 2 s depois da última edição e ao fechar.
+- *Resumo em páginas*: é o mesmo resumo de "Meus Resumos" (tabela `resumos`, gravado por `salvarResumo` do v5). Cada página começa com `<h1 class="est-pagina">`; o que vem antes do primeiro título é a primeira página (resumos antigos ficam intactos). O blot `pagina` é registrado no Quill pelo próprio `estudos.sessao.js`. Salva sozinho 2 s depois da última edição e ao fechar.
+- *É o único editor de resumo*: `promptResumo`/`promptResumoByName` do v5 abrem a mesma janela, sem cronômetro (`estSessao.abrirResumo`). O modal antigo, o formulário "Salvar no Word" e tudo o que chamava o `app.py` (`localhost:5000`) foram removidos.
+
+**Meus Resumos (`js/estudos.resumos.js`, mesma branch).** O resumo geral da matéria **não é gravado**: é montado na hora, na ordem do edital ativo, a partir dos resumos de cada assunto. Por isso, salvar um assunto já atualiza a matéria.
+- Hierarquia pela numeração do nome do tópico (`1`, `1.1`, `1.1.1`, até 3 níveis): matéria = H1, assunto = H2–H4, página = um nível abaixo do assunto; títulos escritos dentro do resumo são rebaixados (`rebaixarTitulos`). Sem "Mostrar todos os assuntos", entram só os que têm resumo e os seus "pais".
+- Resumo cujo nome não bate com o edital: vai para "Assuntos fora do edital" da matéria, ou para a matéria virtual "Outros resumos" se a disciplina também não existe. `resumosMap` agora guarda `disciplina_nome`/`topico_nome` para isso.
+- Exporta a matéria em `.docx` (html-docx-js) ou PDF (html2pdf). No Chrome/Edge, grava na pasta escolhida (File System Access; o handle fica no IndexedDB `est-resumos`); nos outros, baixa em Downloads.
 
 **Controle de Obras (branch `feat/controle-obras`).** Gerenciador de processos no estilo SEI, em `apps/controle-obras/` (abre em página cheia):
 - *Processo* `AAAA.NNNN` (numeração por ano): assunto, serviço (projeto, execução, fiscalização, laudo, consultoria), cliente, contato, local, valores da proposta e do contrato, e fase: Prospecção → Proposta enviada → Em negociação → Contratado → Em execução → Entregue → Encerrado, ou Proposta recusada / Cancelado (finais: marcam `concluido_em`).
@@ -169,7 +177,7 @@ A página usa `<body class="auth-pending">` (com `visibility: hidden`) e remove 
 **Otimização de desempenho: aplicada** (commit `perf: aplica otimização preparada`, na mesma branch). O conteúdo era este:
 - `assets/profile.png` (JPEG de 1024 px, 772 KB) vira `assets/profile.webp` (21 KB) com `assets/profile.jpg` de reserva, servidos por `<picture>` no portfólio com `fetchpriority="high"`. Depois disso, apagar `profile.png`.
 - `@import` de fontes sai de todos os CSS e as fontes passam para `<link>` no `<head>`. O portfólio deixa de baixar Inter e Cormorant, que não usa.
-- `estudos.html`: sai o ApexCharts (não é usado; os gráficos são SVG próprios), o supabase-js fica fixo em `@2.45.4`, e o html2pdf passa a ser carregado sob demanda por `window.carregarHtml2pdf()`. As funções `exportResumoPDF` e `exportarDisciplinaPDF` do `estudos.v5.js` ficam `async` e aguardam esse carregamento.
+- `estudos.html`: sai o ApexCharts (não é usado; os gráficos são SVG próprios), o supabase-js fica fixo em `@2.45.4`, e o html2pdf passa a ser carregado sob demanda por `window.carregarHtml2pdf()`. (As exportações de resumo agora ficam no `estudos.resumos.js` e também aguardam esse carregamento.)
 - `netlify.toml`: cache de 30 dias em `/assets/*`.
 - `og:image` e `og:url` adicionadas no portfólio.
 - Teste obrigatório depois de aplicar: exportar um resumo em PDF no Painel de Estudos.
@@ -179,5 +187,5 @@ A página usa `<body class="auth-pending">` (com `visibility: hidden`) e remove 
 1. **Identidade visual unificada.** Criar `css/base.css` com tokens de cor, tipografia, espaçamento e componentes, e redesenhar login, hub e portfólio com uma direção coerente. Hoje cada página tem um estilo próprio. Incluir responsividade, foco visível e `prefers-reduced-motion`.
 2. **Portfólio como página inicial.** Hoje `/` é o login. Avaliar mover o login para `/login.html`, o que exige atualizar `LOGIN_PAGE` em `auth.js` e os links que apontam para ele.
 3. **App de louvor.** Adicionar os scripts de login e avaliar migrar os dados de `localStorage` para o Supabase.
-4. **"Salvar em .DOCX".** Hoje depende de um `app.py` (Flask) rodando no PC do usuário, então não funciona no site publicado. Opções: gerar o `.docx` no navegador ou usar uma Netlify Function com Supabase Storage.
+4. ~~"Salvar em .DOCX"~~: resolvido na branch `feat/janela-estudo` (`.docx` gerado no navegador, sem `app.py`). Pendente: imagens coladas ficam em base64 dentro de `resumos.conteudo`; se pesar, mover para o Storage.
 5. **Apps "Em breve"** no `apps.json`: Calculadora de Estruturas, Orçamentador Rápido, Diário de Obra Digital e Conversor de Unidades.

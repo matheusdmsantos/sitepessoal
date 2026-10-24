@@ -1618,6 +1618,6 @@
     agendarReforco, mudarSemana, irParaSemana, alternarConfig, editalTrocado, projetar,
     incidenciaDaDisciplina, pctIncidencia, salvarIncidencias,
     materiaisDaDisciplina, paginasDoTopico, prioridadeDosTopicos, salvarMateriais,
-    renderTudo, fmtMin
+    renderTudo, fmtMin, aviso
   };
 })();
