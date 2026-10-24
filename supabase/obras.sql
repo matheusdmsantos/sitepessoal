@@ -14,7 +14,8 @@ create table if not exists public.processos (
   assunto          text not null,
   servico          text not null default 'execucao',    -- projeto | execucao | fiscalizacao | laudo | consultoria | outro
   cliente          text,
-  contato          text,                                -- telefone / e-mail do cliente
+  contato          text,                                -- pessoa de contato (o primeiro nome entra nas mensagens)
+  telefone         text,                                -- WhatsApp do contato
   local            text,
   valor_proposta   numeric,
   valor_contrato   numeric,
@@ -60,9 +61,25 @@ create table if not exists public.prazos (
   processo_id      text not null references public.processos (id) on delete cascade,
   descricao        text not null,
   data             date not null,
-  concluido_em     date
+  concluido_em     date,
+  modelo_id        text                                 -- lembrete de mensagem: modelo a enviar por WhatsApp
 );
 create index if not exists prazos_processo_idx on public.prazos (processo_id);
+
+-- Modelos de mensagem para WhatsApp. "gatilho" = fase que cria o lembrete, "dias" depois.
+-- Os modelos padrão são criados pelo app na primeira vez que a tabela aparece vazia.
+create table if not exists public.modelos_mensagem (
+  id               text primary key,
+  nome             text not null,
+  gatilho          text,                                -- id da fase, ou null (só envio manual)
+  dias             integer not null default 0,
+  texto            text not null,
+  ordem            integer not null default 0
+);
+
+-- Para quem já tinha rodado uma versão anterior deste script
+alter table public.processos add column if not exists telefone text;
+alter table public.prazos add column if not exists modelo_id text;
 
 -- Arquivos: bucket privado (só abre com link assinado), até 25 MB por arquivo
 insert into storage.buckets (id, name, public, file_size_limit)

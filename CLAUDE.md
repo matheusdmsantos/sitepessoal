@@ -108,7 +108,7 @@ A página usa `<body class="auth-pending">` (com `visibility: hidden`) e remove 
 
 ## Supabase
 
-- Tabelas: `editais`, `disciplinas`, `topicos`, `resumos` e, criadas por `supabase/estudos-plano.sql`, `sessoes`, `metas`, `revisoes`, `plano_estudos`, `incidencias` e `materiais`; criadas por `supabase/obras.sql`, `processos`, `documentos`, `andamentos` e `prazos` (filhas com `on delete cascade`). Os ids são texto.
+- Tabelas: `editais`, `disciplinas`, `topicos`, `resumos` e, criadas por `supabase/estudos-plano.sql`, `sessoes`, `metas`, `revisoes`, `plano_estudos`, `incidencias` e `materiais`; criadas por `supabase/obras.sql`, `processos`, `documentos`, `andamentos`, `prazos` e `modelos_mensagem` (as três do meio são filhas com `on delete cascade`). Os ids são texto.
 - Storage: bucket privado `obras-docs` (25 MB por arquivo), com a política `obras_docs_dono` em `storage.objects` criada pelo próprio `obras.sql` (o `rls.sql` só cobre as tabelas de `public`). Arquivos abrem por link assinado de 10 min.
 - `incidencias` e `materiais` são carregadas à parte: se faltarem, só os dados delas ficam no navegador e o resto do plano continua no Supabase.
 - Sem as tabelas do plano, o `estudos.plano.js` guarda tudo no `localStorage` e mostra um aviso; quando elas aparecem, envia esses dados uma vez (flag `est_plano_migrado`).
@@ -157,6 +157,7 @@ A página usa `<body class="auth-pending">` (com `visibility: hidden`) e remove 
 - *Processo* `AAAA.NNNN` (numeração por ano): assunto, serviço (projeto, execução, fiscalização, laudo, consultoria), cliente, contato, local, valores da proposta e do contrato, e fase: Prospecção → Proposta enviada → Em negociação → Contratado → Em execução → Entregue → Encerrado, ou Proposta recusada / Cancelado (finais: marcam `concluido_em`).
 - *Documentos* numerados no processo (0001, 0002…): externos (arquivo no bucket `obras-docs`; PDF e imagem com pré-visualização) ou internos (escritos no Quill 1.3.6, carregado sob demanda; "Imprimir / PDF" abre uma janela de impressão). Incluir Proposta ou Contrato sugere avançar a fase (`AVANCA_FASE`).
 - *Andamento*: tudo o que acontece entra sozinho (abertura, fase, documentos, prazos), além de anotações manuais.
+- *WhatsApp*: o processo tem "Pessoa de contato" e "WhatsApp" (`telefone`, normalizado para `55DDDNÚMERO` em `numeroWhats`). Modelos editáveis na tabela `modelos_mensagem` (5 padrões em `MODELOS_PADRAO`, criados quando a tabela está vazia; sem a tabela, valem os padrões só para leitura), com variáveis `{saudacao}`, `{nome}`, `{assunto}`, `{valor_proposta}`, `{data_proposta}` etc. Modelo com `gatilho` (fase) e `dias` cria um prazo-lembrete (`prazos.modelo_id`) quando o processo entra na fase (domingo passa para segunda); ao sair da fase, os lembretes pendentes dela são apagados. "💬 Enviar" abre `wa.me` com o texto (editável), registra a mensagem no andamento (`tipo = 'mensagem'`) e marca o lembrete como cumprido.
 - *Prazos* por processo; a lista mostra os vencidos e os dos próximos 7 dias. KPIs: ativos, propostas em aberto (R$), contratados/em execução (R$) e % de propostas aceitas.
 - Ficou para depois: cronograma físico, medições e pendências com fotos (escolhidos antes, adiados quando o escopo virou "estilo SEI").
 

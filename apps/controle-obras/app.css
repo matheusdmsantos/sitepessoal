@@ -79,6 +79,11 @@ code { font-size: 0.85em; background: var(--bg-glass); padding: 1px 6px; border-
 .ob-btn.perigo { border-color: rgba(248, 113, 113, 0.4); color: var(--vermelho); }
 .ob-btn.perigo:hover { background: rgba(248, 113, 113, 0.12); }
 .ob-btn.sutil { border-color: transparent; padding: 6px 10px; color: var(--accent); }
+.ob-btn.whats { background: rgba(37, 211, 102, 0.14); border-color: rgba(37, 211, 102, 0.45); color: #4ade80; font-weight: 600; }
+.ob-btn.whats:hover { background: rgba(37, 211, 102, 0.24); }
+.ob-btn.whats:disabled { opacity: 0.45; cursor: not-allowed; }
+.ob-prazo .ob-btn.whats, .ob-prazo-linha .ob-btn.whats { padding: 4px 12px; font-size: 0.78rem; }
+.ob-erro { color: var(--vermelho); }
 
 .ob-input {
   width: 100%; padding: 9px 12px; border-radius: var(--r-sm);
@@ -119,9 +124,9 @@ input[type="date"].ob-input { color-scheme: dark; }
 .ob-tabela tbody tr:hover, .ob-tabela tbody tr:focus { background: var(--bg-glass); outline: none; }
 
 .ob-prazos-alerta { border-color: rgba(251, 191, 36, 0.3); }
-.ob-prazo-linha { display: grid; grid-template-columns: 90px 1fr auto; gap: 12px; padding: 8px 0; border-bottom: 1px solid rgba(200, 204, 212, 0.05); font-size: 0.85rem; align-items: center; }
+.ob-prazo-linha { display: grid; grid-template-columns: 90px 1fr auto auto; gap: 12px; padding: 8px 0; border-bottom: 1px solid rgba(200, 204, 212, 0.05); font-size: 0.85rem; align-items: center; }
 .ob-prazo-linha small { display: block; color: var(--accent-muted); font-size: 0.75rem; }
-.ob-prazo-linha:hover { color: var(--silver-bright); }
+.ob-prazo-linha a:hover { color: var(--silver-bright); }
 .ob-prazo-data { font-variant-numeric: tabular-nums; color: var(--accent); font-size: 0.8rem; }
 .ob-prazo-dias { font-size: 0.78rem; color: var(--ambar); white-space: nowrap; }
 .vencido .ob-prazo-dias, .vencido .ob-prazo-data { color: var(--vermelho); }
@@ -152,7 +157,7 @@ input[type="date"].ob-input { color-scheme: dark; }
 .ob-dados dd { font-size: 0.9rem; color: var(--silver-bright); overflow-wrap: anywhere; }
 .ob-descricao { margin-top: 14px; font-size: 0.88rem; white-space: pre-wrap; color: var(--silver); }
 
-.ob-prazo { display: grid; grid-template-columns: auto 90px 1fr auto auto; gap: 10px; align-items: center; padding: 8px 0; border-bottom: 1px solid rgba(200, 204, 212, 0.05); font-size: 0.86rem; }
+.ob-prazo { display: grid; grid-template-columns: auto 90px 1fr auto auto auto; gap: 10px; align-items: center; padding: 8px 0; border-bottom: 1px solid rgba(200, 204, 212, 0.05); font-size: 0.86rem; }
 .ob-prazo input { width: 17px; height: 17px; accent-color: var(--verde); cursor: pointer; }
 .ob-prazo.feito .ob-prazo-desc { text-decoration: line-through; color: var(--accent-muted); }
 .ob-prazo.feito .ob-prazo-dias { color: var(--verde); }
@@ -167,6 +172,18 @@ input[type="date"].ob-input { color-scheme: dark; }
 .ob-andamento li.tipo-documento::before { background: var(--azul); }
 .ob-andamento li.tipo-prazo::before { background: var(--verde); }
 .ob-andamento li.tipo-criacao::before { background: var(--ciano); }
+.ob-andamento li.tipo-mensagem::before { background: #25d366; }
+.ob-andamento li.tipo-mensagem span { white-space: pre-line; }
+.ob-dados-acoes { margin-top: 16px; display: flex; gap: 8px; flex-wrap: wrap; }
+.ob-modelos { display: flex; flex-direction: column; gap: 12px; margin: 14px 0; max-height: 60vh; overflow-y: auto; padding-right: 4px; }
+.ob-modelo { border: 1px solid var(--border); border-radius: var(--r-md); padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+.ob-modelo-cab { display: flex; gap: 8px; }
+.ob-modelo-cab .ob-input { font-weight: 600; }
+.ob-modelo-gatilho { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.ob-modelo-gatilho select { flex: 1; min-width: 200px; }
+.ob-modelo-dias { display: flex; align-items: center; gap: 6px; font-size: 0.8rem; color: var(--accent); white-space: nowrap; }
+.ob-modelo-dias .ob-input { width: 70px; }
+#ob-form-modelos .ob-sub code { margin: 2px; display: inline-block; }
 .ob-andamento time { font-size: 0.72rem; color: var(--accent-muted); font-variant-numeric: tabular-nums; }
 .ob-zona-perigo { display: flex; justify-content: flex-end; }
 
@@ -227,8 +244,10 @@ input[type="date"].ob-input { color-scheme: dark; }
   .ob-usuario { display: none; }
   .ob-form { grid-template-columns: 1fr; }
   .ob-kpi strong { font-size: 1.3rem; }
-  .ob-prazo { grid-template-columns: auto 1fr auto; }
+  .ob-prazo { grid-template-columns: auto 1fr auto auto; }
+  .ob-prazo .ob-prazo-desc { grid-column: 2 / 4; }
   .ob-prazo .ob-prazo-data { grid-column: 2; grid-row: 2; }
+  .ob-prazo .ob-prazo-dias { grid-column: 3; grid-row: 2; }
   .ob-prazo-linha { grid-template-columns: 1fr auto; }
   .ob-prazo-linha .ob-prazo-data { grid-column: 1 / -1; }
   .ob-doc-conteudo { padding: 20px; }

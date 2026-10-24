@@ -37,7 +37,28 @@
   // Incluir um destes documentos sugere avançar a fase (só para a frente)
   const AVANCA_FASE = { 'Proposta': 'proposta', 'Contrato': 'contratado' };
 
-  let processos = [], documentos = [], andamentos = [], prazos = [];
+  // Modelos de mensagem criados na primeira vez (o usuário edita depois em "Modelos de mensagem").
+  // gatilho: fase que cria o lembrete de envio, "dias" depois; null = só envio manual.
+  const VARIAVEIS = {
+    saudacao: 'Bom dia / Boa tarde / Boa noite, pela hora', nome: 'primeiro nome do contato (ou o cliente)',
+    cliente: 'cliente', assunto: 'assunto do processo', numero: 'número do processo', local: 'local da obra',
+    valor_proposta: 'valor da proposta', valor_contrato: 'valor do contrato', data_proposta: 'data da proposta enviada'
+  };
+  const MODELOS_PADRAO = [
+    { id: 'mm_envio_proposta', nome: 'Envio da proposta', gatilho: null, dias: 0, ordem: 1,
+      texto: '{saudacao}, {nome}! Tudo bem?\n\nSegue a proposta referente a {assunto}, no valor de {valor_proposta}.\n\nQualquer dúvida, fico à disposição.' },
+    { id: 'mm_acomp_proposta', nome: 'Acompanhamento da proposta', gatilho: 'proposta', dias: 2, ordem: 2,
+      texto: '{saudacao}, {nome}! Tudo bem?\n\nPassando para saber se você conseguiu analisar a proposta de {assunto} que enviei em {data_proposta}.\n\nSe tiver alguma dúvida ou quiser ajustar algum ponto, é só me falar.' },
+    { id: 'mm_acomp_proposta2', nome: 'Segundo acompanhamento', gatilho: 'proposta', dias: 7, ordem: 3,
+      texto: '{saudacao}, {nome}! Retomando o contato sobre a proposta de {assunto}.\n\nAinda faz sentido seguirmos com o serviço? Posso rever prazo ou condições, se for o caso.' },
+    { id: 'mm_contratado', nome: 'Próximos passos (contratado)', gatilho: null, dias: 0, ordem: 4,
+      texto: '{saudacao}, {nome}! Obrigado pela confiança.\n\nVou te passar em seguida os próximos passos de {assunto}: documentação, ART e cronograma de início.' },
+    { id: 'mm_pos_entrega', nome: 'Pós-entrega', gatilho: 'entregue', dias: 7, ordem: 5,
+      texto: '{saudacao}, {nome}! Tudo certo com {assunto}?\n\nSe ficou alguma pendência, me avise. E se puder indicar o meu trabalho para alguém, agradeço muito!' }
+  ];
+
+  let processos = [], documentos = [], andamentos = [], prazos = [], modelos = [];
+  let modelosRemoto = false;
   let filtro = { fase: 'ativos', busca: '' };
   let quill = null;
   const urls = {};   // links assinados em cache: caminho → { url, ate }
@@ -120,8 +141,32 @@
       return false;
     }
     [processos, documentos, andamentos, prazos] = r.map(x => x.data || []);
+    await carregarModelos();
     return true;
   }
+
+  /* Modelos ficam numa tabela à parte: sem ela, valem os padrões (só leitura) */
+  async function carregarModelos() {
+    const { data, error } = await sb.from('modelos_mensagem').select('*');
+    if (error) {
+      console.warn('Tabela modelos_mensagem indisponível; usando os modelos padrão.', error);
+      modelos = MODELOS_PADRAO.map(m => ({ ...m }));
+      modelosRemoto = false;
+      return;
+    }
+    modelosRemoto = true;
+    modelos = data || [];
+    let semeados = false;
+    try { semeados = !!localStorage.getItem('ob_modelos_semeados'); } catch { /* sem localStorage */ }
+    if (!modelos.length && !semeados) {
+      modelos = MODELOS_PADRAO.map(m => ({ ...m }));
+      const { error: e2 } = await sb.from('modelos_mensagem').upsert(modelos, { onConflict: 'id' });
+      if (e2) console.error('Erro ao criar os modelos padrão:', e2);
+      else try { localStorage.setItem('ob_modelos_semeados', '1'); } catch { /* ok */ }
+    }
+  }
+
+  const modelosOrdenados = () => [...modelos].sort((a, b) => (a.ordem || 0) - (b.ordem || 0) || a.nome.localeCompare(b.nome));
 
   async function gravar(tabela, linha) {
     const { error } = await sb.from(tabela).upsert(linha, { onConflict: 'id' });
@@ -169,6 +214,177 @@
     if (error) { console.error('Erro ao abrir arquivo:', error); aviso('Não foi possível abrir o arquivo.'); return null; }
     urls[chave] = { url: data.signedUrl, ate: Date.now() + 540000 };
     return data.signedUrl;
+  }
+
+  /* =============================================
+     MENSAGENS (WhatsApp)
+  ============================================= */
+  /* "(98) 99999-0000" → "5598999990000"; null se não parece um celular/telefone brasileiro */
+  function numeroWhats(tel) {
+    let n = String(tel || '').replace(/\D/g, '').replace(/^0+/, '');
+    if (n.length === 10 || n.length === 11) n = '55' + n;
+    return /^55\d{10,11}$/.test(n) ? n : null;
+  }
+
+  /* Data da proposta: a do último documento "Proposta", ou de quando a fase virou "Proposta enviada" */
+  function dataProposta(p) {
+    const doc = docsDe(p.id).filter(d => d.tipo === 'Proposta').pop();
+    if (doc) return doc.data;
+    const a = andamentosDe(p.id).find(x => x.tipo === 'fase' && x.descricao.includes(`→ ${fase('proposta').nome}`));
+    return a ? dataLocal(new Date(a.data)) : null;
+  }
+
+  function preencherModelo(texto, p) {
+    const h = new Date().getHours();
+    const valores = {
+      saudacao: h < 12 ? 'Bom dia' : h < 18 ? 'Boa tarde' : 'Boa noite',
+      nome: (p.contato || p.cliente || '').trim().split(/[\s,(]+/)[0] || '',
+      cliente: p.cliente || '', assunto: p.assunto || '', numero: p.numero || '', local: p.local || '',
+      valor_proposta: p.valor_proposta != null ? fmtMoeda(p.valor_proposta) : '',
+      valor_contrato: p.valor_contrato != null ? fmtMoeda(p.valor_contrato) : '',
+      data_proposta: dataProposta(p) ? fmtData(dataProposta(p)) : ''
+    };
+    // Sem o nome, "Bom dia, !" vira "Bom dia!"
+    return texto.replace(/\{(\w+)\}/g, (m, k) => (k in valores ? valores[k] : m)).replace(/, !/g, '!').replace(/ +,/g, ',');
+  }
+
+  /* Domingo não é dia de cobrar cliente: o lembrete passa para segunda */
+  function diaUtil(dias) {
+    const d = new Date();
+    d.setDate(d.getDate() + dias);
+    if (d.getDay() === 0) d.setDate(d.getDate() + 1);
+    return dataLocal(d);
+  }
+
+  /* Ao entrar numa fase, cria os lembretes de mensagem dela; ao sair, tira os que ficaram pendentes */
+  async function agendarMensagens(p, nova, antiga) {
+    const sobras = prazos.filter(z => z.processo_id === p.id && z.modelo_id && !z.concluido_em &&
+      (modelos.find(m => m.id === z.modelo_id) || {}).gatilho === antiga);
+    for (const z of sobras) {
+      if (await apagar('prazos', z.id)) prazos = prazos.filter(x => x.id !== z.id);
+    }
+    const novos = modelos.filter(m => m.gatilho === nova && m.dias > 0)
+      .map(m => ({ id: novoId('z'), processo_id: p.id, descricao: `💬 ${m.nome}`, data: diaUtil(m.dias), concluido_em: null, modelo_id: m.id }));
+    for (const z of novos) {
+      if (await gravar('prazos', z)) prazos.push(z);
+    }
+    if (sobras.length || novos.length) {
+      const partes = [];
+      if (novos.length) partes.push(`lembrete${novos.length > 1 ? 's' : ''} de mensagem: ${novos.map(z => `${z.descricao.slice(3)} em ${fmtData(z.data)}`).join('; ')}`);
+      if (sobras.length) partes.push(`${sobras.length} lembrete${sobras.length > 1 ? 's' : ''} da fase anterior removido${sobras.length > 1 ? 's' : ''}`);
+      await registrar(p, 'prazo', partes.join('. ').replace(/^./, c => c.toUpperCase()) + '.');
+    }
+  }
+
+  function formMensagem(p, modeloId, prazoId) {
+    const tel = numeroWhats(p.telefone);
+    const lista = modelosOrdenados();
+    const atual = lista.find(m => m.id === modeloId) || lista[0];
+    abrirModal('Mensagem por WhatsApp', `
+      <form id="ob-form-msg" class="ob-form">
+        ${tel ? `<p class="ob-sub inteiro">Para ${esc(p.contato || p.cliente || '')} · ${esc(p.telefone)}</p>`
+          : `<p class="ob-status inteiro">Cadastre o WhatsApp do contato em “Editar dados” para abrir a conversa. Você ainda pode copiar o texto.</p>`}
+        ${campo('Modelo', `<select class="ob-input" name="modelo">${opcoes(lista.map(m => [m.id, m.nome]), atual && atual.id)}<option value="">Mensagem livre</option></select>`, 'inteiro')}
+        ${campo('Mensagem (pode editar antes de enviar)', `<textarea class="ob-input" name="texto" rows="9">${esc(atual ? preencherModelo(atual.texto, p) : '')}</textarea>`, 'inteiro')}
+        <div class="ob-form-acoes inteiro">
+          <button type="button" class="ob-btn" data-acao="copiar-msg">Copiar texto</button>
+          <button type="submit" class="ob-btn whats" ${tel ? '' : 'disabled'}>💬 Abrir no WhatsApp</button>
+        </div>
+      </form>`);
+    const form = $('ob-form-msg');
+    form.querySelector('[name=modelo]').addEventListener('change', e => {
+      const m = modelos.find(x => x.id === e.target.value);
+      form.querySelector('[name=texto]').value = m ? preencherModelo(m.texto, p) : '';
+    });
+    form.addEventListener('submit', async ev => {
+      ev.preventDefault();
+      const texto = form.querySelector('[name=texto]').value.trim();
+      if (!tel || !texto) return;
+      window.open(`https://wa.me/${tel}?text=${encodeURIComponent(texto)}`, '_blank', 'noopener');
+      const m = modelos.find(x => x.id === form.querySelector('[name=modelo]').value);
+      fecharModal();
+      await registrar(p, 'mensagem', `Mensagem por WhatsApp${m ? ` (${m.nome})` : ''}: “${texto}”`);
+      // O lembrete de onde veio a mensagem fica cumprido
+      const z = prazoId ? prazos.find(x => x.id === prazoId)
+        : m && prazos.find(x => x.processo_id === p.id && x.modelo_id === m.id && !x.concluido_em);
+      if (z && !z.concluido_em) {
+        z.concluido_em = hoje();
+        await gravar('prazos', z);
+      }
+      render();
+      aviso(z ? 'WhatsApp aberto. Lembrete marcado como cumprido.' : 'WhatsApp aberto. A mensagem ficou registrada no andamento.');
+    });
+  }
+
+  function formModelos() {
+    const fases = [['', 'Nenhum (só envio manual)'], ...FASES.map(f => [f.id, `Ao entrar em “${f.nome}”`])];
+    const linha = (m, i) => `
+      <fieldset class="ob-modelo" data-i="${i}">
+        <div class="ob-modelo-cab">
+          <input class="ob-input" name="nome" value="${esc(m.nome)}" required aria-label="Nome do modelo" />
+          <button type="button" class="ob-btn sutil" data-acao="modelo-remover" data-i="${i}" aria-label="Remover modelo">✕</button>
+        </div>
+        <div class="ob-modelo-gatilho">
+          <select class="ob-input" name="gatilho" aria-label="Quando lembrar">${opcoes(fases, m.gatilho || '')}</select>
+          <label class="ob-modelo-dias"><input type="number" class="ob-input" name="dias" min="0" max="90" value="${m.dias || 0}" aria-label="Dias depois" /> dias depois</label>
+        </div>
+        <textarea class="ob-input" name="texto" rows="5" aria-label="Texto do modelo">${esc(m.texto)}</textarea>
+      </fieldset>`;
+    let rascunho = modelosOrdenados().map(m => ({ ...m }));
+    const desenhar = () => {
+      $('ob-modelos-lista').innerHTML = rascunho.map(linha).join('');
+    };
+    const ler = () => {
+      document.querySelectorAll('#ob-modelos-lista .ob-modelo').forEach(fs => {
+        const m = rascunho[fs.dataset.i];
+        m.nome = fs.querySelector('[name=nome]').value.trim();
+        m.gatilho = fs.querySelector('[name=gatilho]').value || null;
+        m.dias = parseInt(fs.querySelector('[name=dias]').value, 10) || 0;
+        m.texto = fs.querySelector('[name=texto]').value;
+      });
+    };
+    abrirModal('Modelos de mensagem', `
+      <form id="ob-form-modelos">
+        <p class="ob-sub">Variáveis que o app preenche: ${Object.entries(VARIAVEIS).map(([k, v]) => `<code title="${esc(v)}">{${k}}</code>`).join(' ')}.
+          Com uma fase em “Quando lembrar”, o app cria o lembrete de envio sozinho quando o processo entra nela.</p>
+        ${modelosRemoto ? '' : '<p class="ob-status">A tabela modelos_mensagem ainda não existe no Supabase: rode supabase/obras.sql para poder salvar.</p>'}
+        <div id="ob-modelos-lista" class="ob-modelos"></div>
+        <div class="ob-form-acoes">
+          <button type="button" class="ob-btn" data-acao="modelo-novo">+ Novo modelo</button>
+          <span style="flex:1"></span>
+          <button type="button" class="ob-btn" data-acao="fechar-modal">Cancelar</button>
+          <button type="submit" class="ob-btn primario" ${modelosRemoto ? '' : 'disabled'}>Salvar modelos</button>
+        </div>
+      </form>`, true);
+    desenhar();
+    const form = $('ob-form-modelos');
+    form.addEventListener('click', ev => {
+      const b = ev.target.closest('[data-acao]');
+      if (!b) return;
+      if (b.dataset.acao === 'modelo-novo') {
+        ler();
+        rascunho.push({ id: novoId('mm'), nome: 'Novo modelo', gatilho: null, dias: 0, texto: '{saudacao}, {nome}! ', ordem: rascunho.length + 1 });
+        desenhar();
+      } else if (b.dataset.acao === 'modelo-remover') {
+        ler();
+        rascunho.splice(b.dataset.i, 1);
+        desenhar();
+      }
+    });
+    form.addEventListener('submit', async ev => {
+      ev.preventDefault();
+      ler();
+      rascunho.forEach((m, i) => { m.ordem = i + 1; });
+      const removidos = modelos.filter(m => !rascunho.some(r => r.id === m.id));
+      form.querySelector('[type=submit]').disabled = true;
+      for (const m of removidos) await apagar('modelos_mensagem', m.id);
+      const { error } = rascunho.length ? await sb.from('modelos_mensagem').upsert(rascunho, { onConflict: 'id' }) : { error: null };
+      if (error) { console.error('Erro ao salvar modelos:', error); aviso('Não foi possível salvar os modelos.'); form.querySelector('[type=submit]').disabled = false; return; }
+      modelos = rascunho;
+      fecharModal();
+      render();
+      aviso('Modelos salvos.');
+    });
   }
 
   /* =============================================
@@ -221,11 +437,12 @@
         ${abertosPrazo.map(z => {
           const p = processos.find(x => x.id === z.processo_id);
           const dias = diasAte(z.data);
-          return `<a class="ob-prazo-linha ${dias < 0 ? 'vencido' : ''}" href="#/p/${esc(z.processo_id)}">
+          return `<div class="ob-prazo-linha ${dias < 0 ? 'vencido' : ''}">
             <span class="ob-prazo-data">${fmtData(z.data)}</span>
-            <span>${esc(z.descricao)} <small>${esc(p ? p.numero + ' · ' + p.assunto : '')}</small></span>
+            <a href="#/p/${esc(z.processo_id)}">${esc(z.descricao)} <small>${esc(p ? p.numero + ' · ' + p.assunto : '')}</small></a>
             <span class="ob-prazo-dias">${dias < 0 ? `${-dias} dia${dias < -1 ? 's' : ''} de atraso` : dias === 0 ? 'hoje' : `em ${dias} dia${dias > 1 ? 's' : ''}`}</span>
-          </a>`;
+            ${z.modelo_id ? `<button type="button" class="ob-btn whats" data-acao="mensagem-prazo" data-id="${esc(z.id)}" data-processo="${esc(z.processo_id)}">💬 Enviar</button>` : '<span></span>'}
+          </div>`;
         }).join('')}
       </section>` : ''}
 
@@ -233,6 +450,7 @@
         <div class="ob-lista-cab">
           <h2 class="ob-card-titulo">Processos</h2>
           <input type="search" class="ob-input" id="ob-busca" placeholder="Buscar por número, assunto ou cliente" value="${esc(filtro.busca)}" aria-label="Buscar processos" />
+          <button type="button" class="ob-btn" data-acao="modelos">💬 Modelos de mensagem</button>
           <button type="button" class="ob-btn primario" data-acao="novo-processo">+ Novo processo</button>
         </div>
         <div id="ob-lista-corpo">${htmlListaCorpo()}</div>
@@ -329,6 +547,7 @@
         <dl class="ob-dados">
           ${linha('Cliente', esc(p.cliente))}
           ${linha('Contato', esc(p.contato))}
+          ${linha('WhatsApp', p.telefone ? `${esc(p.telefone)}${numeroWhats(p.telefone) ? '' : ' <small class="ob-erro">(número incompleto)</small>'}` : '')}
           ${linha('Local', esc(p.local))}
           ${linha('Valor da proposta', p.valor_proposta != null ? fmtMoeda(p.valor_proposta) : '')}
           ${linha('Valor do contrato', p.valor_contrato != null ? fmtMoeda(p.valor_contrato) : '')}
@@ -336,6 +555,9 @@
           ${linha('Concluído em', p.concluido_em ? fmtData(p.concluido_em) : '')}
         </dl>
         ${p.descricao ? `<p class="ob-descricao">${esc(p.descricao)}</p>` : ''}
+        <div class="ob-dados-acoes">
+          <button type="button" class="ob-btn whats" data-acao="mensagem">💬 Mensagem por WhatsApp</button>
+        </div>
       </div>
 
       <div class="ob-card">
@@ -347,6 +569,7 @@
             <span class="ob-prazo-data">${fmtData(z.data)}</span>
             <span class="ob-prazo-desc">${esc(z.descricao)}</span>
             <span class="ob-prazo-dias">${z.concluido_em ? `cumprido em ${fmtData(z.concluido_em)}` : dias < 0 ? `${-dias} dia${dias < -1 ? 's' : ''} de atraso` : dias === 0 ? 'hoje' : `em ${dias} dia${dias > 1 ? 's' : ''}`}</span>
+            ${z.modelo_id && !z.concluido_em ? `<button type="button" class="ob-btn whats" data-acao="mensagem-prazo" data-id="${esc(z.id)}" data-processo="${esc(p.id)}">💬 Enviar</button>` : '<span></span>'}
             <button type="button" class="ob-btn sutil" data-acao="prazo-apagar" data-id="${esc(z.id)}" aria-label="Excluir prazo">✕</button>
           </div>`;
         }).join('') || '<p class="ob-vazio">Nenhum prazo.</p>'}
@@ -445,7 +668,8 @@
         ${campo('Serviço', `<select class="ob-input" name="servico">${opcoes(Object.entries(SERVICOS), p.servico)}</select>`)}
         ${novo ? campo('Fase inicial', `<select class="ob-input" name="fase">${opcoes(FASES.filter(f => !f.final).map(f => [f.id, f.nome]), p.fase)}</select>`) : '<span></span>'}
         ${campo('Cliente / interessado', `<input class="ob-input" name="cliente" value="${esc(p.cliente)}" />`)}
-        ${campo('Contato', `<input class="ob-input" name="contato" value="${esc(p.contato)}" placeholder="Telefone, e-mail" />`)}
+        ${campo('Pessoa de contato', `<input class="ob-input" name="contato" value="${esc(p.contato)}" placeholder="Ex.: João Silva (engenheiro)" />`)}
+        ${campo('WhatsApp do contato', `<input class="ob-input" name="telefone" type="tel" inputmode="tel" value="${esc(p.telefone)}" placeholder="(98) 99999-0000" />`)}
         ${campo('Local da obra', `<input class="ob-input" name="local" value="${esc(p.local)}" />`, 'inteiro')}
         ${campo('Valor da proposta (R$)', `<input class="ob-input" name="valor_proposta" inputmode="decimal" value="${valorBr(p.valor_proposta)}" placeholder="0,00" />`)}
         ${campo('Valor do contrato (R$)', `<input class="ob-input" name="valor_contrato" inputmode="decimal" value="${valorBr(p.valor_contrato)}" placeholder="0,00" />`)}
@@ -460,7 +684,8 @@
       const f = new FormData(ev.target);
       const dados = {
         assunto: f.get('assunto').trim(), servico: f.get('servico'),
-        cliente: f.get('cliente').trim() || null, contato: f.get('contato').trim() || null, local: f.get('local').trim() || null,
+        cliente: f.get('cliente').trim() || null, contato: f.get('contato').trim() || null,
+        telefone: f.get('telefone').trim() || null, local: f.get('local').trim() || null,
         valor_proposta: lerNumero(f.get('valor_proposta')), valor_contrato: lerNumero(f.get('valor_contrato')),
         descricao: f.get('descricao').trim() || null
       };
@@ -471,6 +696,7 @@
         if (!(await gravar('processos', proc))) { ev.target.querySelector('[type=submit]').disabled = false; return; }
         processos.push(proc);
         await registrar(proc, 'criacao', `Processo aberto na fase “${fase(proc.fase).nome}”.`);
+        await agendarMensagens(proc, proc.fase, null);
         fecharModal();
         location.hash = `#/p/${proc.id}`;
       } else {
@@ -485,10 +711,11 @@
 
   async function mudarFase(p, nova, motivo) {
     if (nova === p.fase) return;
-    const antes = fase(p.fase).nome;
+    const antiga = p.fase;
     p.fase = nova;
     p.concluido_em = fase(nova).final ? (p.concluido_em || hoje()) : null;
-    await registrar(p, 'fase', `Fase: ${antes} → ${fase(nova).nome}${motivo ? ` (${motivo})` : ''}.`);
+    await registrar(p, 'fase', `Fase: ${fase(antiga).nome} → ${fase(nova).nome}${motivo ? ` (${motivo})` : ''}.`);
+    await agendarMensagens(p, nova, antiga);
   }
 
   function sugestaoFase(p, tipo) {
@@ -712,6 +939,17 @@
     const d = docAtual();
     if (acao === 'fechar-modal') fecharModal();
     else if (acao === 'novo-processo') formProcesso(null);
+    else if (acao === 'modelos') formModelos();
+    else if (acao === 'mensagem' && p) formMensagem(p, null, null);
+    else if (acao === 'mensagem-prazo') {
+      const z = prazos.find(x => x.id === el.dataset.id);
+      const dono = processos.find(x => x.id === el.dataset.processo);
+      if (z && dono) formMensagem(dono, z.modelo_id, z.id);
+    } else if (acao === 'copiar-msg') {
+      const texto = document.querySelector('#ob-form-msg [name=texto]').value;
+      try { await navigator.clipboard.writeText(texto); aviso('Texto copiado.'); }
+      catch { aviso('Não foi possível copiar; selecione o texto e use Ctrl+C.'); }
+    }
     else if (acao === 'filtro') { filtro.fase = el.dataset.fase; render(); }
     else if (acao === 'abrir') location.hash = `#/p/${el.dataset.id}`;
     else if (acao === 'editar-processo' && p) formProcesso(p);
