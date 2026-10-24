@@ -1873,3 +1873,11 @@ html, body {
   .est-mat-link { grid-template-columns: 1fr auto; }
   .est-mat-link .est-form-select { grid-column: 1 / 3; }
 }
+/* Concluir meta de tópico com PDF */
+.est-concluir-pdf { margin-bottom: 14px; padding: 12px; border: 1px solid var(--est-border); border-radius: 10px; background: var(--est-bg-glass); }
+.est-concluir-pdf .est-form-group { margin-bottom: 10px; }
+.est-concluir-pag { display: flex; align-items: center; gap: 10px; font-size: 0.8rem; color: var(--est-accent); }
+.est-concluir-pag .est-form-input { width: 110px; }
+.est-concluir-terminei { display: flex; gap: 10px; align-items: flex-start; cursor: pointer; font-size: 0.85rem; font-weight: 600; color: var(--est-green); }
+.est-concluir-terminei input { margin-top: 3px; width: 18px; height: 18px; accent-color: var(--est-green); }
+.est-concluir-terminei small { display: block; font-weight: 400; font-size: 0.72rem; color: var(--est-accent); margin-top: 2px; }

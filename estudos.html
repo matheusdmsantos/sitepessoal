@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@300;400;600;700&family=Outfit:wght@300;400;500;600;700&display=swap" />
   <link href="https://cdn.quilljs.com/1.3.6/quill.snow.css" rel="stylesheet">
-  <link rel="stylesheet" href="css/estudos.css?v=9" />
+  <link rel="stylesheet" href="css/estudos.css?v=10" />
 </head>
 <body class="page-estudos">
 
@@ -437,6 +437,20 @@
       <p id="est-concluir-dica" style="font-size: 0.75rem; color: var(--est-accent-muted); margin-bottom: 20px; line-height: 1.4;"></p>
 
       <form id="est-concluir-form">
+        <!-- Só para tópico com PDF ligado (estudos.plano.js) -->
+        <div id="est-concluir-pdf" class="est-concluir-pdf" style="display:none;">
+          <div class="est-form-group">
+            <label class="est-form-label" for="est-concluir-pag">Páginas lidas deste assunto, até agora</label>
+            <div class="est-concluir-pag">
+              <input type="number" id="est-concluir-pag" class="est-form-input" min="0" placeholder="0" />
+              <span id="est-concluir-pag-total"></span>
+            </div>
+          </div>
+          <label class="est-concluir-terminei">
+            <input type="checkbox" id="est-concluir-terminei" />
+            <span>✓ Terminei este PDF <small>A primeira revisão só é agendada quando você marcar aqui.</small></span>
+          </label>
+        </div>
         <div class="est-form-row">
           <div class="est-form-group">
             <label class="est-form-label" for="est-concluir-h">Tempo (Horas)</label>
@@ -902,7 +916,7 @@
     };
   </script>
   <script src="js/estudos.v5.js?v=6"></script>
-  <script src="js/estudos.plano.js?v=5"></script>
+  <script src="js/estudos.plano.js?v=6"></script>
   <script src="js/estudos.importar.js?v=2"></script>
   <script src="js/estudos.incidencia.js?v=1"></script>
   <script src="js/estudos.materiais.js?v=1"></script>

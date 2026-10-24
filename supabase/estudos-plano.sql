@@ -47,7 +47,8 @@ create table if not exists public.metas (
   concluida      boolean not null default false,
   ordem          integer not null default 0,
   parte          integer,            -- tópico com PDF longo dividido em partes: parte/partes
-  partes         integer
+  partes         integer,
+  paginas_lidas  integer             -- tópico com PDF: páginas lidas do assunto até esta meta
 );
 create index if not exists metas_semana_idx on public.metas (edital_id, semana);
 
@@ -94,3 +95,4 @@ alter table public.revisoes add column if not exists intervalo integer;
 alter table public.revisoes add column if not exists minutos integer;
 alter table public.metas add column if not exists parte integer;
 alter table public.metas add column if not exists partes integer;
+alter table public.metas add column if not exists paginas_lidas integer;

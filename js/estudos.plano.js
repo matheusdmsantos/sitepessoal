@@ -116,10 +116,10 @@
     if (!remoto) { salvarLocal(tabela); return; }
     const onConflict = tabela === 'plano_estudos' ? 'edital_id' : 'id';
     let { error } = await sb.from(tabela).upsert(lista, { onConflict });
-    if (error && tabela === 'metas' && /parte/.test(error.message || '')) {
-      // Tabela criada antes das colunas parte/partes: grava sem elas até o SQL ser rodado de novo
-      console.warn('Colunas parte/partes ausentes em metas; rode supabase/estudos-plano.sql de novo.');
-      ({ error } = await sb.from(tabela).upsert(lista.map(({ parte, partes, ...m }) => m), { onConflict }));
+    if (error && tabela === 'metas' && /parte|paginas_lidas/.test(error.message || '')) {
+      // Tabela criada antes das colunas parte/partes/paginas_lidas: grava sem elas até o SQL ser rodado de novo
+      console.warn('Colunas parte/partes/paginas_lidas ausentes em metas; rode supabase/estudos-plano.sql de novo.');
+      ({ error } = await sb.from(tabela).upsert(lista.map(({ parte, partes, paginas_lidas, ...m }) => m), { onConflict }));
     }
     if (error) {
       console.error(`Erro ao salvar em ${tabela}:`, error);
@@ -458,22 +458,31 @@
     }
   }
 
-  /* Estado do planejamento: minutos já planejados de cada tópico, tempo reservado para
-     revisões por dia e minutos já dados a cada disciplina (para o rodízio). Contam as
-     partes concluídas de semanas anteriores e tudo o que está na semana base. */
+  /* Páginas já lidas do tópico: a maior marcação feita ao concluir uma meta ("Páginas lidas
+     deste assunto"). Metas antigas, sem marcação, contam pelo tempo (PAGINAS_POR_HORA). */
+  function paginasLidas(topicId) {
+    const feitas = metas.filter(m => m.topico_id === topicId && m.concluida);
+    const marcadas = feitas.filter(m => m.paginas_lidas !== null && m.paginas_lidas !== undefined);
+    const lidas = marcadas.length
+      ? Math.max(...marcadas.map(m => m.paginas_lidas))
+      : Math.round(feitas.reduce((a, m) => a + m.minutos, 0) * PAGINAS_POR_HORA / 60);
+    return Math.min(lidas, Math.round(paginasDoTopico(topicId)));
+  }
+
+  /* Estado do planejamento: minutos planejados e ainda não feitos de cada tópico, metas já
+     feitas ou planejadas (para numerar as partes), tempo reservado para revisões por dia e
+     minutos já dados a cada disciplina (para o rodízio). */
   function novoContexto(edital, plano, semanaBase) {
-    const ctx = { progresso: {}, partesFeitas: {}, reservas: {}, contagem: {}, itens: {}, alocado: {} };
+    const ctx = { planejado: {}, partesFeitas: {}, reservas: {}, contagem: {}, itens: {}, alocado: {} };
     const h = hoje();
     revisoes.filter(r => r.edital_id === edital.id && !r.concluida_em).forEach(r => {
       reservar(ctx, r.data_prevista < h ? h : r.data_prevista, r.minutos || MIN_REVISAO);
     });
-    const contar = m => {
-      ctx.progresso[m.topico_id] = (ctx.progresso[m.topico_id] || 0) + m.minutos;
-      ctx.partesFeitas[m.topico_id] = (ctx.partesFeitas[m.topico_id] || 0) + 1;
-    };
-    metas.filter(m => m.edital_id === edital.id && m.semana < semanaBase && m.concluida).forEach(contar);
+    const contarParte = m => { ctx.partesFeitas[m.topico_id] = (ctx.partesFeitas[m.topico_id] || 0) + 1; };
+    metas.filter(m => m.edital_id === edital.id && m.semana < semanaBase && m.concluida).forEach(contarParte);
     metasDaSemana(edital.id, semanaBase).forEach(m => {
-      contar(m);
+      contarParte(m);
+      if (!m.concluida) ctx.planejado[m.topico_id] = (ctx.planejado[m.topico_id] || 0) + m.minutos;
       ctx.alocado[m.disciplina_id] = (ctx.alocado[m.disciplina_id] || 0) + m.minutos;
       // As revisões só começam depois da última parte do tópico
       if (!m.concluida && (!m.partes || m.parte >= m.partes)) {
@@ -483,46 +492,38 @@
     return ctx;
   }
 
-  /* Tempo total do tópico. Com PDF ligado, é o tempo de leitura (PAGINAS_POR_HORA),
-     dividido em partes de até PARTE_MAX. Sem PDF, é o bloco do nível ajustado pela
-     incidência (0,5× quando quase não cai, 1× na média da disciplina, até 1,5×). */
-  function tempoDoTopico(x, t) {
-    const pags = paginasDoTopico(t.id);
-    if (pags > 0) {
-      const total = Math.max(15, Math.ceil((pags / PAGINAS_POR_HORA) * 60 / 15) * 15);
-      const partes = Math.ceil(total / PARTE_MAX);
-      return { total, partes };
-    }
-    let bloco = x.base;
-    if (x.inc) {
-      const r = (incPorTopico[t.id] || 0) / x.inc.media;
-      bloco = Math.max(30, Math.round((x.base * Math.min(1.5, Math.max(0.5, 0.5 + 0.5 * r))) / 15) * 15);
-    }
-    return { total: bloco, partes: 1 };
+  /* Tempo do tópico sem PDF: o bloco do nível ajustado pela incidência
+     (0,5× quando quase não cai, 1× na média da disciplina, até 1,5×) */
+  function blocoDoTopico(x, t) {
+    if (!x.inc) return x.base;
+    const r = (incPorTopico[t.id] || 0) / x.inc.media;
+    return Math.max(30, Math.round((x.base * Math.min(1.5, Math.max(0.5, 0.5 + 0.5 * r))) / 15) * 15);
   }
 
-  /* Minutos que ainda faltam planejar do tópico. Sem PDF, qualquer meta já cobre o tópico
-     inteiro (o bloco pode mudar com o nível sem gerar uma "sobra"). */
+  /* Minutos que ainda faltam planejar do tópico.
+     Com PDF: o tempo de leitura das páginas que faltam (PAGINAS_POR_HORA), menos o que já
+     está planejado. O tópico só sai do plano quando o usuário marca "Terminei este PDF"
+     (fica estudado); se as páginas acabaram sem essa marcação, entra uma meta curta para fechar.
+     Sem PDF: qualquer meta já cobre o tópico inteiro. */
   function faltaDoTopico(ctx, x, t) {
     if (t.estudado) return 0;
-    const feito = ctx.progresso[t.id] || 0;
-    const tempo = tempoDoTopico(x, t);
-    if (tempo.partes === 1) return feito > 0 ? 0 : tempo.total;
-    const falta = tempo.total - feito;
+    const pags = Math.round(paginasDoTopico(t.id));
+    if (!pags) return ctx.partesFeitas[t.id] ? 0 : blocoDoTopico(x, t);
+    const restantes = Math.max(0, pags - paginasLidas(t.id));
+    const leitura = Math.max(15, Math.ceil((restantes / PAGINAS_POR_HORA) * 60 / 15) * 15);
+    const falta = leitura - (ctx.planejado[t.id] || 0);
     return falta >= 15 ? falta : 0;
   }
 
-  /* Próxima meta do tópico: { minutos, parte, partes }. O que falta é dividido por igual entre as partes restantes. */
+  /* Próxima meta do tópico: { minutos, parte, partes }. Com PDF, o que falta é dividido por
+     igual em partes de até PARTE_MAX. */
   function proximaParte(ctx, x, t) {
-    const tempo = tempoDoTopico(x, t);
     const falta = faltaDoTopico(ctx, x, t);
-    if (tempo.partes === 1) return { minutos: falta, parte: 1, partes: 1 };
+    if (!paginasDoTopico(t.id)) return { minutos: falta, parte: 1, partes: 1 };
     const parte = (ctx.partesFeitas[t.id] || 0) + 1;
-    const partes = Math.max(tempo.partes, parte);
-    const resto = partes - parte + 1;
-    return { minutos: resto <= 1 ? falta : Math.round(falta / resto), parte, partes };
+    const resto = Math.ceil(falta / PARTE_MAX);
+    return { minutos: resto <= 1 ? falta : Math.round(falta / resto), parte, partes: parte - 1 + resto };
   }
-
   function filaDoTopico(plano, d) {
     const cfg = configDisc(plano, d.id);
     const inc = incidenciaDaDisciplina(d);
@@ -572,7 +573,7 @@
       if (!dia) { fila.shift(); continue; }   // não cabe mais nesta semana
       usado[dia] = (usado[dia] || 0) + p.minutos;
       ctx.alocado[x.d.id] = (ctx.alocado[x.d.id] || 0) + p.minutos;
-      ctx.progresso[t.id] = (ctx.progresso[t.id] || 0) + p.minutos;
+      ctx.planejado[t.id] = (ctx.planejado[t.id] || 0) + p.minutos;
       ctx.partesFeitas[t.id] = (ctx.partesFeitas[t.id] || 0) + 1;
       const ultima = faltaDoTopico(ctx, x, t) === 0;
       if (ultima) {
@@ -583,7 +584,7 @@
         id: novoId('m'), edital_id: edital.id, semana, dia,
         disciplina_id: x.d.id, topico_id: t.id,
         tipo: 'estudo', minutos: p.minutos, concluida: false, ordem: novas.length,
-        ...(p.partes > 1 ? { parte: p.parte, partes: p.partes } : {})
+        ...(p.partes > 1 || p.parte > 1 ? { parte: p.parte, partes: p.partes } : {})
       });
       if (!x.pendentes.length) fila.shift();
     }
@@ -829,9 +830,21 @@
       : item.tipo === 'reforco' ? 'Concluir reforço' : `Concluir revisão ${item.etapa}`;
     document.getElementById('est-concluir-titulo').textContent = titulo;
     document.getElementById('est-concluir-topico').textContent = `${ref.d.nome} — ${ref.t.nome}`;
-    const parcial = tipo === 'meta' && item.partes > 1 && item.parte < item.partes;
-    document.getElementById('est-concluir-dica').textContent = parcial
-      ? `Parte ${item.parte} de ${item.partes}: leia cerca de ${Math.round(item.minutos / 60 * PAGINAS_POR_HORA)} páginas. A revisão só é agendada depois da última parte.`
+    // Tópico com PDF: pergunta até onde leu; só "Terminei este PDF" fecha o tópico
+    const totalPags = tipo === 'meta' ? Math.round(paginasDoTopico(item.topico_id)) : 0;
+    const lidas = totalPags ? paginasLidas(item.topico_id) : 0;
+    const alvo = Math.min(totalPags, lidas + Math.round(item.minutos / 60 * PAGINAS_POR_HORA));
+    contextoConclusao.totalPags = totalPags;
+    document.getElementById('est-concluir-pdf').style.display = totalPags ? '' : 'none';
+    if (totalPags) {
+      document.getElementById('est-concluir-pag').max = totalPags;
+      document.getElementById('est-concluir-pag').value = alvo;
+      document.getElementById('est-concluir-pag-total').textContent = `de ${totalPags} páginas`;
+      document.getElementById('est-concluir-terminei').checked = alvo >= totalPags;
+    }
+    const parte = item.partes > 1 ? `Parte ${item.parte} de ${item.partes}. ` : '';
+    document.getElementById('est-concluir-dica').textContent = totalPags
+      ? `${parte}Leia até a página ${alvo} (${lidas ? `você parou na ${lidas}` : 'começando do início'}). Ao terminar o assunto, marque "Terminei este PDF": só então a primeira revisão é agendada, conforme o seu acerto.`
       : tipo === 'meta'
       ? 'Teoria e caderno de questões do tópico. Ao concluir, a primeira revisão é agendada conforme o seu acerto.'
       : `Refaça o caderno do TEC deste tópico. Quanto maior o acerto, mais longe fica a próxima revisão; abaixo de ${ACERTO_REFORCO}% entra um reforço.`;
@@ -874,8 +887,11 @@
       tempo_gasto: t.tempoGasto, questoes_feitas: t.questoesFeitas,
       questoes_certas: t.questoesCertas, tec_link: t.tecLink || ''
     };
-    // Parte intermediária de um tópico longo: o tópico só fica estudado na última parte
-    const parcial = ctx.tipo === 'meta' && item.partes > 1 && item.parte < item.partes;
+    // Tópico com PDF: guarda até onde leu; sem "Terminei este PDF", ele continua no plano
+    const comPdf = ctx.tipo === 'meta' && ctx.totalPags > 0;
+    const terminou = !comPdf || document.getElementById('est-concluir-terminei').checked;
+    const parcial = !terminou;
+    if (comPdf) item.paginas_lidas = terminou ? ctx.totalPags : Math.min(ctx.totalPags, val('est-concluir-pag'));
     if (ctx.tipo === 'meta' && !parcial) { t.estudado = true; atualizacao.estudado = true; }
     saveEditais();
     fecharConclusao();
@@ -894,8 +910,21 @@
     if (ctx.tipo === 'meta') {
       item.concluida = true;
       gravar('metas', item);
-      if (parcial) aviso(`Parte ${item.parte} de ${item.partes} concluída.`);
-      else topicoConcluido(t.id, pct);
+      if (parcial) {
+        // O número de partes muda com o ritmo real: atualiza o "de N" das partes já na semana
+        const abertas = metas.filter(m => m.topico_id === t.id && !m.concluida && m.partes);
+        const proj = projetar(e);
+        const ultima = proj && proj.semanas.flatMap(w => w.metas).filter(m => m.topico_id === t.id).pop();
+        const total = ultima ? ultima.partes : Math.max(item.parte || 1, ...abertas.map(m => m.parte || 1));
+        abertas.forEach(m => { m.partes = total; });
+        if (abertas.length) gravar('metas', abertas);
+        aviso(`Progresso salvo: ${item.paginas_lidas} de ${ctx.totalPags} páginas. O restante continua no plano.`);
+      } else {
+        // Terminou antes do previsto: as partes que sobraram saem do plano
+        const sobras = metas.filter(m => m.topico_id === t.id && !m.concluida && m.id !== item.id).map(m => m.id);
+        if (sobras.length) { metas = metas.filter(m => !sobras.includes(m.id)); apagar('metas', sobras); }
+        topicoConcluido(t.id, pct);
+      }
     } else {
       item.concluida_em = hoje();
       item.acerto = pct;
@@ -919,6 +948,18 @@
     if (!overlay) return;
     document.getElementById('est-modal-concluir-close').addEventListener('click', fecharConclusao);
     overlay.addEventListener('click', ev => { if (ev.target === overlay) fecharConclusao(); });
+    // "Páginas lidas" e "Terminei este PDF" andam juntos
+    const pag = document.getElementById('est-concluir-pag');
+    const terminei = document.getElementById('est-concluir-terminei');
+    pag.addEventListener('input', () => {
+      const total = contextoConclusao && contextoConclusao.totalPags;
+      if (total) terminei.checked = (parseInt(pag.value, 10) || 0) >= total;
+    });
+    terminei.addEventListener('change', () => {
+      const total = contextoConclusao && contextoConclusao.totalPags;
+      if (total && terminei.checked) pag.value = total;
+      else if (total && (parseInt(pag.value, 10) || 0) >= total) pag.value = Math.max(0, total - 1);
+    });
     document.getElementById('est-concluir-form').addEventListener('submit', ev => {
       ev.preventDefault();
       salvarConclusao();
@@ -973,7 +1014,11 @@
 
   function seloPaginas(topicId) {
     const p = Math.round(paginasDoTopico(topicId));
-    return p ? ` · <span title="Páginas de material ligadas a este tópico">📄 ${p} p.</span>` : '';
+    if (!p) return '';
+    const lidas = paginasLidas(topicId);
+    return lidas
+      ? ` · <span title="Páginas lidas de ${p}">📄 ${lidas}/${p} p.</span>`
+      : ` · <span title="Páginas de material ligadas a este tópico">📄 ${p} p.</span>`;
   }
 
   function itemMeta(m, { compacto = false } = {}) {
