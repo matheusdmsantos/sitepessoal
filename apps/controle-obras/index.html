@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="robots" content="noindex, nofollow" />
+  <title>Controle de Obras — Matheus Miranda</title>
+  <style>body.auth-pending { visibility: hidden; }</style>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;600;700&family=Outfit:wght@300;400;500;600;700&display=swap" />
+  <link rel="stylesheet" href="app.css?v=1" />
+</head>
+<body class="auth-pending">
+
+  <header class="ob-topo">
+    <a class="ob-voltar" href="/apps.html" title="Voltar para os apps">← Apps</a>
+    <h1 class="ob-marca"><a href="#/">Controle de Obras</a></h1>
+    <span class="ob-usuario" id="ob-usuario"></span>
+  </header>
+
+  <div id="ob-aviso" class="ob-aviso" role="alert" hidden></div>
+  <main id="ob-app" class="ob-main"></main>
+
+  <!-- Formulários (preenchidos por app.js) -->
+  <div class="ob-modal" id="ob-modal" hidden>
+    <div class="ob-modal-caixa" role="dialog" aria-modal="true" aria-labelledby="ob-modal-titulo">
+      <div class="ob-modal-cab">
+        <h2 id="ob-modal-titulo"></h2>
+        <button type="button" class="ob-btn sutil" data-acao="fechar-modal" aria-label="Fechar">✕</button>
+      </div>
+      <div id="ob-modal-corpo"></div>
+    </div>
+  </div>
+
+  <div id="ob-toast" class="ob-toast" role="status"></div>
+
+  <!-- Login obrigatório: mantenha estes 4 scripts, nesta ordem, em todo app. -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4"></script>
+  <script src="/js/supabase-client.js"></script>
+  <script src="/js/auth.js"></script>
+  <script>
+    if (!requireAuth()) throw new Error('Não autenticado');
+    authReady.then((user) => { if (user) document.body.classList.remove('auth-pending'); });
+  </script>
+
+  <script src="app.js?v=1"></script>
+</body>
+</html>

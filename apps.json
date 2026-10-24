@@ -38,11 +38,12 @@
     {
       "id": "controle-obras",
       "nome": "Controle de Obras",
-      "descricao": "Cronograma e progresso das obras em andamento.",
+      "descricao": "Processos de cada obra, da proposta ao encerramento: documentos, andamento e prazos.",
       "icone": "📊",
       "cor": "rgba(80, 170, 130, 0.15)",
       "categoria": "gestao",
-      "url": null
+      "url": "apps/controle-obras/index.html",
+      "abrirEm": "pagina"
     },
     {
       "id": "orcamentador",

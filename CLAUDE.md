@@ -52,8 +52,10 @@ assets/               imagens
 apps/
   _modelo/            template de app novo, já com login
   louvor/             Escala de Louvor (dados só em localStorage, sem login)
+  controle-obras/     Controle de Obras: processos estilo SEI (index.html, app.js, app.css)
 supabase/rls.sql      Row Level Security: só o dono lê e grava
-supabase/estudos-plano.sql  tabelas sessoes, metas, revisoes e plano_estudos
+supabase/estudos-plano.sql  tabelas do Painel de Estudos (sessoes, metas, revisoes, plano_estudos…)
+supabase/obras.sql    tabelas do Controle de Obras e o bucket "obras-docs"
 ```
 
 `/supabase/*` e `/README.md` retornam 404 no site, por regra no `netlify.toml`.
@@ -106,7 +108,8 @@ A página usa `<body class="auth-pending">` (com `visibility: hidden`) e remove 
 
 ## Supabase
 
-- Tabelas: `editais`, `disciplinas`, `topicos`, `resumos` e, criadas por `supabase/estudos-plano.sql`, `sessoes`, `metas`, `revisoes`, `plano_estudos`, `incidencias` e `materiais`. Os ids são texto.
+- Tabelas: `editais`, `disciplinas`, `topicos`, `resumos` e, criadas por `supabase/estudos-plano.sql`, `sessoes`, `metas`, `revisoes`, `plano_estudos`, `incidencias` e `materiais`; criadas por `supabase/obras.sql`, `processos`, `documentos`, `andamentos` e `prazos` (filhas com `on delete cascade`). Os ids são texto.
+- Storage: bucket privado `obras-docs` (25 MB por arquivo), com a política `obras_docs_dono` em `storage.objects` criada pelo próprio `obras.sql` (o `rls.sql` só cobre as tabelas de `public`). Arquivos abrem por link assinado de 10 min.
 - `incidencias` e `materiais` são carregadas à parte: se faltarem, só os dados delas ficam no navegador e o resto do plano continua no Supabase.
 - Sem as tabelas do plano, o `estudos.plano.js` guarda tudo no `localStorage` e mostra um aviso; quando elas aparecem, envia esses dados uma vez (flag `est_plano_migrado`).
 - O `rls.sql` liga o RLS em todas as tabelas de `public`, **apaga todas as políticas existentes** e cria `dono_acesso_total`, que só libera para `auth.jwt()->>'email' = 'ecivilmatheus@gmail.com'`.
@@ -150,6 +153,13 @@ A página usa `<body class="auth-pending">` (com `visibility: hidden`) e remove 
 - *Material em PDF*: na configuração do plano, "📚 PDFs" por disciplina (`js/estudos.materiais.js`). Vários PDFs de uma vez; o pdf.js conta as páginas e o nome do arquivo (ou o texto das 2 primeiras páginas) sugere o tópico. Um PDF pode ir para vários tópicos, com faixa de páginas opcional; sem faixa, as páginas que sobram são divididas igualmente (`contarPaginas`). O arquivo não é enviado: a tabela `materiais` guarda só nome, páginas e `topicos` (jsonb `[{topico_id, de, ate}]`). Com incidência, a ordem dos tópicos é por questões por página (`prioridadeDosTopicos`; tópico sem PDF usa a mediana de páginas da disciplina). Tópico com PDF leva o tempo de leitura (`PAGINAS_POR_HORA` = 20) e, se passar de 2h (`PARTE_MAX`), vira várias metas com `parte`/`partes` (colunas em `metas`), divididas por igual e em dias seguidos. Ao concluir uma meta de tópico com PDF, o usuário informa as páginas lidas (`metas.paginas_lidas`); o que falta é recalculado pelas páginas (`paginasLidas`/`faltaDoTopico`). Só **"✓ Terminei este PDF"** marca o tópico como estudado e agenda a primeira revisão; as partes que sobraram saem do plano, e sem essa marcação entra mais uma parte. Tópico sem PDF mantém o bloco do nível e da incidência.
 - *Importar edital*: PDF ou texto → recorta o conteúdo programático até o primeiro ANEXO, separa "CARGO N", aplica "(EXCETO/SOMENTE PARA O CARGO …)", agrupa subitens no tópico principal (ou separa, por opção) e sugere a data de "Aplicação das provas". Testado com o edital do TCE-MA (Cebraspe): 16 cargos; cargo 13 com 15 disciplinas e 135 tópicos.
 
+**Controle de Obras (branch `feat/controle-obras`).** Gerenciador de processos no estilo SEI, em `apps/controle-obras/` (abre em página cheia):
+- *Processo* `AAAA.NNNN` (numeração por ano): assunto, serviço (projeto, execução, fiscalização, laudo, consultoria), cliente, contato, local, valores da proposta e do contrato, e fase: Prospecção → Proposta enviada → Em negociação → Contratado → Em execução → Entregue → Encerrado, ou Proposta recusada / Cancelado (finais: marcam `concluido_em`).
+- *Documentos* numerados no processo (0001, 0002…): externos (arquivo no bucket `obras-docs`; PDF e imagem com pré-visualização) ou internos (escritos no Quill 1.3.6, carregado sob demanda; "Imprimir / PDF" abre uma janela de impressão). Incluir Proposta ou Contrato sugere avançar a fase (`AVANCA_FASE`).
+- *Andamento*: tudo o que acontece entra sozinho (abertura, fase, documentos, prazos), além de anotações manuais.
+- *Prazos* por processo; a lista mostra os vencidos e os dos próximos 7 dias. KPIs: ativos, propostas em aberto (R$), contratados/em execução (R$) e % de propostas aceitas.
+- Ficou para depois: cronograma físico, medições e pendências com fotos (escolhidos antes, adiados quando o escopo virou "estilo SEI").
+
 **Otimização de desempenho: aplicada** (commit `perf: aplica otimização preparada`, na mesma branch). O conteúdo era este:
 - `assets/profile.png` (JPEG de 1024 px, 772 KB) vira `assets/profile.webp` (21 KB) com `assets/profile.jpg` de reserva, servidos por `<picture>` no portfólio com `fetchpriority="high"`. Depois disso, apagar `profile.png`.
 - `@import` de fontes sai de todos os CSS e as fontes passam para `<link>` no `<head>`. O portfólio deixa de baixar Inter e Cormorant, que não usa.
@@ -164,4 +174,4 @@ A página usa `<body class="auth-pending">` (com `visibility: hidden`) e remove 
 2. **Portfólio como página inicial.** Hoje `/` é o login. Avaliar mover o login para `/login.html`, o que exige atualizar `LOGIN_PAGE` em `auth.js` e os links que apontam para ele.
 3. **App de louvor.** Adicionar os scripts de login e avaliar migrar os dados de `localStorage` para o Supabase.
 4. **"Salvar em .DOCX".** Hoje depende de um `app.py` (Flask) rodando no PC do usuário, então não funciona no site publicado. Opções: gerar o `.docx` no navegador ou usar uma Netlify Function com Supabase Storage.
-5. **Apps "Em breve"** no `apps.json`: Calculadora de Estruturas, Controle de Obras, Orçamentador Rápido, Diário de Obra Digital e Conversor de Unidades.
+5. **Apps "Em breve"** no `apps.json`: Calculadora de Estruturas, Orçamentador Rápido, Diário de Obra Digital e Conversor de Unidades.
