@@ -819,7 +819,24 @@
   /* =============================================
      MODAL: CONCLUIR META OU REVISÃO
   ============================================= */
-  function abrirConclusao(tipo, id) {
+  /* Janela de estudo (estudos.sessao.js): cronômetro e resumo do tópico */
+  function abrirEstudo(tipo, id) {
+    const item = tipo === 'meta' ? metas.find(m => m.id === id) : revisoes.find(r => r.id === id);
+    if (!item || !window.estSessao) return;
+    const ref = acharTopico(item.topico_id);
+    if (!ref) { aviso('Este tópico não existe mais no edital.'); return; }
+    const rotulo = tipo === 'meta'
+      ? 'Estudo' + (item.partes > 1 ? ` · parte ${item.parte}/${item.partes}` : '')
+      : rotuloRevisao(item);
+    window.estSessao.abrir({
+      tipo, id, disc: ref.d.nome, topico: ref.t.nome, rotulo,
+      minutos: tipo === 'meta' ? item.minutos : item.minutos || MIN_REVISAO,
+      concluida: tipo === 'meta' ? !!item.concluida : !!item.concluida_em
+    });
+  }
+
+  /* minutosCrono: tempo do cronômetro da janela de estudo, quando houver */
+  function abrirConclusao(tipo, id, minutosCrono = 0) {
     const item = tipo === 'meta' ? metas.find(m => m.id === id) : revisoes.find(r => r.id === id);
     if (!item) return;
     const ref = acharTopico(item.topico_id);
@@ -849,7 +866,8 @@
       ? 'Teoria e caderno de questões do tópico. Ao concluir, a primeira revisão é agendada conforme o seu acerto.'
       : `Refaça o caderno do TEC deste tópico. Quanto maior o acerto, mais longe fica a próxima revisão; abaixo de ${ACERTO_REFORCO}% entra um reforço.`;
 
-    const minutos = tipo === 'meta' ? item.minutos : item.minutos || MIN_REVISAO;
+    const minutos = minutosCrono || (window.estSessao && window.estSessao.minutosDe(id)) ||
+      (tipo === 'meta' ? item.minutos : item.minutos || MIN_REVISAO);
     document.getElementById('est-concluir-h').value = Math.floor(minutos / 60) || '';
     document.getElementById('est-concluir-m').value = minutos % 60 || '';
     document.getElementById('est-concluir-q').value = '';
@@ -895,6 +913,7 @@
     if (ctx.tipo === 'meta' && !parcial) { t.estudado = true; atualizacao.estudado = true; }
     saveEditais();
     fecharConclusao();
+    if (window.estSessao) window.estSessao.zerarCrono(ctx.id);
 
     // Registra a sessão no histórico
     const sessao = {
@@ -1021,6 +1040,17 @@
       : ` · <span title="Páginas de material ligadas a este tópico">📄 ${p} p.</span>`;
   }
 
+  // Torna a parte de texto do item clicável (abre a janela de estudo)
+  function abreEstudo(tipo, id) {
+    return ` role="button" tabindex="0" title="Abrir cronômetro e resumo"
+      onclick="estPlano.abrirEstudo('${tipo}', '${id}')"
+      onkeydown="if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); estPlano.abrirEstudo('${tipo}', '${id}'); }"`;
+  }
+
+  function seloCrono(item) {
+    return !item.previsto && !item.concluida && window.estSessao ? window.estSessao.selo(item.id) : '';
+  }
+
   function itemMeta(m, { compacto = false } = {}) {
     const ref = acharTopico(m.topico_id);
     const disc = ref ? ref.d.nome : 'Disciplina removida';
@@ -1030,8 +1060,8 @@
       (m.partes > 1 ? ` · parte ${m.parte}/${m.partes}` : '');
     return `
       <div class="est-plano-item tipo-estudo ${m.concluida ? 'feito' : ''} ${m.previsto ? 'previsto' : ''}">
-        <div class="est-plano-item-info">
-          <span class="est-plano-tag">${tag} · ${fmtMin(m.minutos)}${seloIncidencia(m.topico_id)}${seloPaginas(m.topico_id)}</span>
+        <div class="est-plano-item-info"${m.previsto ? '' : abreEstudo('meta', m.id)}>
+          <span class="est-plano-tag">${tag} · ${fmtMin(m.minutos)}${seloIncidencia(m.topico_id)}${seloPaginas(m.topico_id)}${seloCrono(m)}</span>
           <span class="est-plano-item-disc">${escapeHtml(disc)}</span>
           <span class="est-plano-item-top" title="${escapeHtml(top)}">${escapeHtml(top)}</span>
         </div>
@@ -1053,8 +1083,8 @@
     const quando = r.previsto ? 'previsto' : atraso > 0 ? `${atraso} dia${atraso > 1 ? 's' : ''} de atraso` : fmtData(r.data_prevista);
     return `
       <div class="est-plano-item tipo-${r.tipo} ${r.previsto ? 'previsto' : ''}">
-        <div class="est-plano-item-info">
-          <span class="est-plano-tag">${rotuloRevisao(r)} · ${fmtMin(r.minutos || MIN_REVISAO)} · ${quando}</span>
+        <div class="est-plano-item-info"${r.previsto ? '' : abreEstudo('revisao', r.id)}>
+          <span class="est-plano-tag">${rotuloRevisao(r)} · ${fmtMin(r.minutos || MIN_REVISAO)} · ${quando}${r.previsto ? '' : seloCrono(r)}</span>
           <span class="est-plano-item-disc">${escapeHtml(disc)}</span>
           <span class="est-plano-item-top" title="${escapeHtml(top)}">${escapeHtml(top)}
             ${pct !== null && !r.previsto ? `<span class="est-plano-acerto ${classeAcerto(pct)}">${pct}%</span>` : ''}</span>
@@ -1584,9 +1614,10 @@
 
   window.estPlano = {
     init, renderHoje, renderSecao, topicoConcluido, sessaoCriada, sessaoRemovida,
-    abrirConclusao, adiarRevisao, removerMeta, regerarSemana, agendarEstudados,
+    abrirConclusao, abrirEstudo, adiarRevisao, removerMeta, regerarSemana, agendarEstudados,
     agendarReforco, mudarSemana, irParaSemana, alternarConfig, editalTrocado, projetar,
     incidenciaDaDisciplina, pctIncidencia, salvarIncidencias,
-    materiaisDaDisciplina, paginasDoTopico, prioridadeDosTopicos, salvarMateriais
+    materiaisDaDisciplina, paginasDoTopico, prioridadeDosTopicos, salvarMateriais,
+    renderTudo, fmtMin
   };
 })();

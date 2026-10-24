@@ -1712,10 +1712,13 @@ let quillEditor;
 
 async function saveCurrentResumo(quiet = false) {
   if (!currentRevContext || !quillEditor) return;
-  const htmlContent = quillEditor.root.innerHTML;
   const { discNome, topicNome } = currentRevContext;
   if (!discNome || !topicNome) return;
+  await salvarResumo(discNome, topicNome, quillEditor.root.innerHTML, quiet);
+}
 
+/* Grava o resumo de um tópico (backup local + Supabase). Também usado pela janela de estudo. */
+async function salvarResumo(discNome, topicNome, htmlContent, quiet = false) {
   const isVazio = !htmlContent || htmlContent.trim() === '' || htmlContent === '<p><br></p>';
   const key = makeResumoKey(discNome, topicNome);
 
