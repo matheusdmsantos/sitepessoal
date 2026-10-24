@@ -10,7 +10,7 @@
   <!-- Fontes do editor de resumo (js/estudos.sessao.js, FONTES): só são baixadas quando usadas -->
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Architects+Daughter&family=Caveat:wght@400;700&family=Dancing+Script:wght@400;700&family=Gloria+Hallelujah&family=Indie+Flower&family=Kalam:wght@400;700&family=Lato:ital,wght@0,400;0,700;1,400&family=Lora:ital,wght@0,400;0,700;1,400&family=Merriweather:ital,wght@0,400;0,700;1,400&family=Montserrat:ital,wght@0,400;0,700;1,400&family=Open+Sans:ital,wght@0,400;0,700;1,400&family=Patrick+Hand&family=Permanent+Marker&family=Roboto+Mono:wght@400;700&family=Roboto:ital,wght@0,400;0,700;1,400&family=Shadows+Into+Light&display=swap" />
   <link href="https://cdn.quilljs.com/1.3.6/quill.snow.css" rel="stylesheet">
-  <link rel="stylesheet" href="css/estudos.css?v=14" />
+  <link rel="stylesheet" href="css/estudos.css?v=15" />
 </head>
 <body class="page-estudos">
 
@@ -744,7 +744,12 @@
           <div class="est-sessao-controles">
             <button type="button" class="est-plano-btn primario" id="est-sessao-play">▶ Iniciar</button>
             <button type="button" class="est-plano-btn sutil" id="est-sessao-zerar" title="Zerar cronômetro" aria-label="Zerar cronômetro">↺</button>
-            <label class="est-sessao-pomo"><input type="checkbox" id="est-sessao-pomodoro"> Pomodoro 25/5</label>
+            <label class="est-sessao-pomo"><input type="checkbox" id="est-sessao-pomodoro"> Pomodoro</label>
+            <select class="est-sessao-ciclo" id="est-sessao-ciclo" aria-label="Ciclo do Pomodoro (minutos de foco/pausa)" title="Minutos de foco / pausa">
+              <option value="25/5">25/5</option>
+              <option value="50/10">50/10</option>
+              <option value="90/20">90/20</option>
+            </select>
           </div>
         </div>
         <div class="est-sessao-acoes">
@@ -797,7 +802,7 @@
   </script>
   <script src="js/estudos.v5.js?v=8"></script>
   <script src="js/estudos.plano.js?v=8"></script>
-  <script src="js/estudos.sessao.js?v=5"></script>
+  <script src="js/estudos.sessao.js?v=6"></script>
   <script src="js/estudos.resumos.js?v=3"></script>
   <script src="js/estudos.importar.js?v=2"></script>
   <script src="js/estudos.incidencia.js?v=1"></script>

@@ -1944,6 +1944,16 @@ html, body {
 .est-sessao-meta { font-size: 0.7rem; color: var(--est-accent-muted); }
 .est-sessao-controles { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .est-sessao-controles #est-sessao-play { min-width: 112px; }
+.est-sessao-ciclo {
+  background: rgba(20, 22, 36, 0.8);
+  border: 1px solid var(--est-border);
+  border-radius: 6px;
+  padding: 3px 6px;
+  font-size: 0.78rem;
+  color: var(--est-silver-bright);
+  font-family: var(--est-font-body);
+}
+.est-sessao-ciclo:focus-visible { outline: 2px solid var(--est-blue); }
 .est-sessao-pomo { display: flex; align-items: center; gap: 6px; font-size: 0.78rem; color: var(--est-silver); cursor: pointer; white-space: nowrap; }
 .est-sessao-acoes { display: flex; align-items: center; gap: 10px; margin-left: auto; }
 .est-sessao-status { font-size: 0.75rem; color: var(--est-accent-muted); white-space: nowrap; }

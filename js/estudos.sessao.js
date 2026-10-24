@@ -9,8 +9,9 @@
    Carregado depois do estudos.v5.js (usa resumosMap, makeResumoKey e salvarResumo).
 ============================================= */
 (function () {
-  const POMODORO_FOCO = 25 * 60000;
-  const POMODORO_PAUSA = 5 * 60000;
+  const CICLOS = { '25/5': [25, 5], '50/10': [50, 10], '90/20': [90, 20] };   // minutos de foco/pausa
+  const CICLO_PADRAO = '50/10';
+  const CHAVE_CICLO = 'est_pomodoro_ciclo';
   const AUTOSAVE_MS = 2000;
   const TITULO_PADRAO = 'Anotações';
   const CHAVE_CRONO = 'est_crono';           // { [id da meta/revisão]: estado do cronômetro }
@@ -232,6 +233,18 @@
     return lerCronos()[ctx.id] || { acum: 0, rodando: false, desde: 0, pomodoro: false, fase: 'foco', faseMs: 0 };
   }
 
+  function cicloEscolhido() {
+    let v = null;
+    try { v = localStorage.getItem(CHAVE_CICLO); } catch (e) { /* sem armazenamento */ }
+    return CICLOS[v] ? v : CICLO_PADRAO;
+  }
+
+  // Duração da fase atual do Pomodoro, em ms
+  function duracaoFase(fase) {
+    const [foco, pausa] = CICLOS[cicloEscolhido()];
+    return (fase === 'foco' ? foco : pausa) * 60000;
+  }
+
   // Leva o trecho em andamento para os totais e troca de fase no Pomodoro
   function atualizarCrono(c) {
     if (c.rodando) {
@@ -243,7 +256,7 @@
     }
     let trocou = false;
     while (c.pomodoro) {
-      const dur = c.fase === 'foco' ? POMODORO_FOCO : POMODORO_PAUSA;
+      const dur = duracaoFase(c.fase);
       if (c.faseMs < dur) break;
       const sobra = c.faseMs - dur;
       if (c.fase === 'foco') { c.acum -= sobra; c.fase = 'pausa'; }
@@ -272,11 +285,12 @@
     $('est-sessao-meta').textContent = `meta: ${window.estPlano.fmtMin(ctx.minutos)}`;
     $('est-sessao-play').textContent = c.rodando ? '⏸ Pausar' : c.acum || c.faseMs ? '▶ Continuar' : '▶ Iniciar';
     $('est-sessao-pomodoro').checked = c.pomodoro;
+    $('est-sessao-ciclo').value = cicloEscolhido();
     const relogio = $('est-sessao-relogio');
     relogio.classList.toggle('pausa', c.pomodoro && c.fase === 'pausa');
     relogio.classList.toggle('rodando', c.rodando);
     if (c.pomodoro) {
-      const dur = c.fase === 'foco' ? POMODORO_FOCO : POMODORO_PAUSA;
+      const dur = duracaoFase(c.fase);
       $('est-sessao-fase').textContent = c.fase === 'foco' ? `🍅 Foco · ${fmt(c.acum)} estudados` : '☕ Pausa';
       $('est-sessao-tempo').textContent = fmt(Math.max(0, dur - c.faseMs));
     } else {
@@ -309,6 +323,11 @@
     c.fase = 'foco';
     c.faseMs = 0;
     gravarCrono(ctx.id, c);
+    renderCrono();
+  }
+
+  function trocarCiclo() {
+    try { localStorage.setItem(CHAVE_CICLO, $('est-sessao-ciclo').value); } catch (e) { /* sem armazenamento */ }
     renderCrono();
   }
 
@@ -742,6 +761,7 @@
     $('est-sessao-play').addEventListener('click', alternarPlay);
     $('est-sessao-zerar').addEventListener('click', zerar);
     $('est-sessao-pomodoro').addEventListener('change', alternarPomodoro);
+    $('est-sessao-ciclo').addEventListener('change', trocarCiclo);
     $('est-sessao-nova-pag').addEventListener('click', novaPagina);
     $('est-sessao-ver-materia').addEventListener('click', verMateria);
     const titulo = $('est-sessao-pag-titulo');
