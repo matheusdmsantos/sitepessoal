@@ -135,8 +135,8 @@ A página usa `<body class="auth-pending">` (com `visibility: hidden`) e remove 
 - Código morto removido: `estudos.js` e `estudos.v4.js`. Ficaram fora do repositório `app.py`, `build.js`, `scratch/` e `.dist/`.
 
 **Pendente com o usuário. Pergunte o status antes de assumir:**
-- [ ] Usuário criado em Supabase → Authentication → Users, e cadastro público desativado.
-- [ ] `supabase/rls.sql` executado no SQL Editor, **depois** de confirmar que o login funciona.
+- [x] Usuário criado em Supabase → Authentication → Users (login funcionando). Conferir se o cadastro público está desativado.
+- [x] `supabase/estudos-plano.sql` e `supabase/rls.sql` executados no SQL Editor (23/10/2026): 10 tabelas com RLS e `dono_acesso_total`.
 - [ ] Senha antiga trocada nos outros serviços onde era usada (ela ficou exposta no site antigo).
 - [ ] Repositório do GitHub passado para privado.
 
@@ -149,7 +149,6 @@ A página usa `<body class="auth-pending">` (com `visibility: hidden`) e remove 
 - *Incidência do TEC*: na configuração do plano, cada disciplina tem "📊 Importar". A planilha "Índice do Caderno" do TEC tem as colunas Hierarquia (vazia), Índice, Quantidade e Porcentagem, e declara a dimensão errada (`A1:D1`), por isso o intervalo é recalculado. Cada assunto é ligado a um tópico por semelhança (radicais, peso pela raridade, números de lei valem 2×); as correções do usuário ficam lembradas em `localStorage` (`est_inc_mapa_<disciplina>`). No plano: tópicos ordenados por incidência e tempo de 0,5× a 1,5× do bloco do nível (`blocoDoTopico`). Testado com Direito Administrativo (Cebraspe): 104 de 110 assuntos ligados sozinhos.
 - *Material em PDF*: na configuração do plano, "📚 PDFs" por disciplina (`js/estudos.materiais.js`). Vários PDFs de uma vez; o pdf.js conta as páginas e o nome do arquivo (ou o texto das 2 primeiras páginas) sugere o tópico. Um PDF pode ir para vários tópicos, com faixa de páginas opcional; sem faixa, as páginas que sobram são divididas igualmente (`contarPaginas`). O arquivo não é enviado: a tabela `materiais` guarda só nome, páginas e `topicos` (jsonb `[{topico_id, de, ate}]`). Com incidência, a ordem dos tópicos é por questões por página (`prioridadeDosTopicos`; tópico sem PDF usa a mediana de páginas da disciplina). Tópico com PDF leva o tempo de leitura (`PAGINAS_POR_HORA` = 20) e, se passar de 2h (`PARTE_MAX`), vira várias metas com `parte`/`partes` (colunas em `metas`), divididas por igual e em dias seguidos. Ao concluir uma meta de tópico com PDF, o usuário informa as páginas lidas (`metas.paginas_lidas`); o que falta é recalculado pelas páginas (`paginasLidas`/`faltaDoTopico`). Só **"✓ Terminei este PDF"** marca o tópico como estudado e agenda a primeira revisão; as partes que sobraram saem do plano, e sem essa marcação entra mais uma parte. Tópico sem PDF mantém o bloco do nível e da incidência.
 - *Importar edital*: PDF ou texto → recorta o conteúdo programático até o primeiro ANEXO, separa "CARGO N", aplica "(EXCETO/SOMENTE PARA O CARGO …)", agrupa subitens no tópico principal (ou separa, por opção) e sugere a data de "Aplicação das provas". Testado com o edital do TCE-MA (Cebraspe): 16 cargos; cargo 13 com 15 disciplinas e 135 tópicos.
-- Pendente: rodar `supabase/estudos-plano.sql` e depois `supabase/rls.sql`.
 
 **Otimização de desempenho: aplicada** (commit `perf: aplica otimização preparada`, na mesma branch). O conteúdo era este:
 - `assets/profile.png` (JPEG de 1024 px, 772 KB) vira `assets/profile.webp` (21 KB) com `assets/profile.jpg` de reserva, servidos por `<picture>` no portfólio com `fetchpriority="high"`. Depois disso, apagar `profile.png`.
