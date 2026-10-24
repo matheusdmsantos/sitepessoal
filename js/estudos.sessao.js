@@ -421,16 +421,126 @@
     return caixa;
   }
 
+  /* =============================================
+     COLAR TEXTO DE SITES (comentários do TEC etc.)
+     O navegador copia as cores calculadas da página: fundo do cartão, texto cinza ou branco
+     (modo escuro). Fica só o que é grifo de verdade: negrito, itálico, sublinhado, tachado,
+     realce colorido em trechos e texto colorido. Ctrl+Shift+V cola sem formatação.
+  ============================================= */
+  const TAGS_EM_LINHA = new Set(['SPAN', 'MARK', 'B', 'STRONG', 'I', 'EM', 'U', 'S', 'STRIKE', 'DEL', 'INS', 'A', 'FONT', 'SUB', 'SUP', 'SMALL', 'BIG', 'CODE']);
+  const REALCE_PADRAO = 'rgb(255, 241, 118)';   // <mark> sem cor própria
+  let ctxCor = null;
+
+  // Qualquer cor CSS -> { r, g, b, a, l (0-1), s (0-1) }, ou null
+  function lerCor(css) {
+    if (!css || /transparent|inherit|initial|currentcolor/i.test(css)) return null;
+    ctxCor = ctxCor || document.createElement('canvas').getContext('2d');
+    ctxCor.fillStyle = '#010203';
+    ctxCor.fillStyle = css;
+    const v = ctxCor.fillStyle;
+    if (v === '#010203' && !/^#010203$/i.test(css.trim())) return null;   // cor inválida
+    let r, g, b, a = 1, m;
+    if ((m = /^#([0-9a-f]{6})$/i.exec(v))) [r, g, b] = [0, 2, 4].map(i => parseInt(m[1].substr(i, 2), 16));
+    else if ((m = /rgba?\(([^)]+)\)/.exec(v))) [r, g, b, a = 1] = m[1].split(',').map(Number);
+    else return null;
+    const max = Math.max(r, g, b) / 255, min = Math.min(r, g, b) / 255;
+    const l = (max + min) / 2;
+    const s = max === min ? 0 : (max - min) / (l > 0.5 ? 2 - max - min : max + min);
+    return { r, g, b, a, l, s };
+  }
+
+  // Realce escuro (modo escuro do site) fica ilegível com texto preto: clareia mantendo o tom
+  function realceLegivel(c) {
+    const brilho = 0.299 * c.r + 0.587 * c.g + 0.114 * c.b;   // percebido: amarelo puro é claro
+    if (brilho >= 150) return `rgb(${c.r}, ${c.g}, ${c.b})`;
+    const k = 0.65;   // mistura com branco
+    const mix = v => Math.round(v + (255 - v) * k);
+    return `rgb(${mix(c.r)}, ${mix(c.g)}, ${mix(c.b)})`;
+  }
+
+  function envolver(el, tag) {
+    const novo = document.createElement(tag);
+    while (el.firstChild) novo.appendChild(el.firstChild);
+    el.appendChild(novo);
+  }
+
+  function limparHtmlColado(html) {
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+    doc.querySelectorAll('script, style, meta, link, title, noscript, button, input, select, textarea, svg').forEach(n => n.remove());
+
+    doc.body.querySelectorAll('*').forEach(el => {
+      const st = el.style;
+      const emLinha = TAGS_EM_LINHA.has(el.tagName);
+      const pesado = /^(bold|bolder)$/.test(st.fontWeight) || parseInt(st.fontWeight, 10) >= 600;
+      const italico = st.fontStyle === 'italic' || st.fontStyle === 'oblique';
+      const deco = `${st.textDecorationLine || ''} ${st.textDecoration || ''}`;
+
+      // Realce: só em trechos, colorido e não branco/cinza (fundo de cartão ou de página)
+      let fundo = lerCor(st.backgroundColor || (el.tagName === 'MARK' ? REALCE_PADRAO : ''));
+      if (!fundo && el.tagName === 'MARK') fundo = lerCor(REALCE_PADRAO);
+      const realce = fundo && emLinha && fundo.a >= 0.15 && fundo.s >= 0.2 && !(fundo.l > 0.94) ? realceLegivel(fundo) : '';
+
+      // Texto colorido: só se tiver cor de verdade e for legível no branco
+      const texto = lerCor(st.color || el.getAttribute('color'));
+      const corTexto = texto && texto.s >= 0.3 && texto.l <= 0.8 && texto.l >= 0.15 ? `rgb(${texto.r}, ${texto.g}, ${texto.b})` : '';
+
+      const alinhar = /^(center|right|justify)$/.test(st.textAlign) && !emLinha ? st.textAlign : '';
+      const tamanho = TAMANHOS.includes(st.fontSize) ? st.fontSize : '';   // copiado do próprio resumo
+      // Classes do Quill (alinhamento, recuo, fonte) e de página continuam; as do site saem
+      const classes = Array.from(el.classList).filter(c => c.startsWith('ql-') || c === 'est-pagina');
+      el.removeAttribute('style');
+      el.removeAttribute('class');
+      if (classes.length) el.className = classes.join(' ');
+      if (tamanho) el.style.fontSize = tamanho;
+      el.removeAttribute('color');
+      el.removeAttribute('bgcolor');
+      if (realce) el.style.backgroundColor = realce;
+      if (corTexto) el.style.color = corTexto;
+      if (alinhar) el.style.textAlign = alinhar;
+
+      // Estilos de CSS viram tags que o Quill entende
+      if (pesado && !/^(B|STRONG|H\d)$/.test(el.tagName)) envolver(el, 'strong');
+      if (italico && !/^(I|EM)$/.test(el.tagName)) envolver(el, 'em');
+      if (/underline/.test(deco) && el.tagName !== 'U') envolver(el, 'u');
+      if (/line-through/.test(deco) && !/^(S|STRIKE|DEL)$/.test(el.tagName)) envolver(el, 's');
+    });
+    // <mark> vira <span> com fundo (o Quill não conhece <mark>)
+    doc.body.querySelectorAll('mark').forEach(m => {
+      const span = doc.createElement('span');
+      span.setAttribute('style', m.getAttribute('style') || '');
+      while (m.firstChild) span.appendChild(m.firstChild);
+      m.replaceWith(span);
+    });
+    return doc.body.innerHTML;
+  }
+
+  function colarHtml(html) {
+    const sel = quill.getSelection(true);
+    const i = sel ? sel.index : quill.getLength();
+    if (sel && sel.length) quill.deleteText(sel.index, sel.length, 'user');
+    quill.clipboard.dangerouslyPasteHTML(i, limparHtmlColado(html), 'user');
+  }
+
   function iniciarImagens() {
     const raiz = quill.root;
-    // Captura: roda antes do colar do Quill, que não sabe tratar arquivos
+    // Captura: roda antes do colar do Quill, que não sabe tratar arquivos nem as cores de outros sites
     raiz.addEventListener('paste', ev => {
-      const arquivos = Array.from((ev.clipboardData && ev.clipboardData.items) || [])
+      const dados = ev.clipboardData;
+      if (!dados) return;
+      const arquivos = Array.from(dados.items || [])
         .filter(it => it.kind === 'file' && it.type.startsWith('image/')).map(it => it.getAsFile());
-      if (!arquivos.length) return;
-      ev.preventDefault();
-      ev.stopPropagation();
-      inserirImagens(arquivos);
+      const html = dados.getData('text/html');
+      // Imagem copiada de um site vem com um HTML que só tem o <img>: usa o arquivo (fica no resumo, reduzido)
+      const soImagem = arquivos.length && (!html || !new DOMParser().parseFromString(html, 'text/html').body.textContent.trim());
+      if (soImagem) {
+        ev.preventDefault();
+        ev.stopPropagation();
+        inserirImagens(arquivos);
+      } else if (html) {
+        ev.preventDefault();
+        ev.stopPropagation();
+        colarHtml(html);
+      }
     }, true);
     raiz.addEventListener('drop', ev => {
       const arquivos = ev.dataTransfer && ev.dataTransfer.files;
