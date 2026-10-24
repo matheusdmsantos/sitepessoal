@@ -544,6 +544,12 @@
       return;
     }
 
+    await gravarArquivo(blob, nome, pasta);
+  }
+
+  /* Grava na pasta escolhida (pastaDestino) ou, sem ela, baixa em Downloads.
+     Também usado pela exportação do Edital Verticalizado. */
+  async function gravarArquivo(blob, nome, pasta) {
     if (pasta) {
       try {
         const arq = await pasta.getFileHandle(nome, { create: true });
@@ -554,7 +560,7 @@
         return;
       } catch (e) {
         console.error('Erro ao gravar na pasta:', e);
-        aviso(`Não deu para gravar em ${pasta.name} (o arquivo está aberto no Word?). Baixando em Downloads.`);
+        aviso(`Não deu para gravar em ${pasta.name} (o arquivo está aberto?). Baixando em Downloads.`);
       }
     }
     const url = URL.createObjectURL(blob);
@@ -570,6 +576,7 @@
   window.estResumos = {
     render,
     escolherMateria: i => listaAtual[i] && escolher(listaAtual[i].chave),
-    alternarTodos, abrirAlvo, irPara, editar, apagar, exportar, trocarPasta
+    alternarTodos, abrirAlvo, irPara, editar, apagar, exportar, trocarPasta,
+    pastaDestino, gravarArquivo
   };
 })();

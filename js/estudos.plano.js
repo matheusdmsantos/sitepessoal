@@ -391,6 +391,12 @@
     return t.questoesFeitas > 0 ? Math.round((t.questoesCertas / t.questoesFeitas) * 100) : null;
   }
 
+  /* Revisões de um tópico, da mais antiga para a mais nova (Edital Verticalizado) */
+  function revisoesDoTopico(topicId) {
+    return revisoes.filter(r => r.topico_id === topicId)
+      .sort((a, b) => (a.concluida_em || a.data_prevista).localeCompare(b.concluida_em || b.data_prevista));
+  }
+
   function revisaoPendente(topicId) {
     return revisoes.find(r => r.topico_id === topicId && !r.concluida_em);
   }
@@ -1618,6 +1624,6 @@
     agendarReforco, mudarSemana, irParaSemana, alternarConfig, editalTrocado, projetar,
     incidenciaDaDisciplina, pctIncidencia, salvarIncidencias,
     materiaisDaDisciplina, paginasDoTopico, prioridadeDosTopicos, salvarMateriais,
-    renderTudo, fmtMin, aviso
+    renderTudo, fmtMin, aviso, revisoesDoTopico, paginasLidas
   };
 })();

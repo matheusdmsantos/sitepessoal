@@ -1008,12 +1008,15 @@ async function loadEditais() {
         });
         edTopicos.sort((a, b) => a.id.localeCompare(b.id));
         return {
-          id: d.id, nome: d.nome,
+          id: d.id, nome: d.nome, ordem: Number.isInteger(d.ordem) ? d.ordem : null,
           topicos: edTopicos
         };
       });
-      
-      try {
+
+      // Ordem salva no Supabase (coluna disciplinas.ordem); sem ela, a deste navegador
+      if (edDisciplinas.length && edDisciplinas.every(d => d.ordem !== null)) {
+        edDisciplinas.sort((a, b) => a.ordem - b.ordem);
+      } else try {
         const savedOrder = JSON.parse(localStorage.getItem('disc_order_' + e.id));
         if (savedOrder && Array.isArray(savedOrder)) {
           edDisciplinas.sort((a, b) => {
@@ -1252,106 +1255,9 @@ function renderEditalSelect() {
   });
 }
 
+/* A aba é desenhada pelo estudos.edital.js */
 function renderEdital() {
-  const container = document.getElementById('est-edital-accordion');
-  const emptyState = document.getElementById('est-edital-empty');
-  const btnDelete = document.getElementById('est-btn-delete-edital');
-  const progWrapper = document.getElementById('est-edital-progress-wrapper');
-  
-  if (!container) return;
-
-  const edital = editaisData.find(e => e.id === currentEditalId);
-  
-  if (!edital) {
-    container.innerHTML = '';
-    emptyState.style.display = 'flex';
-    if(btnDelete) btnDelete.style.display = 'none';
-    if(progWrapper) progWrapper.style.display = 'none';
-    return;
-  }
-
-  emptyState.style.display = 'none';
-  if(btnDelete) btnDelete.style.display = 'flex';
-  if(progWrapper) progWrapper.style.display = 'flex';
-
-  updateEditalProgress(edital);
-
-  container.innerHTML = edital.disciplinas.map((disc, dIdx) => {
-    const totalT = disc.topicos.length;
-    const doneT = disc.topicos.filter(t => t.estudado).length;
-    
-    return `
-      <div class="est-disc-card" data-disc-id="${disc.id}">
-        <div class="est-disc-header" onclick="this.parentElement.classList.toggle('expanded')">
-          <div class="est-disc-title" contenteditable="true" onblur="updateDiscName('${edital.id}', '${disc.id}', this.textContent)" onclick="event.stopPropagation()">${escapeHtml(disc.nome)}</div>
-          <div class="est-disc-stats">
-            <div style="display: flex; flex-direction: column; gap: 2px; margin-right: 10px;">
-              <button onclick="event.stopPropagation(); reorderDisc('${edital.id}', '${disc.id}', -1)" title="Mover para cima" style="background:var(--est-bg-card-2); border:1px solid var(--est-border); color:var(--est-silver); cursor:pointer; width:20px; height:20px; display:flex; align-items:center; justify-content:center; border-radius:4px; font-size:10px;">▲</button>
-              <button onclick="event.stopPropagation(); reorderDisc('${edital.id}', '${disc.id}', 1)" title="Mover para baixo" style="background:var(--est-bg-card-2); border:1px solid var(--est-border); color:var(--est-silver); cursor:pointer; width:20px; height:20px; display:flex; align-items:center; justify-content:center; border-radius:4px; font-size:10px;">▼</button>
-            </div>
-            <span>${doneT}/${totalT} tópicos</span>
-            <span class="est-disc-chevron">▼</span>
-          </div>
-        </div>
-        <div class="est-disc-body">
-          ${disc.topicos.map((top, tIdx) => `
-            <div class="est-topic-row ${top.estudado ? 'done' : ''}" data-topic-id="${top.id}">
-              <input type="checkbox" class="est-topic-check" ${top.estudado ? 'checked' : ''} onchange="toggleTopic('${edital.id}', '${disc.id}', '${top.id}', this.checked)">
-              
-              <div class="est-topic-name" contenteditable="true" onblur="updateTopicName('${edital.id}', '${disc.id}', '${top.id}', this.textContent)">${escapeHtml(top.nome)}</div>
-              
-              <button class="est-topic-edit-btn" onclick="promptRevisao('${edital.id}', '${disc.id}', '${top.id}', false)" title="Editar Desempenho (Acertos e Erros)">
-                <span class="est-q-total">${top.questoesFeitas}</span> <span style="opacity:0.5; margin:0 2px;">/</span> <span class="est-q-correct">${top.questoesCertas}</span>
-                <span class="est-edit-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path></svg></span>
-              </button>
-              
-              ${(top.tempoGasto || 0) > 0 ? `
-              <button class="est-topic-tec" onclick="promptTempo('${edital.id}', '${disc.id}', '${top.id}')" title="Adicionar Tempo (Atual: ${top.tempoGasto} min)" style="background: var(--est-bg-card); color: var(--est-silver); font-size: 0.85rem; width: auto; padding: 0 10px; border: 1px solid var(--est-border); display: flex; align-items: center; justify-content: center; gap: 6px;">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
-                ${Math.floor(top.tempoGasto / 60)}h ${top.tempoGasto % 60}m
-              </button>
-              ` : `
-              <button class="est-topic-tec" onclick="promptTempo('${edital.id}', '${disc.id}', '${top.id}')" title="Registrar Tempo" style="background: var(--est-bg-card); color: var(--est-silver); border: 1px solid var(--est-border); display: flex; align-items: center; justify-content: center;">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
-              </button>
-              `}
-              
-              <button class="est-topic-tec ${top.tecLink ? 'has-link' : ''}" onclick="promptTecLink('${edital.id}', '${disc.id}', '${top.id}')" title="${top.tecLink ? 'Acessar Caderno TEC' : 'Adicionar Link TEC'}">
-                ${top.tecLink ? '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>' : '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>'}
-              </button>
-              
-              <button class="est-topic-tec" onclick="promptRefazer('${edital.id}', '${disc.id}', '${top.id}')" title="Refazer Tópico (Somar novas questões ao histórico)" style="background: var(--est-blue-dim); color: var(--est-blue);">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
-              </button>
-              
-              <button class="est-topic-delete" onclick="deleteTopic('${edital.id}', '${disc.id}', '${top.id}')" title="Excluir tópico">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
-              </button>
-            </div>
-          `).join('')}
-          <div style="padding: 10px 20px;">
-             <button style="font-size: 0.75rem; color: var(--est-silver); cursor: pointer; display: flex; align-items: center; gap: 4px;" onclick="addTopic('${edital.id}', '${disc.id}')">+ Adicionar tópico</button>
-          </div>
-        </div>
-      </div>
-    `;
-  }).join('') + `
-    <button style="margin-top: 8px; font-size: 0.8rem; color: var(--est-silver-bright); background: var(--est-bg-card); border: 1px dashed var(--est-border); padding: 12px; border-radius: 8px; cursor: pointer;" onclick="addDisc('${edital.id}')">+ Adicionar Disciplina</button>
-  `;
-}
-
-function updateEditalProgress(edital) {
-  let total = 0, done = 0;
-  edital.disciplinas.forEach(d => {
-    total += d.topicos.length;
-    done += d.topicos.filter(t => t.estudado).length;
-  });
-  const pct = total === 0 ? 0 : Math.round((done / total) * 100);
-  
-  const textEl = document.getElementById('est-edital-progress-text');
-  const barEl = document.getElementById('est-edital-progress-bar');
-  if (textEl) textEl.textContent = pct + '%';
-  if (barEl) barEl.style.width = pct + '%';
+  if (window.estEdital) window.estEdital.render();
 }
 
 function getTopicParams(eId, dId, tId) {
@@ -1365,24 +1271,16 @@ async function toggleTopic(eId, dId, tId, checked) {
   const {t} = getTopicParams(eId, dId, tId);
   t.estudado = checked;
   saveEditais();
-  
-  // Atualiza visualmente sem recarregar o DOM inteiro (evita fechar o acordeão)
-  const row = document.querySelector(`.est-topic-row[data-topic-id="${tId}"]`);
-  if (row) {
-    if (checked) row.classList.add('done');
-    else row.classList.remove('done');
-  }
-  
-  const edital = editaisData.find(x => x.id === eId);
-  updateEditalProgress(edital);
-  
-  // Atualiza os cards da visão geral
+  renderEdital();
   renderCards();
 
   await window.supabaseClient.from('topicos').update({ estudado: checked }).eq('id', tId);
 
   // Tópico concluído: fecha a meta da semana e agenda a primeira revisão
-  if (checked) window.estPlano.topicoConcluido(tId);
+  if (checked) {
+    await window.estPlano.topicoConcluido(tId);
+    renderEdital(); // mostra a revisão recém-agendada
+  }
 }
 
 async function updateTopicName(eId, dId, tId, newName) {
@@ -1815,8 +1713,17 @@ window.reorderDisc = function(eId, dId, direction) {
   edital.disciplinas[idx] = edital.disciplinas[newIdx];
   edital.disciplinas[newIdx] = temp;
   localStorage.setItem('disc_order_' + eId, JSON.stringify(edital.disciplinas.map(d => d.id)));
+  edital.disciplinas.forEach((d, i) => { d.ordem = i; });
+  saveEditais();
   renderEdital();
   renderCards();
+  // Sem a coluna "ordem" (supabase/estudos-plano.sql), fica só a ordem deste navegador
+  Promise.all(edital.disciplinas.map(d =>
+    window.supabaseClient.from('disciplinas').update({ ordem: d.ordem }).eq('id', d.id)
+  )).then(rs => {
+    const erro = rs.find(r => r.error);
+    if (erro) console.warn('Ordem das disciplinas não foi salva no Supabase:', erro.error.message);
+  });
 };
 
 /* =============================================

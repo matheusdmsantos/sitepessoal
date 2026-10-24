@@ -10,7 +10,7 @@
   <!-- Fontes do editor de resumo (js/estudos.sessao.js, FONTES): só são baixadas quando usadas -->
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Architects+Daughter&family=Caveat:wght@400;700&family=Dancing+Script:wght@400;700&family=Gloria+Hallelujah&family=Indie+Flower&family=Kalam:wght@400;700&family=Lato:ital,wght@0,400;0,700;1,400&family=Lora:ital,wght@0,400;0,700;1,400&family=Merriweather:ital,wght@0,400;0,700;1,400&family=Montserrat:ital,wght@0,400;0,700;1,400&family=Open+Sans:ital,wght@0,400;0,700;1,400&family=Patrick+Hand&family=Permanent+Marker&family=Roboto+Mono:wght@400;700&family=Roboto:ital,wght@0,400;0,700;1,400&family=Shadows+Into+Light&display=swap" />
   <link href="https://cdn.quilljs.com/1.3.6/quill.snow.css" rel="stylesheet">
-  <link rel="stylesheet" href="css/estudos.css?v=15" />
+  <link rel="stylesheet" href="css/estudos.css?v=16" />
 </head>
 <body class="page-estudos">
 
@@ -233,20 +233,21 @@
             <button class="est-btn-icon" id="est-btn-delete-edital" title="Excluir Edital" style="display:none;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg></button>
           </div>
           
-          <div class="est-edital-progress-wrapper" id="est-edital-progress-wrapper" style="display: none;">
-            <div class="est-edital-progress-labels" style="margin-bottom: 8px;">
-              <span class="est-edital-progress-title">Progresso Geral do Edital</span>
-            </div>
-            <div style="display: flex; align-items: center; gap: 20px;">
-              <div class="est-progress-mini" style="height: 14px; flex: 1; border-radius: 8px;">
-                <div class="est-progress-mini-fill green" id="est-edital-progress-bar" style="width: 0%; border-radius: 8px;"></div>
-              </div>
-              <span class="est-edital-progress-percent" id="est-edital-progress-text" style="font-size: 3.5rem; line-height: 1;">0%</span>
-            </div>
-          </div>
         </header>
 
         <div class="est-edital-content est-animate-in" id="est-edital-container" style="animation-delay: 0.1s;">
+          <!-- Números, busca, filtros e exportação (js/estudos.edital.js) -->
+          <div class="est-ed-painel" id="est-ed-painel"></div>
+          <div class="est-ed-barra" id="est-ed-barra" hidden>
+            <input type="search" id="est-ed-busca" class="est-ed-busca" placeholder="Buscar tópico…" aria-label="Buscar tópico" autocomplete="off" />
+            <div class="est-ed-filtros" id="est-ed-filtros" role="group" aria-label="Filtrar tópicos"></div>
+            <div class="est-ed-barra-acoes">
+              <button type="button" class="est-plano-btn sutil" onclick="estEdital.abrirTodas(true)">Expandir tudo</button>
+              <button type="button" class="est-plano-btn sutil" onclick="estEdital.abrirTodas(false)">Recolher tudo</button>
+              <button type="button" class="est-plano-btn" onclick="estEdital.exportarPdf()" title="Edital verticalizado para imprimir">🖨️ PDF</button>
+              <button type="button" class="est-plano-btn" onclick="estEdital.exportarExcel()" title="Planilha com todos os tópicos">📊 Excel</button>
+            </div>
+          </div>
           <!-- Placeholder de vazio -->
           <div class="est-sessions-empty" id="est-edital-empty">
             <span class="est-sessions-empty-icon">📋</span>
@@ -800,10 +801,11 @@
       return window.__html2pdfPromise;
     };
   </script>
-  <script src="js/estudos.v5.js?v=8"></script>
-  <script src="js/estudos.plano.js?v=8"></script>
+  <script src="js/estudos.v5.js?v=9"></script>
+  <script src="js/estudos.plano.js?v=9"></script>
   <script src="js/estudos.sessao.js?v=6"></script>
-  <script src="js/estudos.resumos.js?v=3"></script>
+  <script src="js/estudos.resumos.js?v=4"></script>
+  <script src="js/estudos.edital.js?v=1"></script>
   <script src="js/estudos.importar.js?v=2"></script>
   <script src="js/estudos.incidencia.js?v=1"></script>
   <script src="js/estudos.materiais.js?v=1"></script>

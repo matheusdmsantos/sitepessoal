@@ -50,6 +50,7 @@ js/
   estudos.materiais.js PDFs de estudo por disciplina: páginas e ligação aos tópicos
   estudos.sessao.js   Janela de estudo/resumo: cronômetro (livre/Pomodoro, só pelo plano) e resumo em páginas
   estudos.resumos.js  Meus Resumos: resumo geral da matéria montado dos resumos dos assuntos; exporta Word/PDF
+  estudos.edital.js   Edital Verticalizado: painel, filtros, selos por tópico, ficha lateral, exporta PDF/Excel
 editais/              PDFs de teste; fora do git (.gitignore) para não serem publicados
 assets/               imagens
 apps/
@@ -111,7 +112,7 @@ A página usa `<body class="auth-pending">` (com `visibility: hidden`) e remove 
 
 ## Supabase
 
-- Tabelas: `editais`, `disciplinas`, `topicos`, `resumos` e, criadas por `supabase/estudos-plano.sql`, `sessoes`, `metas`, `revisoes`, `plano_estudos`, `incidencias` e `materiais`; criadas por `supabase/obras.sql`, `processos`, `documentos`, `andamentos`, `prazos` e `modelos_mensagem` (as três do meio são filhas com `on delete cascade`). Os ids são texto.
+- Tabelas: `editais`, `disciplinas` (com `ordem`, ver `estudos-plano.sql`), `topicos`, `resumos` e, criadas por `supabase/estudos-plano.sql`, `sessoes`, `metas`, `revisoes`, `plano_estudos`, `incidencias` e `materiais`; criadas por `supabase/obras.sql`, `processos`, `documentos`, `andamentos`, `prazos` e `modelos_mensagem` (as três do meio são filhas com `on delete cascade`). Os ids são texto.
 - Storage: bucket privado `obras-docs` (25 MB por arquivo), com a política `obras_docs_dono` em `storage.objects` criada pelo próprio `obras.sql` (o `rls.sql` só cobre as tabelas de `public`). Arquivos abrem por link assinado de 10 min.
 - `incidencias` e `materiais` são carregadas à parte: se faltarem, só os dados delas ficam no navegador e o resto do plano continua no Supabase.
 - Sem as tabelas do plano, o `estudos.plano.js` guarda tudo no `localStorage` e mostra um aviso; quando elas aparecem, envia esses dados uma vez (flag `est_plano_migrado`).
@@ -168,6 +169,13 @@ A página usa `<body class="auth-pending">` (com `visibility: hidden`) e remove 
 - Hierarquia pela numeração do nome do tópico (`1`, `1.1`, `1.1.1`, até 3 níveis): matéria = H1, assunto = H2–H4, página = um nível abaixo do assunto; títulos escritos dentro do resumo são rebaixados (`rebaixarTitulos`). Sem "Mostrar todos os assuntos", entram só os que têm resumo e os seus "pais".
 - Resumo cujo nome não bate com o edital: vai para "Assuntos fora do edital" da matéria, ou para a matéria virtual "Outros resumos" se a disciplina também não existe. `resumosMap` agora guarda `disciplina_nome`/`topico_nome` para isso.
 - Exporta a matéria em `.docx` (html-docx-js) ou PDF (html2pdf). No Chrome/Edge, grava na pasta escolhida (File System Access; o handle fica no IndexedDB `est-resumos`); nos outros, baixa em Downloads.
+
+**Edital Verticalizado (`js/estudos.edital.js`, branch `feat/janela-estudo`).** O `renderEdital()` do v5 só chama `estEdital.render()`; as ações continuam no v5 (`toggleTopic`, `promptRefazer`, `promptRevisao`, `promptTempo`, `deleteTopic`, `addTopic`, `addDisc`, `reorderDisc`, `updateTopicName`, `updateDiscName`).
+- *Painel*: progresso, questões e acerto (com "pontos fracos": < 70% com ao menos 5 questões), tempo, revisões (atrasadas/hoje/7 dias/dominados) e previsão de término (`estPlano.projetar`).
+- *Busca e filtros*: não estudados, acerto < 70%, revisão atrasada, sem resumo, alta incidência (≥ 1,5× a média da disciplina). Disciplinas abertas ficam em `localStorage['est_edital_abertas_<edital>']`, então redesenhar não fecha nada.
+- *Tópico*: recuo pela numeração; selos de incidência, páginas, resumo, revisão (`estPlano.revisoesDoTopico`) e tempo; acerto colorido. Clicar abre a *ficha lateral* (números, ações, TEC, resumo, revisões, PDFs, histórico de sessões, renomear/excluir). Renomear tópico ou disciplina leva junto o resumo (atualiza `disciplina_nome`/`topico_nome` em `resumos`).
+- *Ordem das disciplinas*: coluna `disciplinas.ordem` (adicionada no fim do `estudos-plano.sql`); sem ela, vale a ordem do navegador.
+- *Exportar*: PDF (html2pdf) e Excel (SheetJS 0.18.5), na pasta escolhida em Meus Resumos (`estResumos.pastaDestino`/`gravarArquivo`).
 
 **Controle de Obras (branch `feat/controle-obras`).** Gerenciador de processos no estilo SEI, em `apps/controle-obras/` (abre em página cheia):
 - *Processo* `AAAA.NNNN` (numeração por ano): assunto, serviço (projeto, execução, fiscalização, laudo, consultoria), cliente, contato, local, valores da proposta e do contrato, e fase: Prospecção → Proposta enviada → Em negociação → Contratado → Em execução → Entregue → Encerrado, ou Proposta recusada / Cancelado (finais: marcam `concluido_em`).

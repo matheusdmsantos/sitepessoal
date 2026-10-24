@@ -96,3 +96,6 @@ alter table public.revisoes add column if not exists minutos integer;
 alter table public.metas add column if not exists parte integer;
 alter table public.metas add column if not exists partes integer;
 alter table public.metas add column if not exists paginas_lidas integer;
+
+-- Ordem das disciplinas no Edital Verticalizado (setas ▲▼), igual em todos os aparelhos
+alter table public.disciplinas add column if not exists ordem integer;
