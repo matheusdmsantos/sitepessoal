@@ -2000,6 +2000,7 @@ html, body {
   background: #fff;
   border-radius: var(--est-r-sm);
   overflow: hidden;
+  position: relative;   /* referência da alça de redimensionar imagem */
 }
 .est-sessao-pag-titulo {
   border: none;
@@ -2015,6 +2016,49 @@ html, body {
 .est-sessao-folha .ql-toolbar.ql-snow { border: none; border-bottom: 1px solid #e5e7eb; }
 .est-sessao-folha .ql-container.ql-snow { border: none; flex: 1; min-height: 0; overflow-y: auto; color: #000; font-size: 12pt; }
 .est-sessao-folha .ql-editor { min-height: 100%; padding: 18px 24px; }
+
+/* Imagens do resumo: clicar mostra a alça (js/estudos.sessao.js, IMAGENS) */
+.est-sessao-folha .ql-editor img { max-width: 100%; height: auto; cursor: pointer; }
+.est-img-alca {
+  position: absolute;
+  z-index: 5;
+  border: 2px solid #4f46e5;
+  pointer-events: none;   /* só as alças e a barra recebem cliques */
+}
+.est-img-alca[hidden] { display: none; }
+.est-img-ponto {
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  background: #fff;
+  border: 2px solid #4f46e5;
+  border-radius: 3px;
+  pointer-events: auto;
+  touch-action: none;
+}
+.est-img-ponto.no { left: -8px; top: -8px; cursor: nwse-resize; }
+.est-img-ponto.ne { right: -8px; top: -8px; cursor: nesw-resize; }
+.est-img-ponto.so { left: -8px; bottom: -8px; cursor: nesw-resize; }
+.est-img-ponto.se { right: -8px; bottom: -8px; cursor: nwse-resize; }
+.est-img-barra {
+  position: absolute;
+  left: 50%;
+  bottom: 8px;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px;
+  border-radius: 8px;
+  background: rgba(17, 24, 39, 0.88);
+  pointer-events: auto;
+  white-space: nowrap;
+  font-family: var(--est-font-body);
+}
+.est-img-medida { font-size: 0.72rem; color: #e5e7eb; padding: 0 8px; font-variant-numeric: tabular-nums; }
+.est-img-barra button { font-size: 0.72rem; color: #e5e7eb; padding: 4px 8px; border-radius: 5px; }
+.est-img-barra button:hover { background: rgba(255, 255, 255, 0.15); }
+.est-img-barra button:focus-visible { outline: 2px solid #a5b4fc; }
 
 /* O título de página aparece em "Meus Resumos" e na exportação como um título comum */
 .ql-editor h1.est-pagina { border-bottom: 2px solid #c7d2fe; padding-bottom: 4px; margin-top: 1em; }

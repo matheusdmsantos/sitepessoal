@@ -472,6 +472,25 @@
     return tpl.innerHTML;
   }
 
+  /* No Word, max-width não vale: a imagem precisa de largura e altura em pixels,
+     limitadas à página (A4 com margens de 2 cm ≈ 640 px) */
+  const LARGURA_PAGINA_PX = 640;
+  async function imagensParaWord(html) {
+    const tpl = document.createElement('template');
+    tpl.innerHTML = html;
+    for (const img of tpl.content.querySelectorAll('img')) {
+      const el = new Image();
+      el.src = img.getAttribute('src');
+      try { await el.decode(); } catch (e) { continue; }
+      if (!el.naturalWidth) continue;
+      const w = Math.min(parseInt(img.getAttribute('width'), 10) || el.naturalWidth, LARGURA_PAGINA_PX);
+      img.setAttribute('width', w);
+      img.setAttribute('height', Math.round(w * el.naturalHeight / el.naturalWidth));
+      img.style.maxWidth = '';
+    }
+    return tpl.innerHTML;
+  }
+
   const ESTILO_EXPORT = `
     body { font-family: Calibri, Arial, sans-serif; font-size: 11pt; color: #000; line-height: 1.4; }
     h1 { font-size: 20pt; color: #1f3864; }
@@ -502,7 +521,7 @@
     try {
       if (formato === 'docx') {
         await carregarScript(HTML_DOCX_URL, 'htmlDocx');
-        const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${esc(m.nome)}</title><style>${ESTILO_EXPORT}</style></head><body>${corpo}</body></html>`;
+        const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${esc(m.nome)}</title><style>${ESTILO_EXPORT}</style></head><body>${await imagensParaWord(corpo)}</body></html>`;
         blob = window.htmlDocx.asBlob(html, { orientation: 'portrait', margins: { top: 1134, right: 1134, bottom: 1134, left: 1134 } });
       } else {
         await window.carregarHtml2pdf();

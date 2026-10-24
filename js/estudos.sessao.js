@@ -77,6 +77,7 @@
   }
 
   function mostrarPagina(i) {
+    esconderAlca();
     guardarPaginaAtual();
     atual = Math.max(0, Math.min(i, paginas.length - 1));
     $('est-sessao-pag-titulo').value = paginas[atual].titulo;
@@ -280,16 +281,208 @@
   }
 
   /* =============================================
+     IMAGENS
+     Fotos coladas, arrastadas ou inseridas são reduzidas (ficam em base64 dentro do resumo).
+     Clicar numa imagem mostra alças para redimensionar; a largura fica no atributo width,
+     que o Image do Quill 1.3.6 já preserva.
+  ============================================= */
+  const IMG_LADO_MAX = 1600;        // px no maior lado
+  const IMG_QUALIDADE = 0.85;       // JPEG
+  const IMG_MANTER_PNG = 400 * 1024; // prints pequenos ficam em PNG (texto nítido)
+  const IMG_LARGURA_MIN = 40;
+  let alca = null;                  // { caixa, img }
+
+  function reduzirImagem(arquivo) {
+    return new Promise((ok, falha) => {
+      const url = URL.createObjectURL(arquivo);
+      const img = new Image();
+      img.onload = () => {
+        URL.revokeObjectURL(url);
+        const escala = Math.min(1, IMG_LADO_MAX / Math.max(img.naturalWidth, img.naturalHeight));
+        if (escala === 1 && arquivo.type === 'image/png' && arquivo.size <= IMG_MANTER_PNG) {
+          const leitor = new FileReader();
+          leitor.onload = () => ok(leitor.result);
+          leitor.onerror = falha;
+          leitor.readAsDataURL(arquivo);
+          return;
+        }
+        const c = document.createElement('canvas');
+        c.width = Math.round(img.naturalWidth * escala);
+        c.height = Math.round(img.naturalHeight * escala);
+        const g = c.getContext('2d');
+        g.fillStyle = '#fff';             // PNG transparente não fica preto no JPEG
+        g.fillRect(0, 0, c.width, c.height);
+        g.drawImage(img, 0, 0, c.width, c.height);
+        ok(c.toDataURL('image/jpeg', IMG_QUALIDADE));
+      };
+      img.onerror = () => { URL.revokeObjectURL(url); falha(new Error('Imagem inválida')); };
+      img.src = url;
+    });
+  }
+
+  async function inserirImagens(arquivos) {
+    const imagens = Array.from(arquivos).filter(f => f && f.type.startsWith('image/'));
+    if (!imagens.length) return false;
+    const sel = quill.getSelection(true);
+    let i = sel ? sel.index : quill.getLength();
+    if (sel && sel.length) quill.deleteText(sel.index, sel.length, 'user');
+    status('Inserindo imagem…');
+    for (const f of imagens) {
+      try {
+        quill.insertEmbed(i, 'image', await reduzirImagem(f), 'user');
+        i++;
+      } catch (e) {
+        console.error('Erro ao inserir imagem:', e);
+      }
+    }
+    quill.setSelection(i, 0, 'silent');
+    return true;
+  }
+
+  function larguraUtil() {
+    const st = getComputedStyle(quill.root);
+    return quill.root.clientWidth - parseFloat(st.paddingLeft) - parseFloat(st.paddingRight);
+  }
+
+  function posicionarAlca() {
+    if (!alca) return;
+    const folha = alca.caixa.parentElement.getBoundingClientRect();
+    const r = alca.img.getBoundingClientRect();
+    Object.assign(alca.caixa.style, {
+      left: (r.left - folha.left) + 'px', top: (r.top - folha.top) + 'px',
+      width: r.width + 'px', height: r.height + 'px'
+    });
+    alca.caixa.querySelector('.est-img-medida').textContent = `${Math.round(r.width)} px`;
+  }
+
+  function esconderAlca() {
+    if (alca) alca.caixa.hidden = true;
+    alca = alca && { caixa: alca.caixa, img: null };
+  }
+
+  function mostrarAlca(img) {
+    const caixa = alca ? alca.caixa : criarAlca();
+    alca = { caixa, img };
+    caixa.hidden = false;
+    posicionarAlca();
+  }
+
+  function definirLargura(px) {
+    if (!alca || !alca.img) return;
+    const w = Math.round(Math.max(IMG_LARGURA_MIN, Math.min(px, larguraUtil())));
+    alca.img.removeAttribute('height');
+    const blot = Quill.find(alca.img);
+    if (blot && blot.format) blot.format('width', String(w)); else alca.img.setAttribute('width', w);
+    posicionarAlca();
+    agendarSalvar();
+  }
+
+  function criarAlca() {
+    const caixa = document.createElement('div');
+    caixa.className = 'est-img-alca';
+    caixa.hidden = true;
+    caixa.innerHTML = `
+      ${['no', 'ne', 'so', 'se'].map(c => `<span class="est-img-ponto ${c}" data-canto="${c}" aria-hidden="true"></span>`).join('')}
+      <div class="est-img-barra" role="toolbar" aria-label="Tamanho da imagem">
+        <span class="est-img-medida"></span>
+        ${[25, 50, 75, 100].map(p => `<button type="button" data-pct="${p}">${p}%</button>`).join('')}
+      </div>`;
+    $('est-sessao-editor').parentElement.appendChild(caixa);
+
+    caixa.querySelectorAll('[data-pct]').forEach(b => b.addEventListener('click', () => {
+      definirLargura(larguraUtil() * Number(b.dataset.pct) / 100);
+    }));
+
+    // Arrastar um canto: a largura muda pelo deslocamento horizontal (a altura acompanha)
+    caixa.querySelectorAll('.est-img-ponto').forEach(p => p.addEventListener('pointerdown', ev => {
+      if (!alca || !alca.img) return;
+      ev.preventDefault();
+      p.setPointerCapture(ev.pointerId);
+      const esquerda = p.dataset.canto.endsWith('o');
+      const x0 = ev.clientX;
+      const w0 = alca.img.getBoundingClientRect().width;
+      const mover = e => {
+        const w = Math.max(IMG_LARGURA_MIN, Math.min(w0 + (esquerda ? x0 - e.clientX : e.clientX - x0), larguraUtil()));
+        alca.img.setAttribute('width', Math.round(w));
+        alca.img.removeAttribute('height');
+        posicionarAlca();
+      };
+      const soltar = e => {
+        p.removeEventListener('pointermove', mover);
+        p.removeEventListener('pointerup', soltar);
+        p.removeEventListener('pointercancel', soltar);
+        mover(e);
+        definirLargura(alca.img.getBoundingClientRect().width);
+      };
+      p.addEventListener('pointermove', mover);
+      p.addEventListener('pointerup', soltar);
+      p.addEventListener('pointercancel', soltar);
+    }));
+    return caixa;
+  }
+
+  function iniciarImagens() {
+    const raiz = quill.root;
+    // Captura: roda antes do colar do Quill, que não sabe tratar arquivos
+    raiz.addEventListener('paste', ev => {
+      const arquivos = Array.from((ev.clipboardData && ev.clipboardData.items) || [])
+        .filter(it => it.kind === 'file' && it.type.startsWith('image/')).map(it => it.getAsFile());
+      if (!arquivos.length) return;
+      ev.preventDefault();
+      ev.stopPropagation();
+      inserirImagens(arquivos);
+    }, true);
+    raiz.addEventListener('drop', ev => {
+      const arquivos = ev.dataTransfer && ev.dataTransfer.files;
+      if (!arquivos || !Array.from(arquivos).some(f => f.type.startsWith('image/'))) return;
+      ev.preventDefault();
+      ev.stopPropagation();
+      if (document.caretRangeFromPoint) {
+        const r = document.caretRangeFromPoint(ev.clientX, ev.clientY);
+        const blot = r && Quill.find(r.startContainer, true);
+        if (blot) quill.setSelection(quill.getIndex(blot) + (r.startContainer.nodeType === 3 ? r.startOffset : 0), 0, 'silent');
+      }
+      inserirImagens(arquivos);
+    }, true);
+    quill.getModule('toolbar').addHandler('image', () => {
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = 'image/*';
+      input.multiple = true;
+      input.onchange = () => inserirImagens(input.files);
+      input.click();
+    });
+
+    raiz.addEventListener('click', ev => {
+      if (ev.target.tagName === 'IMG') mostrarAlca(ev.target); else esconderAlca();
+    });
+    raiz.addEventListener('keydown', ev => {
+      if (!alca || !alca.img) return;
+      if (ev.key === 'Delete' || ev.key === 'Backspace') {
+        const blot = Quill.find(alca.img);
+        if (blot) { ev.preventDefault(); quill.deleteText(quill.getIndex(blot), 1, 'user'); }
+      }
+      esconderAlca();
+    }, true);
+    quill.root.addEventListener('scroll', posicionarAlca);
+    quill.container.addEventListener('scroll', posicionarAlca);
+    window.addEventListener('resize', posicionarAlca);
+    quill.on('text-change', () => {
+      if (alca && alca.img && !alca.img.isConnected) esconderAlca(); else posicionarAlca();
+    });
+  }
+
+  /* =============================================
      JANELA
   ============================================= */
   function criarEditor() {
     if (quill || typeof Quill === 'undefined') return;
     quill = new Quill('#est-sessao-editor', {
       theme: 'snow',
-      placeholder: 'Escreva aqui enquanto estuda… Cole imagens com Ctrl+V.',
+      placeholder: 'Escreva aqui enquanto estuda… Cole ou arraste fotos; clique numa foto para mudar o tamanho.',
       modules: {
         toolbar: [
-          [{ 'font': [] }, { 'size': TAMANHOS }],
+          [{ 'font': [] }, { 'size': TAMANHOS.map(t => t === '12pt' ? false : t) }],   // false = padrão (12pt), aparece como "Normal"
           [{ 'header': [2, 3, 4, false] }],
           ['bold', 'italic', 'underline', 'strike'],
           [{ 'color': [] }, { 'background': [] }],
@@ -301,6 +494,7 @@
       }
     });
     quill.on('text-change', (delta, old, fonte) => { if (fonte === 'user') agendarSalvar(); });
+    iniciarImagens();
   }
 
   /* dados = { tipo: 'meta' | 'revisao', id, disc, topico, rotulo, minutos, concluida }
@@ -335,6 +529,7 @@
 
   async function fechar() {
     if (!ctx) return;
+    esconderAlca();
     await salvar();
     clearInterval(tick);
     $('est-modal-sessao').classList.remove('active');
@@ -380,7 +575,8 @@
     titulo.addEventListener('input', renomear);
     titulo.addEventListener('keydown', ev => { if (ev.key === 'Enter') { ev.preventDefault(); quill.focus(); } });
     document.addEventListener('keydown', ev => {
-      if (ev.key === 'Escape' && ctx && !document.querySelector('#est-modal-confirm.active')) fechar();
+      if (ev.key !== 'Escape' || !ctx || document.querySelector('#est-modal-confirm.active')) return;
+      if (alca && alca.img) esconderAlca(); else fechar();
     });
     window.addEventListener('beforeunload', () => { if (ctx) salvar(); });
   }
