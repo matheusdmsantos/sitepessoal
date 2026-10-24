@@ -16,6 +16,38 @@
   const CHAVE_CRONO = 'est_crono';           // { [id da meta/revisão]: estado do cronômetro }
   const TAMANHOS = ['8pt', '9pt', '10pt', '11pt', '12pt', '14pt', '16pt', '18pt', '20pt', '22pt', '24pt', '26pt', '28pt', '36pt', '48pt', '72pt'];
 
+  /* Fontes do editor. As do Google vêm do <link> "fontes do resumo" no estudos.html
+     (o navegador só baixa a fonte quando ela é usada). Ficam no texto como font-family,
+     então valem no resumo geral, no PDF e no Word (se a fonte estiver instalada no PC).
+     serif e monospace são as do Quill antigo (classe ql-font-*): continuam abrindo. */
+  const FONTES = [
+    { id: 'arial', nome: 'Arial', css: 'Arial, Helvetica, sans-serif' },
+    { id: 'calibri', nome: 'Calibri', css: 'Calibri, Carlito, sans-serif' },
+    { id: 'roboto', nome: 'Roboto', css: 'Roboto, sans-serif' },
+    { id: 'open-sans', nome: 'Open Sans', css: '"Open Sans", sans-serif' },
+    { id: 'lato', nome: 'Lato', css: 'Lato, sans-serif' },
+    { id: 'montserrat', nome: 'Montserrat', css: 'Montserrat, sans-serif' },
+    { id: 'georgia', nome: 'Georgia', css: 'Georgia, serif' },
+    { id: 'times', nome: 'Times New Roman', css: '"Times New Roman", Times, serif' },
+    { id: 'merriweather', nome: 'Merriweather', css: 'Merriweather, serif' },
+    { id: 'lora', nome: 'Lora', css: 'Lora, serif' },
+    { id: 'roboto-mono', nome: 'Roboto Mono', css: '"Roboto Mono", monospace' },
+    // Manuscritas
+    { id: 'caveat', nome: 'Caveat', css: 'Caveat, cursive', mao: true },
+    { id: 'patrick-hand', nome: 'Patrick Hand', css: '"Patrick Hand", cursive', mao: true },
+    { id: 'kalam', nome: 'Kalam', css: 'Kalam, cursive', mao: true },
+    { id: 'indie-flower', nome: 'Indie Flower', css: '"Indie Flower", cursive', mao: true },
+    { id: 'architects', nome: 'Architects Daughter', css: '"Architects Daughter", cursive', mao: true },
+    { id: 'shadows', nome: 'Shadows Into Light', css: '"Shadows Into Light", cursive', mao: true },
+    { id: 'gloria', nome: 'Gloria Hallelujah', css: '"Gloria Hallelujah", cursive', mao: true },
+    { id: 'dancing', nome: 'Dancing Script', css: '"Dancing Script", cursive', mao: true },
+    { id: 'marker', nome: 'Permanent Marker', css: '"Permanent Marker", cursive', mao: true },
+    // Do editor antigo
+    { id: 'serif', nome: 'Serif', css: 'Georgia, "Times New Roman", serif', antiga: true },
+    { id: 'monospace', nome: 'Monospace', css: '"Courier New", Consolas, monospace', antiga: true }
+  ];
+  const primeiraFamilia = css => css.split(',')[0].replace(/["']/g, '').trim().toLowerCase();
+
   // Título de página: precisa existir antes do Quill de "Meus Resumos" ser criado,
   // senão ele troca o <h1 class="est-pagina"> por um título comum e as páginas se perdem.
   if (typeof Quill !== 'undefined') {
@@ -30,6 +62,37 @@
     const Size = Quill.import('attributors/style/size');
     Size.whitelist = TAMANHOS;
     Quill.register(Size, true);
+
+    // Fonte: o valor do formato é o id (ex.: "caveat"); no HTML vai o font-family completo
+    const Parchment = Quill.import('parchment');
+    class FonteEstilo extends Parchment.Attributor.Style {
+      add(node, valor) {
+        const f = FONTES.find(x => x.id === valor);
+        if (!f) return false;
+        node.style.fontFamily = f.css;
+        return true;
+      }
+      value(node) {
+        const fam = primeiraFamilia(node.style.fontFamily || '');
+        const f = fam && FONTES.find(x => primeiraFamilia(x.css) === fam);
+        return f ? f.id : '';
+      }
+    }
+    Quill.register(new FonteEstilo('font', 'font-family', { scope: Parchment.Scope.INLINE }), true);
+
+    // Nome de cada fonte no seletor: na lista, escrito com ela; na caixa fechada, em fonte normal
+    const primeiraMao = FONTES.find(f => f.mao).id;
+    const css = `
+      .ql-snow .ql-picker.ql-font { width: 150px; }
+      .ql-snow .ql-picker.ql-font .ql-picker-label::before,
+      .ql-snow .ql-picker.ql-font .ql-picker-item::before { content: "Padrão"; }
+      .ql-snow .ql-picker.ql-font .ql-picker-item[data-value="${primeiraMao}"] { border-top: 1px solid #e5e7eb; margin-top: 4px; padding-top: 8px; }` +
+      FONTES.map(f => `
+      .ql-snow .ql-picker.ql-font .ql-picker-label[data-value="${f.id}"]::before { content: "${f.nome}"; }
+      .ql-snow .ql-picker.ql-font .ql-picker-item[data-value="${f.id}"]::before { content: "${f.nome}"; font-family: ${f.css};${f.mao ? ' font-size: 1.15em;' : ''} }`).join('');
+    const estilo = document.createElement('style');
+    estilo.textContent = css;
+    document.head.appendChild(estilo);
   }
 
   let quill = null;
@@ -592,7 +655,7 @@
       placeholder: 'Escreva aqui enquanto estuda… Cole ou arraste fotos; clique numa foto para mudar o tamanho.',
       modules: {
         toolbar: [
-          [{ 'font': [] }, { 'size': TAMANHOS.map(t => t === '12pt' ? false : t) }],   // false = padrão (12pt), aparece como "Normal"
+          [{ 'font': [false, ...FONTES.filter(f => !f.antiga).map(f => f.id)] }, { 'size': TAMANHOS.map(t => t === '12pt' ? false : t) }],   // false = padrão (12pt), aparece como "Normal"
           [{ 'header': [2, 3, 4, false] }],
           ['bold', 'italic', 'underline', 'strike'],
           [{ 'color': [] }, { 'background': [] }],

@@ -525,6 +525,9 @@
         blob = window.htmlDocx.asBlob(html, { orientation: 'portrait', margins: { top: 1134, right: 1134, bottom: 1134, left: 1134 } });
       } else {
         await window.carregarHtml2pdf();
+        // Fontes manuscritas só são baixadas quando usadas: garante que estejam prontas antes da captura
+        const familias = new Set(Array.from(corpo.matchAll(/font-family:\s*&quot;([^&]+)&quot;|font-family:\s*"?([^",;]+)/g), m => (m[1] || m[2]).trim()));
+        await Promise.all(Array.from(familias, f => document.fonts.load(`16px "${f}"`).catch(() => null)));
         const el = document.createElement('div');
         el.innerHTML = `<style>${ESTILO_EXPORT.replace(/body/g, '.est-res-pdf')}</style><div class="est-res-pdf">${corpo}</div>`;
         blob = await html2pdf().set({
