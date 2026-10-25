@@ -2,6 +2,11 @@
 [build]
   publish = "."
 
+# Funções no servidor (netlify/functions/). A chave service_role do Supabase fica
+# só na variável de ambiente SUPABASE_SERVICE_ROLE_KEY do Netlify.
+[functions]
+  directory = "netlify/functions"
+
 # Cabeçalhos de segurança para todas as páginas.
 [[headers]]
   for = "/*"
@@ -32,6 +37,12 @@
 # Documentação e SQL ficam na pasta, mas não são servidos no site.
 [[redirects]]
   from = "/supabase/*"
+  to = "/index.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/netlify/*"
   to = "/index.html"
   status = 404
   force = true

@@ -47,6 +47,16 @@
       "abrirEm": "pagina"
     },
     {
+      "id": "usuarios",
+      "nome": "Usuários",
+      "descricao": "Cria contas para outras pessoas usarem o Painel de Estudos, cada uma com os próprios dados.",
+      "icone": "👥",
+      "cor": "rgba(200, 204, 212, 0.12)",
+      "categoria": "utilitarios",
+      "url": "apps/usuarios/index.html",
+      "abrirEm": "pagina"
+    },
+    {
       "id": "orcamentador",
       "nome": "Orçamentador Rápido",
       "descricao": "Estimativa de custo de materiais e serviços para obras e reformas.",

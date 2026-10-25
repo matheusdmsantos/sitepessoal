@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="robots" content="noindex, nofollow" />
+  <title>Usuários — Matheus Miranda</title>
+  <style>body.auth-pending { visibility: hidden; }</style>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;600;700&family=Outfit:wght@300;400;500;600;700&display=swap" />
+  <link rel="stylesheet" href="app.css?v=1" />
+</head>
+<body class="auth-pending">
+
+  <header class="us-topo">
+    <a class="us-voltar" href="/apps.html" title="Voltar para os apps">← Apps</a>
+    <h1 class="us-marca">Usuários</h1>
+    <span class="us-eu" id="us-eu"></span>
+  </header>
+
+  <main class="us-main">
+    <div id="us-aviso" class="us-aviso" role="alert" hidden></div>
+
+    <section class="us-card" aria-labelledby="us-novo-titulo">
+      <h2 id="us-novo-titulo">Novo usuário</h2>
+      <p class="us-sub">A pessoa entra com este e-mail e esta senha e passa a ter o próprio Painel de Estudos, vazio e separado do seu. Os outros apps continuam só seus.</p>
+      <form id="us-form" class="us-form" autocomplete="off">
+        <label>
+          <span>E-mail</span>
+          <input type="email" id="us-email" required placeholder="pessoa@exemplo.com" />
+        </label>
+        <label>
+          <span>Senha provisória</span>
+          <span class="us-senha">
+            <input type="text" id="us-senha" required minlength="8" placeholder="mínimo 8 caracteres" spellcheck="false" />
+            <button type="button" class="us-btn sutil" id="us-gerar" title="Gerar uma senha aleatória">🎲 Gerar</button>
+          </span>
+        </label>
+        <button type="submit" class="us-btn primario" id="us-criar">Criar usuário</button>
+      </form>
+      <div id="us-credenciais" class="us-credenciais" hidden>
+        <p>Envie para a pessoa:</p>
+        <pre id="us-credenciais-texto"></pre>
+        <button type="button" class="us-btn" id="us-copiar">📋 Copiar</button>
+      </div>
+    </section>
+
+    <section class="us-card" aria-labelledby="us-lista-titulo">
+      <div class="us-cab">
+        <h2 id="us-lista-titulo">Contas</h2>
+        <button type="button" class="us-btn sutil" id="us-recarregar" title="Recarregar a lista">↻</button>
+      </div>
+      <div id="us-lista" class="us-lista"><p class="us-vazio">Carregando…</p></div>
+    </section>
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4"></script>
+  <script src="/js/supabase-client.js"></script>
+  <script src="/js/auth.js?v=2"></script>
+  <script>if (!requireAuth()) throw new Error('Não autenticado');</script>
+  <script src="app.js?v=1"></script>
+</body>
+</html>

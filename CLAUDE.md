@@ -58,13 +58,15 @@ apps/
   _modelo/            template de app novo, já com login
   louvor/             Escala de Louvor (dados só em localStorage, sem login)
   controle-obras/     Controle de Obras: processos estilo SEI (index.html, app.js, app.css)
+  usuarios/           Usuários (só o dono): cria contas, troca senha e exclui, via a função abaixo
+netlify/functions/usuarios.mjs  Netlify Function com a chave service_role (variável de ambiente)
 supabase/rls.sql      Row Level Security: por usuário nas tabelas com coluna dono; só o dono nas demais
 supabase/multiusuario.sql  coluna dono nas tabelas do Painel de Estudos e papel 'dono' no app_metadata
 supabase/estudos-plano.sql  tabelas do Painel de Estudos (sessoes, metas, revisoes, plano_estudos…)
 supabase/obras.sql    tabelas do Controle de Obras e o bucket "obras-docs"
 ```
 
-`/supabase/*` e `/README.md` retornam 404 no site, por regra no `netlify.toml`.
+`/supabase/*`, `/netlify/*` e `/README.md` retornam 404 no site, por regra no `netlify.toml`.
 
 ## Autenticação: `js/auth.js`
 
@@ -121,7 +123,7 @@ A página usa `<body class="auth-pending">` (com `visibility: hidden`) e remove 
 - Sem as tabelas do plano, o `estudos.plano.js` guarda tudo no `localStorage` e mostra um aviso; quando elas aparecem, envia esses dados uma vez (flag `est_plano_migrado`).
 - **Vários usuários** (`supabase/multiusuario.sql`): as 10 tabelas do Painel de Estudos têm a coluna `dono uuid default auth.uid()` (o front não envia; o banco preenche). Regras de valor único passam a incluir o dono. O dono do site tem `app_metadata.papel = 'dono'`: o hub mostra a ele todos os apps; aos outros, só os com `"todos": true` no `apps.json`; o Controle de Obras manda quem não é dono de volta ao hub. Novos usuários são criados à mão em Authentication → Users (cadastro público desligado). Tabela nova do Painel de Estudos precisa da coluna `dono` (copie o bloco do `multiusuario.sql`) antes de rodar o `rls.sql`.
 - O `rls.sql` liga o RLS em todas as tabelas de `public` e **apaga todas as políticas existentes**. Nas tabelas com coluna `dono`, cria `cada_um_o_seu` (`dono = auth.uid()`); nas demais, `dono_acesso_total`, que só libera para `auth.jwt()->>'email' = 'ecivilmatheus@gmail.com'`.
-- A chave `anon` pode ficar no front-end. A chave `service_role` **nunca** pode aparecer no código.
+- A chave `anon` pode ficar no front-end. A chave `service_role` **nunca** pode aparecer no código: ela fica só na variável de ambiente `SUPABASE_SERVICE_ROLE_KEY` do Netlify, usada pela `netlify/functions/usuarios.mjs` (sem dependências; chama a API admin do Auth com `fetch`). A função confirma o token de quem chama em `/auth/v1/user` e só atende `app_metadata.papel = 'dono'`; não exclui a conta do dono. Não roda no `python -m http.server`: teste na prévia da branch do Netlify.
 
 ## Fluxo de trabalho
 
