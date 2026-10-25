@@ -14,8 +14,7 @@
       "cor": "rgba(100, 160, 220, 0.15)",
       "categoria": "produtividade",
       "url": "estudos.html",
-      "abrirEm": "pagina",
-      "todos": true
+      "abrirEm": "pagina"
     },
     {
       "id": "louvor",
@@ -54,7 +53,8 @@
       "cor": "rgba(200, 204, 212, 0.12)",
       "categoria": "utilitarios",
       "url": "apps/usuarios/index.html",
-      "abrirEm": "pagina"
+      "abrirEm": "pagina",
+      "soDono": true
     },
     {
       "id": "orcamentador",

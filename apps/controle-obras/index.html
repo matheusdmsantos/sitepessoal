@@ -38,12 +38,12 @@
   <!-- Login obrigatório: mantenha estes 4 scripts, nesta ordem, em todo app. -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4"></script>
   <script src="/js/supabase-client.js"></script>
-  <script src="/js/auth.js?v=2"></script>
+  <script src="/js/auth.js?v=3"></script>
   <script>
     if (!requireAuth()) throw new Error('Não autenticado');
     authReady.then((user) => { if (user) document.body.classList.remove('auth-pending'); });
   </script>
 
-  <script src="app.js?v=1"></script>
+  <script src="app.js?v=2"></script>
 </body>
 </html>

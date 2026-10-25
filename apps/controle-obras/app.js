@@ -1027,7 +1027,7 @@
 
     const user = await window.authReady;
     if (!user) return;
-    if (!isOwner(user)) { location.replace('/apps.html'); return; }
+    if (!canUseApp('controle-obras', user)) { location.replace('/apps.html'); return; }
     $('ob-usuario').textContent = window.getSessionUser ? getSessionUser() : '';
     $('ob-app').innerHTML = '<p class="ob-vazio">Carregando…</p>';
     if (await carregar()) render();

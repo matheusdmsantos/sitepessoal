@@ -8,8 +8,10 @@
  *   id, nome, descricao, icone, cor, categoria,
  *   url       caminho do app, ou null para "Em breve"
  *   abrirEm   "visualizador" (dentro do hub, padrão) ou "pagina" (tela cheia)
- *   todos     true para aparecer a todos os usuários; sem ele, só o dono do site
- *             vê o app (isOwner, em auth.js). Os dados são protegidos pelo RLS.
+ *   soDono    true para nunca ser oferecido a outros usuários (ex.: Usuários)
+ *
+ * O dono do site vê todos os apps; os outros usuários, só os liberados para eles
+ * no app Usuários (canUseApp, em auth.js). Os dados são protegidos pelo RLS.
  */
 (function () {
   const state = { apps: [], categorias: [], filtro: 'todos', busca: '', atual: null };
@@ -41,7 +43,7 @@
       const resp = await fetch('apps.json', { cache: 'no-cache' });
       if (!resp.ok) throw new Error(resp.status);
       const dados = await resp.json();
-      state.apps = (dados.apps || []).filter((a) => a.todos || isOwner(user));
+      state.apps = (dados.apps || []).filter((a) => canUseApp(a.id, user));
       state.categorias = [{ id: 'todos', nome: 'Todos', icone: '⬛' }, ...(dados.categorias || [])];
     } catch (err) {
       console.error('Erro ao carregar os apps:', err);

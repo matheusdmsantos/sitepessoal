@@ -86,9 +86,16 @@ insert into storage.buckets (id, name, public, file_size_limit)
 values ('obras-docs', 'obras-docs', false, 26214400)
 on conflict (id) do nothing;
 
--- Só o dono lê e grava os arquivos (o rls.sql cuida só das tabelas de "public")
-drop policy if exists obras_docs_dono on storage.objects;
-create policy obras_docs_dono on storage.objects
-  for all to authenticated
-  using (bucket_id = 'obras-docs' and (auth.jwt() ->> 'email') = 'ecivilmatheus@gmail.com')
-  with check (bucket_id = 'obras-docs' and (auth.jwt() ->> 'email') = 'ecivilmatheus@gmail.com');
+-- Só o dono lê e grava os arquivos (o rls.sql cuida só das tabelas de "public").
+-- Só cria se ainda não existir: o multiusuario.sql troca esta política por uma
+-- por usuário, e rodar este script de novo não pode desfazer isso.
+do $$
+begin
+  if not exists (select 1 from pg_policies where schemaname = 'storage' and tablename = 'objects'
+                 and policyname = 'obras_docs_dono') then
+    create policy obras_docs_dono on storage.objects
+      for all to authenticated
+      using (bucket_id = 'obras-docs' and (auth.jwt() ->> 'email') = 'ecivilmatheus@gmail.com')
+      with check (bucket_id = 'obras-docs' and (auth.jwt() ->> 'email') = 'ecivilmatheus@gmail.com');
+  end if;
+end $$;

@@ -58,7 +58,7 @@ apps/
   _modelo/            template de app novo, já com login
   louvor/             Escala de Louvor (dados só em localStorage, sem login)
   controle-obras/     Controle de Obras: processos estilo SEI (index.html, app.js, app.css)
-  usuarios/           Usuários (só o dono): cria contas, troca senha e exclui, via a função abaixo
+  usuarios/           Usuários (só o dono): cria contas, escolhe os apps de cada uma, troca senha e exclui, via a função abaixo
 netlify/functions/usuarios.mjs  Netlify Function com a chave service_role (variável de ambiente)
 supabase/rls.sql      Row Level Security: por usuário nas tabelas com coluna dono; só o dono nas demais
 supabase/multiusuario.sql  coluna dono nas tabelas do Painel de Estudos e papel 'dono' no app_metadata
@@ -80,6 +80,8 @@ Nenhuma senha fica no código: o login é feito pelo Supabase Auth. O arquivo ex
 | `logout()` | async | Faz `signOut` e volta para o login |
 | `getSessionUser()` | síncrona | Devolve o e-mail do usuário logado |
 | `isOwner(user?)` | síncrona | `true` se `app_metadata.papel = 'dono'` (do `user` dado ou da sessão guardada) |
+| `userApps(user?)` | síncrona | ids dos apps liberados; `null` para o dono (todos) |
+| `canUseApp(id, user?)` | síncrona | O usuário pode abrir o app `id`? |
 | `getPostLoginUrl()` | síncrona | Usa `?next=` se for um caminho interno; senão, `/apps.html` |
 | `authReady` | Promise | Confirma o usuário no servidor; redireciona se a sessão for inválida |
 
@@ -121,7 +123,7 @@ A página usa `<body class="auth-pending">` (com `visibility: hidden`) e remove 
 - Storage: bucket privado `obras-docs` (25 MB por arquivo), com a política `obras_docs_dono` em `storage.objects` criada pelo próprio `obras.sql` (o `rls.sql` só cobre as tabelas de `public`). Arquivos abrem por link assinado de 10 min.
 - `incidencias` e `materiais` são carregadas à parte: se faltarem, só os dados delas ficam no navegador e o resto do plano continua no Supabase.
 - Sem as tabelas do plano, o `estudos.plano.js` guarda tudo no `localStorage` e mostra um aviso; quando elas aparecem, envia esses dados uma vez (flag `est_plano_migrado`).
-- **Vários usuários** (`supabase/multiusuario.sql`): as 10 tabelas do Painel de Estudos têm a coluna `dono uuid default auth.uid()` (o front não envia; o banco preenche). Regras de valor único passam a incluir o dono. O dono do site tem `app_metadata.papel = 'dono'`: o hub mostra a ele todos os apps; aos outros, só os com `"todos": true` no `apps.json`; o Controle de Obras manda quem não é dono de volta ao hub. Novos usuários são criados à mão em Authentication → Users (cadastro público desligado). Tabela nova do Painel de Estudos precisa da coluna `dono` (copie o bloco do `multiusuario.sql`) antes de rodar o `rls.sql`.
+- **Vários usuários** (`supabase/multiusuario.sql`): as tabelas do Painel de Estudos e do Controle de Obras têm a coluna `dono uuid default auth.uid()` (o front não envia; o banco preenche). Regras e índices de valor único passam a incluir o dono (ex.: `processos_numero_idx`). Arquivos do bucket `obras-docs`: a política `obras_docs_dono` libera o caminho cujo 1º segmento é um processo do usuário. O dono do site tem `app_metadata.papel = 'dono'` e vê todos os apps. Os outros veem só os de `app_metadata.apps` (ids do `apps.json`), escolhidos no app Usuários; sem essa lista (contas antigas), só `estudos`. `canUseApp(id, user)`/`userApps(user)` no `auth.js` fazem a conta; o hub filtra por eles e cada app manda quem não tem acesso de volta ao hub. `"soDono": true` no `apps.json` tira o app da lista de escolha. A Escala de Louvor não tem login (dados no navegador), então liberar só mostra o card. Novos usuários são criados no app Usuários (cadastro público desligado). Tabela nova de um app precisa da coluna `dono` (inclua-a na lista do `multiusuario.sql`) antes de rodar o `rls.sql`.
 - O `rls.sql` liga o RLS em todas as tabelas de `public` e **apaga todas as políticas existentes**. Nas tabelas com coluna `dono`, cria `cada_um_o_seu` (`dono = auth.uid()`); nas demais, `dono_acesso_total`, que só libera para `auth.jwt()->>'email' = 'ecivilmatheus@gmail.com'`.
 - A chave `anon` pode ficar no front-end. A chave `service_role` **nunca** pode aparecer no código: ela fica só na variável de ambiente `SUPABASE_SERVICE_ROLE_KEY` do Netlify, usada pela `netlify/functions/usuarios.mjs` (sem dependências; chama a API admin do Auth com `fetch`). A função confirma o token de quem chama em `/auth/v1/user` e só atende `app_metadata.papel = 'dono'`; não exclui a conta do dono. Não roda no `python -m http.server`: teste na prévia da branch do Netlify.
 

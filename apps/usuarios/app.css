@@ -104,3 +104,16 @@ button, input { font-family: inherit; font-size: inherit; color: inherit; }
   .us-item-acoes { justify-content: flex-end; }
 }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+
+/* ─── Apps liberados ─── */
+.us-apps { grid-column: 1 / -1; border: 1px solid var(--border); border-radius: var(--r-md); padding: 10px 14px 12px; }
+.us-apps legend { padding: 0 6px; font-size: 0.75rem; color: var(--accent); text-transform: uppercase; letter-spacing: 0.04em; }
+.us-apps-opcoes { display: flex; flex-wrap: wrap; gap: 8px 18px; }
+.us-app, .us-form .us-app { display: inline-flex; flex-direction: row; align-items: center; gap: 8px; cursor: pointer; font-size: 0.88rem; color: var(--silver); text-transform: none; letter-spacing: 0; }
+.us-app input { width: 16px; height: 16px; accent-color: var(--azul); }
+.us-item { flex-wrap: wrap; }
+.us-item-apps { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+.us-chip { padding: 1px 10px; border-radius: var(--r-full); font-size: 0.72rem; background: var(--bg-glass); border: 1px solid var(--border); color: var(--silver); }
+.us-chip.vazio { color: var(--ambar); border-color: rgba(251, 191, 36, 0.4); }
+.us-editar { flex-basis: 100%; padding: 12px 14px; border-radius: var(--r-md); background: var(--bg-glass); border: 1px dashed var(--border-silver); display: flex; flex-direction: column; gap: 12px; }
+.us-editar-acoes { display: flex; justify-content: flex-end; gap: 8px; }

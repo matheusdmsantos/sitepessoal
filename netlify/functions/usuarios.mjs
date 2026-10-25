@@ -8,13 +8,25 @@
  * confirma esse token no Supabase e só atende se o usuário tiver
  * app_metadata.papel = 'dono' (ver supabase/multiusuario.sql).
  *
- *   GET                                  lista os usuários
- *   POST { acao: 'criar', email, senha } cria, já confirmado
- *   POST { acao: 'senha', id, senha }    troca a senha
- *   POST { acao: 'excluir', id }         apaga o usuário e, em cascata, os dados dele
+ *   GET                                        lista os usuários
+ *   POST { acao: 'criar', email, senha, apps } cria, já confirmado
+ *   POST { acao: 'apps', id, apps }            troca os apps liberados
+ *   POST { acao: 'senha', id, senha }          troca a senha
+ *   POST { acao: 'excluir', id }               apaga o usuário e, em cascata, os dados dele
+ *
+ * "apps" são ids do apps.json, guardados em app_metadata.apps (só o servidor
+ * altera). O hub e cada app conferem com canUseApp (js/auth.js).
  */
 const SUPABASE_URL = 'https://smbvlquqqhtgmvgddjlq.supabase.co';
 const SENHA_MIN = 8;
+const SO_DONO = ['usuarios'];
+
+// Lista de ids válida: sem repetidos, sem apps exclusivos do dono
+function limparApps(apps) {
+  if (!Array.isArray(apps)) return null;
+  const ok = apps.map(String).filter(id => /^[a-z0-9-]{1,40}$/.test(id) && !SO_DONO.includes(id));
+  return [...new Set(ok)].slice(0, 50);
+}
 
 const resposta = (status, corpo) => new Response(JSON.stringify(corpo), {
   status,
@@ -40,7 +52,8 @@ const resumo = u => ({
   email: u.email,
   criado_em: u.created_at,
   ultimo_acesso: u.last_sign_in_at || null,
-  dono: !!(u.app_metadata && u.app_metadata.papel === 'dono')
+  dono: !!(u.app_metadata && u.app_metadata.papel === 'dono'),
+  apps: u.app_metadata && Array.isArray(u.app_metadata.apps) ? u.app_metadata.apps : null
 });
 
 function traduzir(msg) {
@@ -77,11 +90,13 @@ export default async (req) => {
       const email = String(corpo.email || '').trim().toLowerCase();
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return resposta(400, { erro: 'E-mail inválido.' });
       if (!senhaOk(corpo.senha)) return resposta(400, { erro: `A senha precisa ter pelo menos ${SENHA_MIN} caracteres.` });
-      const u = await admin(chave, 'users', 'POST', { email, password: corpo.senha, email_confirm: true });
+      const apps = limparApps(corpo.apps);
+      if (!apps) return resposta(400, { erro: 'Escolha os apps do usuário.' });
+      const u = await admin(chave, 'users', 'POST', { email, password: corpo.senha, email_confirm: true, app_metadata: { apps } });
       return resposta(200, { usuario: resumo(u.user || u) });
     }
 
-    if (corpo.acao === 'senha' || corpo.acao === 'excluir') {
+    if (corpo.acao === 'senha' || corpo.acao === 'excluir' || corpo.acao === 'apps') {
       const id = String(corpo.id || '');
       if (!/^[0-9a-f-]{36}$/i.test(id)) return resposta(400, { erro: 'Usuário inválido.' });
       if (corpo.acao === 'excluir') {
@@ -90,6 +105,14 @@ export default async (req) => {
         if (resumo(alvo.user || alvo).dono) return resposta(400, { erro: 'A conta do dono não pode ser excluída por aqui.' });
         await admin(chave, `users/${id}`, 'DELETE');
         return resposta(200, { ok: true });
+      }
+      if (corpo.acao === 'apps') {
+        const apps = limparApps(corpo.apps);
+        if (!apps) return resposta(400, { erro: 'Escolha os apps do usuário.' });
+        if (id === eu.id) return resposta(400, { erro: 'O dono já vê todos os apps.' });
+        // O Auth junta as chaves do app_metadata: o papel e o resto ficam como estão
+        const u = await admin(chave, `users/${id}`, 'PUT', { app_metadata: { apps } });
+        return resposta(200, { usuario: resumo(u.user || u) });
       }
       if (!senhaOk(corpo.senha)) return resposta(400, { erro: `A senha precisa ter pelo menos ${SENHA_MIN} caracteres.` });
       await admin(chave, `users/${id}`, 'PUT', { password: corpo.senha });

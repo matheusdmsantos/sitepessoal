@@ -86,6 +86,23 @@
     return !!(u && u.app_metadata && u.app_metadata.papel === 'dono');
   };
 
+  /** Apps liberados para o usuário (ids do apps.json), escolhidos no app Usuários e
+   *  guardados em app_metadata.apps. null = todos (dono). Contas criadas antes
+   *  dessa escolha existir ficam só com o Painel de Estudos. */
+  const APPS_PADRAO = ['estudos'];
+  window.userApps = function (user) {
+    const u = user || (readStoredSession() || {}).user;
+    if (window.isOwner(u)) return null;
+    const apps = u && u.app_metadata && u.app_metadata.apps;
+    return Array.isArray(apps) ? apps : APPS_PADRAO.slice();
+  };
+
+  /** O usuário pode abrir o app? Os dados continuam protegidos pelo RLS. */
+  window.canUseApp = function (id, user) {
+    const apps = window.userApps(user);
+    return apps === null || apps.includes(id);
+  };
+
   /** Destino depois do login: ?next= da URL, se for um caminho interno. */
   window.getPostLoginUrl = function () {
     const next = new URLSearchParams(location.search).get('next');

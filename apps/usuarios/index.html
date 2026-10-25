@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;600;700&family=Outfit:wght@300;400;500;600;700&display=swap" />
-  <link rel="stylesheet" href="app.css?v=1" />
+  <link rel="stylesheet" href="app.css?v=2" />
 </head>
 <body class="auth-pending">
 
@@ -24,7 +24,7 @@
 
     <section class="us-card" aria-labelledby="us-novo-titulo">
       <h2 id="us-novo-titulo">Novo usuário</h2>
-      <p class="us-sub">A pessoa entra com este e-mail e esta senha e passa a ter o próprio Painel de Estudos, vazio e separado do seu. Os outros apps continuam só seus.</p>
+      <p class="us-sub">A pessoa entra com este e-mail e esta senha e vê só os apps marcados abaixo. Em cada app, os dados dela começam vazios e ficam separados dos seus.</p>
       <form id="us-form" class="us-form" autocomplete="off">
         <label>
           <span>E-mail</span>
@@ -38,6 +38,10 @@
           </span>
         </label>
         <button type="submit" class="us-btn primario" id="us-criar">Criar usuário</button>
+        <fieldset class="us-apps">
+          <legend>Apps liberados</legend>
+          <div id="us-apps-novo" class="us-apps-opcoes"></div>
+        </fieldset>
       </form>
       <div id="us-credenciais" class="us-credenciais" hidden>
         <p>Envie para a pessoa:</p>
@@ -57,8 +61,8 @@
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4"></script>
   <script src="/js/supabase-client.js"></script>
-  <script src="/js/auth.js?v=2"></script>
+  <script src="/js/auth.js?v=3"></script>
   <script>if (!requireAuth()) throw new Error('Não autenticado');</script>
-  <script src="app.js?v=1"></script>
+  <script src="app.js?v=2"></script>
 </body>
 </html>
