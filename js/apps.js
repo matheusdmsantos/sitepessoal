@@ -44,9 +44,11 @@
       state.apps = (dados.apps || []).filter((a) => a.todos || isOwner(user));
       state.categorias = [{ id: 'todos', nome: 'Todos', icone: '⬛' }, ...(dados.categorias || [])];
     } catch (err) {
+      console.error('Erro ao carregar os apps:', err);
       const box = $('apps-error');
-      box.textContent = 'Não foi possível carregar a lista de apps (apps.json). Recarregue a página.';
+      box.textContent = 'Não foi possível carregar a lista de apps. Recarregue a página (Ctrl+Shift+R).';
       box.hidden = false;
+      box.classList.add('show');
       return;
     }
 
