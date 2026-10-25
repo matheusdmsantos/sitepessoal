@@ -51,13 +51,15 @@ js/
   estudos.sessao.js   Janela de estudo/resumo: cronômetro (livre/Pomodoro, só pelo plano) e resumo em páginas
   estudos.resumos.js  Meus Resumos: resumo geral da matéria montado dos resumos dos assuntos; exporta Word/PDF
   estudos.edital.js   Edital Verticalizado: painel, filtros, selos por tópico, ficha lateral, exporta PDF/Excel
+  estudos.usuario.js  Separa por usuário as chaves est_*/disc_order_* do localStorage (roda antes do v5)
 editais/              PDFs de teste; fora do git (.gitignore) para não serem publicados
 assets/               imagens
 apps/
   _modelo/            template de app novo, já com login
   louvor/             Escala de Louvor (dados só em localStorage, sem login)
   controle-obras/     Controle de Obras: processos estilo SEI (index.html, app.js, app.css)
-supabase/rls.sql      Row Level Security: só o dono lê e grava
+supabase/rls.sql      Row Level Security: por usuário nas tabelas com coluna dono; só o dono nas demais
+supabase/multiusuario.sql  coluna dono nas tabelas do Painel de Estudos e papel 'dono' no app_metadata
 supabase/estudos-plano.sql  tabelas do Painel de Estudos (sessoes, metas, revisoes, plano_estudos…)
 supabase/obras.sql    tabelas do Controle de Obras e o bucket "obras-docs"
 ```
@@ -75,6 +77,7 @@ Nenhuma senha fica no código: o login é feito pelo Supabase Auth. O arquivo ex
 | `login(email, senha)` | async | Devolve `{ ok }` ou `{ ok: false, message }` |
 | `logout()` | async | Faz `signOut` e volta para o login |
 | `getSessionUser()` | síncrona | Devolve o e-mail do usuário logado |
+| `isOwner(user?)` | síncrona | `true` se `app_metadata.papel = 'dono'` (do `user` dado ou da sessão guardada) |
 | `getPostLoginUrl()` | síncrona | Usa `?next=` se for um caminho interno; senão, `/apps.html` |
 | `authReady` | Promise | Confirma o usuário no servidor; redireciona se a sessão for inválida |
 
@@ -116,7 +119,8 @@ A página usa `<body class="auth-pending">` (com `visibility: hidden`) e remove 
 - Storage: bucket privado `obras-docs` (25 MB por arquivo), com a política `obras_docs_dono` em `storage.objects` criada pelo próprio `obras.sql` (o `rls.sql` só cobre as tabelas de `public`). Arquivos abrem por link assinado de 10 min.
 - `incidencias` e `materiais` são carregadas à parte: se faltarem, só os dados delas ficam no navegador e o resto do plano continua no Supabase.
 - Sem as tabelas do plano, o `estudos.plano.js` guarda tudo no `localStorage` e mostra um aviso; quando elas aparecem, envia esses dados uma vez (flag `est_plano_migrado`).
-- O `rls.sql` liga o RLS em todas as tabelas de `public`, **apaga todas as políticas existentes** e cria `dono_acesso_total`, que só libera para `auth.jwt()->>'email' = 'ecivilmatheus@gmail.com'`.
+- **Vários usuários** (`supabase/multiusuario.sql`): as 10 tabelas do Painel de Estudos têm a coluna `dono uuid default auth.uid()` (o front não envia; o banco preenche). Regras de valor único passam a incluir o dono. O dono do site tem `app_metadata.papel = 'dono'`: o hub mostra a ele todos os apps; aos outros, só os com `"todos": true` no `apps.json`; o Controle de Obras manda quem não é dono de volta ao hub. Novos usuários são criados à mão em Authentication → Users (cadastro público desligado). Tabela nova do Painel de Estudos precisa da coluna `dono` (copie o bloco do `multiusuario.sql`) antes de rodar o `rls.sql`.
+- O `rls.sql` liga o RLS em todas as tabelas de `public` e **apaga todas as políticas existentes**. Nas tabelas com coluna `dono`, cria `cada_um_o_seu` (`dono = auth.uid()`); nas demais, `dono_acesso_total`, que só libera para `auth.jwt()->>'email' = 'ecivilmatheus@gmail.com'`.
 - A chave `anon` pode ficar no front-end. A chave `service_role` **nunca** pode aparecer no código.
 
 ## Fluxo de trabalho

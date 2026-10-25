@@ -8,6 +8,8 @@
  *   id, nome, descricao, icone, cor, categoria,
  *   url       caminho do app, ou null para "Em breve"
  *   abrirEm   "visualizador" (dentro do hub, padrão) ou "pagina" (tela cheia)
+ *   todos     true para aparecer a todos os usuários; sem ele, só o dono do site
+ *             vê o app (isOwner, em auth.js). Os dados são protegidos pelo RLS.
  */
 (function () {
   const state = { apps: [], categorias: [], filtro: 'todos', busca: '', atual: null };
@@ -39,7 +41,7 @@
       const resp = await fetch('apps.json', { cache: 'no-cache' });
       if (!resp.ok) throw new Error(resp.status);
       const dados = await resp.json();
-      state.apps = dados.apps || [];
+      state.apps = (dados.apps || []).filter((a) => a.todos || isOwner(user));
       state.categorias = [{ id: 'todos', nome: 'Todos', icone: '⬛' }, ...(dados.categorias || [])];
     } catch (err) {
       const box = $('apps-error');

@@ -14,7 +14,8 @@
       "cor": "rgba(100, 160, 220, 0.15)",
       "categoria": "produtividade",
       "url": "estudos.html",
-      "abrirEm": "pagina"
+      "abrirEm": "pagina",
+      "todos": true
     },
     {
       "id": "louvor",

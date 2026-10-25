@@ -78,6 +78,14 @@
     return s && s.user ? s.user.email : null;
   };
 
+  /** O usuário é o dono do site? Marcado no Supabase (app_metadata.papel = 'dono',
+   *  ver supabase/multiusuario.sql), que só o servidor consegue alterar.
+   *  Aceita o usuário vindo de authReady; sem ele, usa a sessão guardada. */
+  window.isOwner = function (user) {
+    const u = user || (readStoredSession() || {}).user;
+    return !!(u && u.app_metadata && u.app_metadata.papel === 'dono');
+  };
+
   /** Destino depois do login: ?next= da URL, se for um caminho interno. */
   window.getPostLoginUrl = function () {
     const next = new URLSearchParams(location.search).get('next');
