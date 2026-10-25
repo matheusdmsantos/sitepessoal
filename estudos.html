@@ -10,7 +10,7 @@
   <!-- Fontes do editor de resumo (js/estudos.sessao.js, FONTES): só são baixadas quando usadas -->
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Architects+Daughter&family=Caveat:wght@400;700&family=Dancing+Script:wght@400;700&family=Gloria+Hallelujah&family=Indie+Flower&family=Kalam:wght@400;700&family=Lato:ital,wght@0,400;0,700;1,400&family=Lora:ital,wght@0,400;0,700;1,400&family=Merriweather:ital,wght@0,400;0,700;1,400&family=Montserrat:ital,wght@0,400;0,700;1,400&family=Open+Sans:ital,wght@0,400;0,700;1,400&family=Patrick+Hand&family=Permanent+Marker&family=Roboto+Mono:wght@400;700&family=Roboto:ital,wght@0,400;0,700;1,400&family=Shadows+Into+Light&display=swap" />
   <link href="https://cdn.quilljs.com/1.3.6/quill.snow.css" rel="stylesheet">
-  <link rel="stylesheet" href="css/estudos.css?v=16" />
+  <link rel="stylesheet" href="css/estudos.css?v=17" />
 </head>
 <body class="page-estudos">
 
@@ -476,6 +476,15 @@
         <span>📚 Adicionar PDFs</span>
         <small>Só o nome e o número de páginas são guardados; o arquivo continua no seu computador.</small>
       </label>
+      <form id="est-mat-manual" class="est-mat-manual">
+        <span class="est-form-label">Sem PDF? Digite à mão (livro, apostila impressa…)</span>
+        <div class="est-mat-manual-campos">
+          <input type="text" id="est-mat-manual-nome" class="est-form-input" placeholder="Nome do material" aria-label="Nome do material" required />
+          <input type="number" id="est-mat-manual-pag" class="est-form-input" min="1" placeholder="Páginas" aria-label="Número de páginas" required />
+          <select id="est-mat-manual-topico" class="est-form-select" aria-label="Tópico coberto"></select>
+          <button type="submit" class="est-plano-btn">+ Adicionar</button>
+        </div>
+      </form>
       <p id="est-mat-status" class="est-importar-status" role="status"></p>
 
       <div class="est-inc-grade">
@@ -808,6 +817,6 @@
   <script src="js/estudos.edital.js?v=1"></script>
   <script src="js/estudos.importar.js?v=2"></script>
   <script src="js/estudos.incidencia.js?v=1"></script>
-  <script src="js/estudos.materiais.js?v=1"></script>
+  <script src="js/estudos.materiais.js?v=2"></script>
 </body>
 </html>

@@ -70,6 +70,21 @@
     render();
   }
 
+  // Material sem PDF: o nome e as páginas vêm digitados
+  function adicionarManual() {
+    if (!ctx) return;
+    const nome = $('est-mat-manual-nome').value.trim();
+    const paginas = parseInt($('est-mat-manual-pag').value, 10);
+    if (!nome || !(paginas > 0)) return;
+    const topico = $('est-mat-manual-topico').value || ctx.comparar(nome);
+    ctx.lista.push({ id: novoId(), nome, paginas, topicos: topico ? [{ topico_id: topico, de: null, ate: null }] : [] });
+    $('est-mat-manual').reset();
+    $('est-mat-manual-nome').focus();
+    status(`"${nome}" adicionado${topico ? '' : '. Ligue-o a um tópico abaixo'}.`);
+    $('est-mat-salvar').disabled = false;
+    render();
+  }
+
   /* =============================================
      TELA
   ============================================= */
@@ -84,6 +99,9 @@
     };
     $('est-mat-titulo').textContent = `Material de estudo — ${disc.nome}`;
     $('est-mat-arquivo').value = '';
+    $('est-mat-manual').reset();
+    $('est-mat-manual-topico').innerHTML = '<option value="">Tópico (sugerido pelo nome)</option>' +
+      disc.topicos.map(t => `<option value="${t.id}">${escapeHtml(nomeCurto(t, 60))}</option>`).join('');
     $('est-mat-salvar').disabled = true;
     status(ctx.lista.length
       ? `${ctx.lista.length} PDF${ctx.lista.length > 1 ? 's' : ''} nesta disciplina. Adicione mais ou ajuste as ligações.`
@@ -132,8 +150,8 @@
       <div class="est-mat-item ${m.topicos.some(l => l.topico_id) ? '' : 'solto'}">
         <div class="est-mat-cab">
           <span class="est-mat-nome" title="${escapeHtml(m.nome)}">📄 ${escapeHtml(m.nome)}</span>
-          <span class="est-inc-num">${m.paginas} p.</span>
-          <button type="button" class="est-plano-btn sutil" data-acao="remover" data-m="${i}" aria-label="Remover ${escapeHtml(m.nome)}" title="Remover PDF">✕</button>
+          <span class="est-mat-pag"><input type="number" class="est-form-input" min="1" value="${m.paginas}" data-m="${i}" data-campo="paginas" aria-label="Páginas de ${escapeHtml(m.nome)}" title="Número de páginas" /> p.</span>
+          <button type="button" class="est-plano-btn sutil" data-acao="remover" data-m="${i}" aria-label="Remover ${escapeHtml(m.nome)}" title="Remover material">✕</button>
         </div>
         ${m.topicos.map((l, j) => `
         <div class="est-mat-link">
@@ -184,6 +202,17 @@
       if (!el || !ctx) return;
       const m = ctx.lista[el.dataset.m];
       const l = m.topicos[el.dataset.l];
+      if (el.dataset.campo === 'paginas') {
+        const n = parseInt(el.value, 10);
+        if (n > 0) m.paginas = n;
+        el.value = m.paginas;
+        m.topicos.forEach(x => {
+          if (x.de > m.paginas) x.de = null;
+          if (x.ate > m.paginas) x.ate = null;
+        });
+        $('est-mat-salvar').disabled = false;
+        return render();
+      }
       if (el.dataset.campo === 'topico_id') {
         l.topico_id = el.value;
         el.closest('.est-mat-item').classList.toggle('solto', !m.topicos.some(x => x.topico_id));
@@ -194,6 +223,7 @@
       $('est-mat-salvar').disabled = false;
       renderRanking();
     });
+    $('est-mat-manual').addEventListener('submit', e => { e.preventDefault(); adicionarManual(); });
     $('est-mat-salvar').addEventListener('click', salvar);
     $('est-mat-cancelar').addEventListener('click', fechar);
     $('est-modal-materiais-close').addEventListener('click', fechar);
