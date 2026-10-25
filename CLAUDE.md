@@ -185,7 +185,7 @@ A página usa `<body class="auth-pending">` (com `visibility: hidden`) e remove 
 - *Ordem das disciplinas*: coluna `disciplinas.ordem` (adicionada no fim do `estudos-plano.sql`); sem ela, vale a ordem do navegador.
 - *Exportar*: PDF (html2pdf) e Excel (SheetJS 0.18.5), na pasta escolhida em Meus Resumos (`estResumos.pastaDestino`/`gravarArquivo`).
 
-**Controle de Obras (branch `feat/controle-obras`).** Gerenciador de processos no estilo SEI, em `apps/controle-obras/` (abre em página cheia):
+**Gestão de Contratos (antes "Controle de Obras"; id, pasta `apps/controle-obras/` e tabelas mantidos).** Gerenciador de processos no estilo SEI, em `apps/controle-obras/` (abre em página cheia):
 - *Processo* `AAAA.NNNN` (numeração por ano): assunto, serviço (projeto, execução, fiscalização, laudo, consultoria), cliente, contato, local, valores da proposta e do contrato, e fase: Prospecção → Proposta enviada → Em negociação → Contratado → Em execução → Entregue → Encerrado, ou Proposta recusada / Cancelado (finais: marcam `concluido_em`).
 - *Documentos* numerados no processo (0001, 0002…): externos (arquivo no bucket `obras-docs`; PDF e imagem com pré-visualização) ou internos (escritos no Quill 1.3.6, carregado sob demanda; "Imprimir / PDF" abre uma janela de impressão). Incluir Proposta ou Contrato sugere avançar a fase (`AVANCA_FASE`).
 - *Andamento*: tudo o que acontece entra sozinho (abertura, fase, documentos, prazos), além de anotações manuais.

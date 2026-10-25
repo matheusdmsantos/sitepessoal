@@ -37,8 +37,8 @@
     },
     {
       "id": "controle-obras",
-      "nome": "Controle de Obras",
-      "descricao": "Processos de cada obra, da proposta ao encerramento: documentos, andamento e prazos.",
+      "nome": "Gestão de Contratos",
+      "descricao": "Cada serviço, da prospecção ao encerramento: propostas, contratos, documentos, prazos e contato pelo WhatsApp.",
       "icone": "📊",
       "cor": "rgba(80, 170, 130, 0.15)",
       "categoria": "gestao",

@@ -136,7 +136,7 @@
       const el = $('ob-aviso');
       el.hidden = false;
       el.innerHTML = tabelaFaltando(falha.error)
-        ? '⚠️ As tabelas do Controle de Obras ainda não existem no Supabase. Rode <code>supabase/obras.sql</code> e depois <code>supabase/rls.sql</code> no SQL Editor.'
+        ? '⚠️ As tabelas da Gestão de Contratos ainda não existem no Supabase. Rode <code>supabase/obras.sql</code> e depois <code>supabase/rls.sql</code> no SQL Editor.'
         : `⚠️ Não foi possível carregar os processos: ${esc(falha.error.message)}`;
       return false;
     }
