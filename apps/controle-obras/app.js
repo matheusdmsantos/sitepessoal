@@ -654,12 +654,13 @@
               ? `<button type="button" class="ob-btn" data-acao="abrir-arquivo">Abrir em nova aba</button>
                  <button type="button" class="ob-btn" data-acao="baixar-arquivo">Baixar</button>`
               : `<button type="button" class="ob-btn" data-acao="imprimir-doc">Imprimir / PDF</button>`}
+            ${lerProposta(d) ? '<button type="button" class="ob-btn primario" data-acao="revisar-proposta" title="Cria uma revisão nova e guarda esta no histórico">Nova revisão</button>' : ''}
             <button type="button" class="ob-btn" data-acao="editar-doc">Editar</button>
             <button type="button" class="ob-btn perigo" data-acao="excluir-doc">Excluir</button>
           </div>
         </div>
         ${externo ? '<div id="ob-visualizador" class="ob-visualizador"><p class="ob-vazio">Carregando…</p></div>'
-          : lerProposta(d) ? `<iframe class="ob-prop-visor" title="Prévia da proposta" srcdoc="${esc(paginaProposta(p, d, lerProposta(d), 'tela'))}"></iframe>`
+          : lerProposta(d) ? `${htmlHistoricoProposta(p, d)}<iframe class="ob-prop-visor" title="Prévia da proposta" srcdoc="${esc(paginaProposta(p, d, lerProposta(d), 'tela'))}"></iframe>`
           : `<div class="ob-doc-conteudo">${d.conteudo || '<p class="ob-vazio">Documento vazio.</p>'}</div>`}
       </div>`;
   }
@@ -746,6 +747,20 @@
   }
   const totalProposta = itens => itens.reduce((s, it) => s + (Number(it.valor) || 0), 0);
 
+  // Subtotal dos serviços, desconto (em % ou R$) e total final da proposta
+  function contaProposta(dados) {
+    const subtotal = totalProposta(dados.itens);
+    const dv = Number(dados.desconto) || 0;
+    const desconto = Math.min(subtotal, dados.descontoTipo === '%' ? Math.round(subtotal * dv) / 100 : dv);
+    return { subtotal, desconto, total: Math.round((subtotal - desconto) * 100) / 100 };
+  }
+
+  // Cada revisão é um documento novo do processo; a anterior fica guardada como estava
+  const rotuloRev = n => `Rev. ${String(n).padStart(2, '0')}`;
+  const propostasDe = pid => docsDe(pid).map(d => ({ d, dados: lerProposta(d) })).filter(x => x.dados)
+    .sort((a, b) => a.d.numero - b.d.numero);
+  const proximaRevisao = pid => Math.max(-1, ...propostasDe(pid).map(x => x.dados.revisao || 0)) + 1;
+
   function subtituloProposta(itens) {
     if (itens.length === 1) return itens[0].nome.toUpperCase();
     if (itens.some(it => it.id === 'estrutural') && itens.filter(ehProjeto).length > 1) return 'PROJETO ESTRUTURAL E PROJETOS COMPLEMENTARES';
@@ -757,7 +772,8 @@
     // No meio da frase o tipo vai em minúsculas ("edificação comercial"); a área ganha separador de milhar
     const ed = { ...dados.ed, tipo: String(dados.ed.tipo || '').toLowerCase() };
     if (lerNumero(ed.area)) ed.area = lerNumero(ed.area).toLocaleString('pt-BR');
-    const total = totalProposta(itens);
+    const { subtotal, desconto, total } = contaProposta(dados);
+    const revisao = dados.revisao ? `REVISÃO ${String(dados.revisao).padStart(2, '0')}` : '';
     const sub = subtituloProposta(itens);
     const paraEdif = ed.tipo ? `PARA EDIFICAÇÃO ${esc(ed.tipo.toUpperCase())}` : '';
     const mes = new Date(dados.data + 'T12:00:00').toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' }).toUpperCase();
@@ -838,12 +854,12 @@
       <section class="prop-capa">
         <p>PROPOSTA PARA PRESTAÇÃO DE SERVIÇOS</p>
         <p>${esc(sub)}</p>
-        <p>${esc(mes)}</p>
+        <p>${esc(mes)}${revisao ? '<br>' + revisao : ''}</p>
       </section>
 
       <section class="prop-quebra">
         <div class="prop-titulo">
-          <p>PROPOSTA PARA PRESTAÇÃO DE SERVIÇOS<br>${esc(sub)}${paraEdif ? '<br>' + paraEdif : ''}</p>
+          <p>PROPOSTA PARA PRESTAÇÃO DE SERVIÇOS<br>${esc(sub)}${paraEdif ? '<br>' + paraEdif : ''}${revisao ? '<br>' + revisao : ''}</p>
           <p>${dados.cliente ? `CONTRATANTE: ${esc(dados.cliente.toUpperCase())}<br>` : ''}OBRA/SERVIÇO: ${esc(dados.assunto.toUpperCase())}${proponente ? `<br>PROPONENTE: ${esc(proponente.toUpperCase())}` : ''}</p>
         </div>
         <h3>${secao('OBJETO DA PROPOSTA:')}</h3>
@@ -870,6 +886,8 @@
         <h3>${secao(itens.every(ehProjeto) ? 'VALOR DA PROPOSTA PARA PROJETOS' : 'VALOR DA PROPOSTA')}</h3>
         ${itens.map((it, i) => `<p><b>${i + 1}. ${esc(it.nome)}</b>${it.detalhe ? ` (${esc(it.detalhe)})` : ''}.<br>- ${valorTxt(it.valor)}.</p>`).join('')}
         ${projetos.length ? '<p><b>Obs. Todos os Projetos acompanham lista de materiais / quantitativos e especificações técnicas.</b></p>' : ''}
+        ${desconto ? `<p><b>SUBTOTAL (R$)</b><br>- ${valorTxt(subtotal)}.</p>
+        <p><b>DESCONTO${dados.descontoTipo === '%' ? ` (${String(dados.desconto).replace('.', ',')}%)` : ''}</b><br>- ${valorTxt(desconto)}.</p>` : ''}
         <p><b>TOTAL (R$)<br>- ${valorTxt(total)}.</b></p>
         <div class="prop-obs">
           <p>Observações:</p>
@@ -996,8 +1014,12 @@
     w.document.close();
   }
 
-  function formProposta(p, d) {
+  // revisar = true: parte da proposta d, mas salva como documento novo (a próxima revisão)
+  function formProposta(p, d, revisar) {
     const salvo = d && lerProposta(d);
+    const editando = d && !revisar;
+    const rev = editando ? salvo.revisao || 0 : proximaRevisao(p.id);
+    const tituloBase = (d ? d.titulo : p.assunto).replace(/ — Rev\. \d+$/, '');
     const eu = { ...(salvo ? salvo.eu : {}), ...meusDados() };
     const ult = ultimosValores();
     const ed = salvo ? salvo.ed : {
@@ -1005,7 +1027,8 @@
       sistema: 'estrutura de concreto armado e vedação em alvenaria', composicao: p.descricao || ''
     };
     const marcados = salvo ? salvo.itens : [];
-    const sug = !d && sugestaoFase(p, 'Proposta');
+    // Revisão depois de enviada a proposta costuma ser negociação (desconto, ajuste de escopo)
+    const sug = editando ? null : revisar && p.fase === 'proposta' ? 'negociacao' : sugestaoFase(p, 'Proposta');
 
     const linhaCatalogo = s => {
       const it = marcados.find(x => x.id === s.id);
@@ -1031,7 +1054,7 @@
       </div>`;
     const campoEu = (rot, nome, ph = '', cls = '') => campo(rot, `<input class="ob-input" name="eu_${nome}" value="${esc(eu[nome])}" placeholder="${esc(ph)}" />`, cls);
 
-    abrirModal(d ? `Editar proposta ${num4(d.numero)}` : `Gerar proposta — ${p.numero}`, `
+    abrirModal(editando ? `Editar proposta ${num4(d.numero)}` : revisar ? `Nova revisão da proposta (${rotuloRev(rev)})` : `Gerar proposta — ${p.numero}`, `
       <form id="ob-form-proposta" class="ob-form" novalidate>
         <div class="ob-prop-servicos inteiro">
           <div class="ob-prop-item ob-prop-cab"><span>Serviços da proposta</span><span>Prazo</span><span>Valor (R$)</span><span></span></div>
@@ -1052,10 +1075,14 @@
         ${campo('Composição da edificação (um item por linha; o que vem antes de “:” sai em negrito)', `<textarea class="ob-input" name="ed_composicao" rows="4" placeholder="Térreo: garagem, área gourmet e WC">${esc(ed.composicao)}</textarea>`, 'inteiro')}
 
         <h3 class="ob-prop-secao inteiro">Pagamento e documento</h3>
+        ${campo('Desconto (opcional)', `<span class="ob-prop-desconto">
+          <input class="ob-input" name="desconto" inputmode="decimal" placeholder="0" value="${esc(salvo && salvo.desconto ? String(salvo.desconto).replace('.', ',') : '')}" aria-label="Desconto" />
+          <select class="ob-input" name="desconto_tipo" aria-label="Desconto em % ou R$">${opcoes([['%', '%'], ['R$', 'R$']], salvo && salvo.descontoTipo === 'R$' ? 'R$' : '%')}</select></span>`)}
         ${campo('Entrada no aceite (%)', `<input class="ob-input" type="number" min="0" max="100" name="entrada" value="${esc(salvo ? salvo.entrada : 50)}" />`)}
+        ${revisar ? campo('Motivo da revisão (vai para o histórico)', `<input class="ob-input" name="motivo" placeholder="Ex.: desconto pedido pelo cliente" />`, 'inteiro') : ''}
         ${campo('Pranchas estimadas (opcional)', `<input class="ob-input" type="number" min="0" name="pranchas" value="${esc(salvo && salvo.pranchas ? salvo.pranchas : '')}" />`)}
-        ${campo('Data da proposta', `<input type="date" class="ob-input" name="data" value="${esc(d ? d.data : hoje())}" required />`)}
-        ${campo('Título no processo', `<input class="ob-input" name="titulo" value="${esc(d ? d.titulo : p.assunto)}" />`)}
+        ${campo('Data da proposta', `<input type="date" class="ob-input" name="data" value="${esc(editando ? d.data : hoje())}" required />`)}
+        ${campo('Título no processo', `<input class="ob-input" name="titulo" value="${esc(editando ? d.titulo : rev ? `${tituloBase} — ${rotuloRev(rev)}` : tituloBase)}" />`, 'inteiro')}
         ${sug ? `<label class="ob-check inteiro"><input type="checkbox" name="avancar" checked /><span>Mudar a fase para “<b>${esc(fase(sug).nome)}</b>”</span></label>` : ''}
 
         <details class="ob-prop-eu inteiro" ${eu.nomeCompleto ? '' : 'open'}>
@@ -1078,7 +1105,7 @@
         <p class="ob-status inteiro" id="ob-prop-status"></p>
         <div class="ob-form-acoes inteiro">
           <button type="button" class="ob-btn" data-acao="fechar-modal">Cancelar</button>
-          <button type="submit" class="ob-btn primario">${d ? 'Salvar proposta' : 'Gerar proposta'}</button>
+          <button type="submit" class="ob-btn primario">${editando ? 'Salvar proposta' : revisar ? `Gerar ${rotuloRev(rev)}` : 'Gerar proposta'}</button>
         </div>
       </form>`, true);
 
@@ -1087,10 +1114,14 @@
     const escolhida = row => (servicoDoCatalogo(row.dataset.id) ? row.querySelector('[name=sel]').checked : !!row.querySelector('[name=nome]').value.trim());
     const atualizarTotal = () => {
       const sel = linhas().filter(escolhida);
-      const total = sel.reduce((s, row) => s + (lerNumero(row.querySelector('[name=valor]').value) || 0), 0);
+      const conta = contaProposta({
+        itens: sel.map(row => ({ valor: lerNumero(row.querySelector('[name=valor]').value) || 0 })),
+        desconto: lerNumero(form.desconto.value), descontoTipo: form.desconto_tipo.value
+      });
       const dias = sel.filter(row => (servicoDoCatalogo(row.dataset.id) || {}).unidade !== 'meses')
         .reduce((s, row) => s + (Number(row.querySelector('[name=prazo]').value) || 0), 0);
-      $('ob-prop-total').textContent = sel.length ? `Total ${fmtMoeda(total)} · ${dias} dias úteis` : 'Marque os serviços';
+      $('ob-prop-total').textContent = !sel.length ? 'Marque os serviços'
+        : `${conta.desconto ? `${fmtMoeda(conta.subtotal)} − ${fmtMoeda(conta.desconto)} = ` : ''}Total ${fmtMoeda(conta.total)} · ${dias} dias úteis`;
     };
     form.addEventListener('input', ev => {
       const row = ev.target.closest('.ob-prop-item');
@@ -1134,23 +1165,32 @@
       const dados = {
         v: 1, numero: p.numero, cliente: p.cliente || '', assunto: p.assunto, data: g('data') || hoje(), itens,
         ed: { tipo: g('ed_tipo'), area: g('ed_area'), pavimentos: g('ed_pavimentos'), endereco: g('ed_endereco'), sistema: g('ed_sistema'), composicao: g('ed_composicao') },
-        entrada: Number(f.get('entrada')) || 0, pranchas: Number(f.get('pranchas')) || 0, eu: novoEu
+        entrada: Number(f.get('entrada')) || 0, pranchas: Number(f.get('pranchas')) || 0, eu: novoEu,
+        revisao: rev, desconto: lerNumero(f.get('desconto')) || 0, descontoTipo: f.get('desconto_tipo'),
+        motivo: editando ? salvo.motivo || '' : g('motivo')
       };
+      const { total } = contaProposta(dados);
+      if (total <= 0) { status.textContent = 'O desconto não pode zerar a proposta.'; return; }
       const btn = form.querySelector('[type=submit]');
       btn.disabled = true;
       status.textContent = '';
-      const doc = d || { id: novoId('d'), processo_id: p.id, numero: proximoNumeroDoc(p), origem: 'interno', tipo: 'Proposta', criado_em: new Date().toISOString() };
+      const doc = editando ? d : { id: novoId('d'), processo_id: p.id, numero: proximoNumeroDoc(p), origem: 'interno', tipo: 'Proposta', criado_em: new Date().toISOString() };
       Object.assign(doc, {
         titulo: g('titulo') || p.assunto, data: dados.data,
         conteudo: MARCA_PROPOSTA + encodeURIComponent(JSON.stringify(dados)) + '-->' + htmlProposta(dados)
       });
       if (!(await gravar('documentos', doc))) { btn.disabled = false; return; }
-      const total = totalProposta(itens);
-      p.valor_proposta = total;   // registrar() grava o processo com o valor novo
-      if (!d) {
-        documentos.push(doc);
+      if (!editando) documentos.push(doc);
+      // O valor do processo é o da revisão mais recente (corrigir uma revisão antiga não muda o valor)
+      const vigente = propostasDe(p.id).pop();
+      if (vigente && vigente.d.id === doc.id) p.valor_proposta = total;   // registrar() grava o processo
+      if (revisar) {
+        const antes = contaProposta(salvo).total;
+        await registrar(p, 'documento', `Proposta revisada (${rotuloRev(rev)}, documento ${num4(doc.numero)}): ${fmtMoeda(antes)} → ${fmtMoeda(total)}${dados.motivo ? ` — ${dados.motivo}` : ''}.`);
+        if (f.get('avancar')) await mudarFase(p, sug, `revisão da proposta (${rotuloRev(rev)})`);
+      } else if (!editando) {
         await registrar(p, 'documento', `Documento ${num4(doc.numero)} incluído: Proposta — ${doc.titulo} (${fmtMoeda(total)}).`);
-        if (f.get('avancar')) await mudarFase(p, sugestaoFase(p, 'Proposta'), `inclusão do documento ${num4(doc.numero)}`);
+        if (f.get('avancar')) await mudarFase(p, sug, `inclusão do documento ${num4(doc.numero)}`);
       } else {
         await registrar(p, 'documento', `Documento ${num4(doc.numero)} alterado: Proposta — ${fmtMoeda(total)}.`);
       }
@@ -1161,7 +1201,35 @@
     });
   }
 
-  const gerarProposta = p => formProposta(p, null);
+  // Se o processo já tem proposta, "Gerar proposta" parte da mais recente e cria a próxima revisão
+  function gerarProposta(p) {
+    const ultima = propostasDe(p.id).pop();
+    if (ultima) formProposta(p, ultima.d, true); else formProposta(p, null);
+  }
+
+  // Revisões da proposta, com o valor de cada uma e a diferença para a anterior
+  function htmlHistoricoProposta(p, d) {
+    const revs = propostasDe(p.id);
+    if (revs.length < 2) return '';
+    const vigente = revs[revs.length - 1].d;
+    return `<div class="ob-prop-hist">
+      ${d.id !== vigente.id ? `<p class="ob-prop-hist-aviso">Esta revisão foi substituída. A vigente é a ${rotuloRev(lerProposta(vigente).revisao || 0)} (documento ${num4(vigente.numero)}).</p>` : ''}
+      <strong>Histórico da proposta</strong>
+      <ol>${revs.map((x, i) => {
+        const total = contaProposta(x.dados).total;
+        const ant = i ? contaProposta(revs[i - 1].dados).total : null;
+        const dif = ant ? total - ant : 0;
+        return `<li class="${x.d.id === d.id ? 'esta' : ''}">
+          <a href="#/p/${esc(p.id)}/d/${esc(x.d.id)}">${rotuloRev(x.dados.revisao || 0)}</a>
+          <span>${fmtData(x.d.data)}</span>
+          <b>${fmtMoeda(total)}</b>
+          ${dif ? `<small class="${dif < 0 ? 'menos' : 'mais'}">${dif < 0 ? '−' : '+'}${fmtMoeda(Math.abs(dif))} (${dif < 0 ? '−' : '+'}${(Math.abs(dif) / ant * 100).toLocaleString('pt-BR', { maximumFractionDigits: 1 })}%)</small>` : '<small></small>'}
+          <em>${esc(x.dados.motivo || '')}</em>
+          ${x.d.id === vigente.id ? '<span class="ob-prop-vigente">vigente</span>' : ''}
+        </li>`;
+      }).join('')}</ol>
+    </div>`;
+  }
 
   function formProcesso(p) {
     const novo = !p;
@@ -1422,6 +1490,9 @@
     if (!(await apagar('documentos', d.id))) return;
     if (d.arquivo_caminho) sb.storage.from(BUCKET).remove([d.arquivo_caminho]);
     documentos = documentos.filter(x => x.id !== d.id);
+    // Sem a revisão excluída, o valor do processo volta a ser o da proposta que sobrou mais recente
+    const vigente = lerProposta(d) && propostasDe(p.id).pop();
+    if (vigente) p.valor_proposta = contaProposta(vigente.dados).total;
     await registrar(p, 'documento', `Documento ${num4(d.numero)} excluído: ${d.tipo} — ${d.titulo}.`);
     location.hash = `#/p/${p.id}`;
   }
@@ -1466,6 +1537,7 @@
     else if (acao === 'doc-externo' && p) formExterno(p, null);
     else if (acao === 'doc-interno' && p) formInterno(p, null);
     else if (acao === 'gerar-proposta' && p) gerarProposta(p);
+    else if (acao === 'revisar-proposta' && p && d) formProposta(p, d, true);
     else if (acao === 'editar-doc' && p && d) (lerProposta(d) ? formProposta : d.origem === 'interno' ? formInterno : formExterno)(p, d);
     else if (acao === 'excluir-doc' && p && d) excluirDoc(p, d);
     else if (acao === 'imprimir-doc' && p && d) {
