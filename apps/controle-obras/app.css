@@ -174,6 +174,10 @@ input[type="date"].ob-input { color-scheme: dark; }
 .ob-andamento li.tipo-criacao::before { background: var(--ciano); }
 .ob-andamento li.tipo-mensagem::before { background: #25d366; }
 .ob-andamento li.tipo-mensagem span { white-space: pre-line; }
+.ob-andamento li:has(.ob-and-apagar) { padding-right: 32px; }
+.ob-and-apagar { position: absolute; top: 0; right: 0; width: 26px; height: 26px; border: 0; border-radius: var(--r-sm, 6px); background: transparent; color: var(--accent-muted); cursor: pointer; opacity: .45; transition: opacity .15s, color .15s, background .15s; }
+.ob-andamento li:hover .ob-and-apagar, .ob-and-apagar:focus-visible { opacity: 1; }
+.ob-and-apagar:hover { color: #f87171; background: rgba(248, 113, 113, 0.12); }
 .ob-dados-acoes { margin-top: 16px; display: flex; gap: 8px; flex-wrap: wrap; }
 .ob-modelos { display: flex; flex-direction: column; gap: 12px; margin: 14px 0; max-height: 60vh; overflow-y: auto; padding-right: 4px; }
 .ob-modelo { border: 1px solid var(--border); border-radius: var(--r-md); padding: 12px; display: flex; flex-direction: column; gap: 8px; }

@@ -630,7 +630,8 @@
           <button type="submit" class="ob-btn">Registrar</button>
         </form>
         <ol class="ob-andamento">
-          ${as.map(a => `<li class="tipo-${esc(a.tipo)}"><time>${fmtDataHora(a.data)}</time><span>${esc(a.descricao)}</span></li>`).join('')}
+          ${as.map(a => `<li class="tipo-${esc(a.tipo)}"><time>${fmtDataHora(a.data)}</time><span>${esc(a.descricao)}</span>${
+            ['mensagem', 'anotacao'].includes(a.tipo) ? `<button type="button" class="ob-and-apagar" data-acao="andamento-apagar" data-id="${esc(a.id)}" title="Excluir do andamento" aria-label="Excluir do andamento">✕</button>` : ''}</li>`).join('')}
         </ol>
       </div>
 
@@ -1555,6 +1556,21 @@
       prazos = prazos.filter(x => x.id !== z.id);
       await registrar(p, 'prazo', `Prazo excluído: ${z.descricao} (${fmtData(z.data)}).`);
       render();
+    } else if (acao === 'andamento-apagar' && p) {
+      const a = andamentos.find(x => x.id === el.dataset.id);
+      if (!a || !confirm(a.tipo === 'mensagem' ? 'Excluir este registro de mensagem do andamento?' : 'Excluir esta anotação do andamento?')) return;
+      // Mensagem que cumpriu um lembrete (mesmo modelo, cumprido no dia do envio): oferece reabri-lo
+      const dia = dataLocal(new Date(a.data));
+      const z = a.tipo === 'mensagem' && prazos.find(x => x.processo_id === p.id && x.modelo_id && x.concluido_em === dia
+        && a.descricao.startsWith(`Mensagem por WhatsApp (${modelos.find(m => m.id === x.modelo_id)?.nome})`));
+      if (!(await apagar('andamentos', a.id))) return;
+      andamentos = andamentos.filter(x => x.id !== a.id);
+      if (z && confirm(`Esta mensagem tinha cumprido o lembrete “${z.descricao}”. Reabrir o lembrete?`)) {
+        z.concluido_em = null;
+        await gravar('prazos', z);
+      }
+      render();
+      aviso('Registro excluído do andamento.');
     }
   }
 
