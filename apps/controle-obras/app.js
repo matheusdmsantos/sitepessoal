@@ -61,6 +61,8 @@
   // num comentário no início do conteúdo, para "Editar" reabrir o formulário.
   const SERVICOS_PROPOSTA = window.OB_PROPOSTA_SERVICOS || [];
   const MARCA_PROPOSTA = '<!--ob-proposta:';
+  // Logo do dono do site no papel timbrado (faixa do cabeçalho e marca d'água). Ao trocar a imagem, troque o nome.
+  const LOGO_DONO = { logo: '/assets/logo-mm.webp', simbolo: '/assets/logo-mm-simbolo.webp' };
 
   let usuario = null;
   let processos = [], documentos = [], andamentos = [], prazos = [], modelos = [];
@@ -734,6 +736,13 @@
     catch { return null; }
   }
   const corpoProposta = d => d.conteudo.slice(d.conteudo.indexOf('-->') + 3);
+
+  // "86998645503" → "+55 (86) 99864-5503"; o que não for número de telefone fica como está
+  function fmtTelefone(t) {
+    const n = String(t || '').replace(/\D/g, '').replace(/^55(?=\d{10,11}$)/, '');
+    if (n.length !== 10 && n.length !== 11) return t;
+    return `+55 (${n.slice(0, 2)}) ${n.slice(2, -4)}-${n.slice(-4)}`;
+  }
   const totalProposta = itens => itens.reduce((s, it) => s + (Number(it.valor) || 0), 0);
 
   function subtituloProposta(itens) {
@@ -743,7 +752,10 @@
   }
 
   function htmlProposta(dados) {
-    const { itens, ed, eu } = dados;
+    const { itens, eu } = dados;
+    // No meio da frase o tipo vai em minúsculas ("edificação comercial"); a área ganha separador de milhar
+    const ed = { ...dados.ed, tipo: String(dados.ed.tipo || '').toLowerCase() };
+    if (lerNumero(ed.area)) ed.area = lerNumero(ed.area).toLocaleString('pt-BR');
     const total = totalProposta(itens);
     const sub = subtituloProposta(itens);
     const paraEdif = ed.tipo ? `PARA EDIFICAÇÃO ${esc(ed.tipo.toUpperCase())}` : '';
@@ -876,7 +888,7 @@
         </table>
         ${totalDias ? `<p><b>Prazo Total Estimado:</b> O prazo total para entrega de todos os projetos é de <b>${totalDias} (${extenso(totalDias)}) ${totalDias === 1 ? 'dia útil' : 'dias úteis'}</b>.</p>` : ''}
         ${eu.pagamento ? `<h3>${secao('DADOS PARA PAGAMENTO')}</h3>
-        ${lista([`Pagamento via depósito/transferência ou PIX:<br>${comQuebras(eu.pagamento)}`])}
+        ${lista([/pagamento via/i.test(eu.pagamento) ? comQuebras(eu.pagamento) : `Pagamento via depósito/transferência ou PIX:<br>${comQuebras(eu.pagamento)}`])}
         <p class="prop-obs">Obs: O comprovante de pagamento e esta proposta assinada deverão ser enviados via e-mail ou WhatsApp para a consolidação da proposta e dos prazos.</p>` : ''}
         <p class="prop-aceite">Aceito os termos acima descritos nesta proposta, comprometendo-me a fornecer todas as informações necessárias para o objeto desta proposta e a cumprir com os pagamentos dentro dos prazos previstos.<br>Data: ___/___/___</p>
         <p class="prop-assinatura"><span></span>CONTRATANTE${dados.cliente ? '<br>' + esc(dados.cliente.toUpperCase()) : ''}</p>
@@ -921,13 +933,19 @@
       background: #4b5059; color: #fff; clip-path: polygon(24% 0, 100% 0, 100% 100%, 0 100%); font-family: Arial, Helvetica, sans-serif; }
     .prop-cab-nome { font-size: 19px; font-weight: bold; letter-spacing: 0.02em; }
     .prop-cab-prof { font-size: 8.5px; letter-spacing: 0.32em; margin-top: 2px; }
+    .prop-cab-marca.com-logo { min-height: 128px; padding: 6px 30px 6px 110px; align-items: center; justify-content: center; }
+    .prop-cab-marca.com-logo img { height: 116px; width: auto; display: block; }
+    .prop-marca-dagua { position: fixed; right: 0; bottom: 14mm; width: 21mm; opacity: 0.5; }
     .prop-frase { text-align: center !important; font-style: italic; font-size: 9px !important; margin-top: 14px; }`;
 
+  const urlAbsoluta = caminho => new URL(caminho, location.href).href;   // a janela de impressão é about:blank
+
   function cabecalhoProposta(eu) {
-    const dados = [eu.nome ? `<b>${esc(eu.nome)}</b>` : '', esc(eu.cargo), esc(eu.telefone), esc(eu.email)].filter(Boolean).join('<br>');
+    const dados = [eu.nome ? `<b>${esc(eu.nome)}</b>` : '', esc(eu.cargo), esc(fmtTelefone(eu.telefone)), esc(eu.email)].filter(Boolean).join('<br>');
     return `<div class="prop-cab">
       <div class="prop-cab-dados">${dados}</div>
-      ${eu.nome ? `<div class="prop-cab-marca"><span class="prop-cab-nome">${esc(eu.nome.toUpperCase())}</span>
+      ${eu.logo ? `<div class="prop-cab-marca com-logo"><img src="${esc(urlAbsoluta(eu.logo))}" alt="${esc(eu.nome || 'Logo')}" /></div>`
+      : eu.nome ? `<div class="prop-cab-marca"><span class="prop-cab-nome">${esc(eu.nome.toUpperCase())}</span>
         ${eu.profissao ? `<span class="prop-cab-prof">${esc(eu.profissao.toUpperCase())}</span>` : ''}
         ${eu.registro ? `<span class="prop-cab-prof">${esc(eu.registro.toUpperCase())}</span>` : ''}</div>` : ''}
     </div>`;
@@ -936,7 +954,7 @@
   function imprimirProposta(p, d, dados) {
     const w = window.open('', '_blank');
     if (!w) { aviso('Libere as janelas pop-up para imprimir.'); return; }
-    const eu = dados.eu || {};
+    const eu = { ...(isOwner() ? LOGO_DONO : {}), ...(dados.eu || {}) };
     w.document.write(`<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8" />
       <title>Proposta ${esc(p.numero)} - ${esc(dados.cliente || p.assunto)}</title>
       <style>${CSS_PROPOSTA}${CSS_IMPRESSAO}</style></head><body class="ob-proposta">
@@ -945,6 +963,7 @@
         <tbody><tr><td>${corpoProposta(d)}</td></tr></tbody>
         <tfoot><tr><td>${eu.frase ? `<p class="prop-frase">${esc(eu.frase).replace(/\n/g, '<br>')}</p>` : ''}</td></tr></tfoot>
       </table>
+      ${eu.simbolo ? `<img class="prop-marca-dagua" src="${esc(urlAbsoluta(eu.simbolo))}" alt="" />` : ''}
       <script>window.onload = () => window.print();<\/script>
       </body></html>`);
     w.document.close();
