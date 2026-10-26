@@ -659,7 +659,8 @@
           </div>
         </div>
         ${externo ? '<div id="ob-visualizador" class="ob-visualizador"><p class="ob-vazio">Carregando…</p></div>'
-          : `<div class="ob-doc-conteudo ${lerProposta(d) ? 'ob-proposta' : ''}">${d.conteudo || '<p class="ob-vazio">Documento vazio.</p>'}</div>`}
+          : lerProposta(d) ? `<iframe class="ob-prop-visor" title="Prévia da proposta" srcdoc="${esc(paginaProposta(p, d, lerProposta(d), 'tela'))}"></iframe>`
+          : `<div class="ob-doc-conteudo">${d.conteudo || '<p class="ob-vazio">Documento vazio.</p>'}</div>`}
       </div>`;
   }
 
@@ -919,14 +920,8 @@
     .ob-proposta .prop-assinatura { text-align: center; font-weight: bold; margin-top: 48px; }
     .ob-proposta .prop-assinatura span { display: block; width: 300px; max-width: 100%; margin: 0 auto 4px; border-top: 1px solid #111; }`;
 
-  const CSS_IMPRESSAO = `
-    @page { size: A4; margin: 10mm 16mm 12mm; }
-    body { margin: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-    table.prop-pagina { width: 100%; border-collapse: collapse; }
-    table.prop-pagina > * > tr > td { padding: 0; border: 0; }
-    .prop-quebra { break-before: page; }
-    .ob-proposta .prop-capa { min-height: 180mm; padding: 20mm 0 0; }
-    .prop-prazo tr { break-inside: avoid; }
+  // Papel timbrado: cabeçalho, rodapé e marca d'água, iguais na prévia e na impressão
+  const CSS_TIMBRADO = `
     .prop-cab { display: flex; justify-content: space-between; align-items: center; gap: 20px; margin-bottom: 16px; }
     .prop-cab-dados { font-size: 12px; line-height: 1.6; }
     .prop-cab-marca { position: relative; min-width: 330px; min-height: 92px; padding: 14px 22px 12px 96px; display: flex; flex-direction: column; align-items: flex-end; justify-content: flex-end;
@@ -935,8 +930,28 @@
     .prop-cab-prof { font-size: 8.5px; letter-spacing: 0.32em; margin-top: 2px; }
     .prop-cab-marca.com-logo { min-height: 128px; padding: 6px 30px 6px 110px; align-items: center; justify-content: center; }
     .prop-cab-marca.com-logo img { height: 116px; width: auto; display: block; }
-    .prop-marca-dagua { position: fixed; right: 0; bottom: 14mm; width: 21mm; opacity: 0.5; }
-    .prop-frase { text-align: center !important; font-style: italic; font-size: 9px !important; margin-top: 14px; }`;
+    .prop-marca-dagua { width: 21mm; opacity: 0.5; }
+    .prop-frase { text-align: center !important; font-style: italic; font-size: 9px !important; margin-top: 14px; }
+    .ob-proposta .prop-capa { min-height: 180mm; padding: 20mm 0 0; }`;
+
+  // Impressão: o navegador pagina; thead/tfoot repetem o timbrado em cada página
+  const CSS_IMPRESSAO = `
+    @page { size: A4; margin: 10mm 16mm 12mm; }
+    body { margin: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    table.prop-pagina { width: 100%; border-collapse: collapse; }
+    table.prop-pagina > * > tr > td { padding: 0; border: 0; }
+    .prop-quebra { break-before: page; }
+    .prop-prazo tr { break-inside: avoid; }
+    .prop-marca-dagua { position: fixed; right: 0; bottom: 14mm; }`;
+
+  // Prévia na tela: cada seção numa folha A4 (seção longa estica a folha), como num leitor de PDF
+  const CSS_TELA = `
+    html, body { margin: 0; background: #d5d8df; }
+    body { padding: 20px 12px 4px; }
+    .folha { position: relative; box-sizing: border-box; width: 210mm; min-height: 297mm; margin: 0 auto 18px; padding: 10mm 16mm 12mm;
+      display: flex; flex-direction: column; background: #fff; box-shadow: 0 2px 14px rgba(0, 0, 0, 0.28); }
+    .folha-corpo { flex: 1; }
+    .folha .prop-marca-dagua { position: absolute; right: 16mm; bottom: 24mm; }`;
 
   const urlAbsoluta = caminho => new URL(caminho, location.href).href;   // a janela de impressão é about:blank
 
@@ -951,21 +966,33 @@
     </div>`;
   }
 
+  // Página completa da proposta: modo 'imprimir' (abre o diálogo de impressão) ou 'tela' (prévia em folhas)
+  function paginaProposta(p, d, dados, modo) {
+    const eu = { ...(isOwner() ? LOGO_DONO : {}), ...(dados.eu || {}) };
+    const cab = cabecalhoProposta(eu);
+    const rodape = eu.frase ? `<p class="prop-frase">${esc(eu.frase).replace(/\n/g, '<br>')}</p>` : '';
+    const marca = eu.simbolo ? `<img class="prop-marca-dagua" src="${esc(urlAbsoluta(eu.simbolo))}" alt="" />` : '';
+    const corpo = modo === 'tela'
+      ? (corpoProposta(d).match(/<section[\s\S]*?<\/section>/g) || [])
+        .map(sec => `<div class="folha">${cab}<div class="folha-corpo">${sec}</div>${rodape}${marca}</div>`).join('')
+        // Folha de 210 mm reduzida para caber na largura da prévia
+        + '<script>const caber = () => { document.body.style.zoom = Math.min(1, (innerWidth - 40) / 800); }; caber(); addEventListener("resize", caber);<\/script>'
+      : `<table class="prop-pagina">
+          <thead><tr><td>${cab}</td></tr></thead>
+          <tbody><tr><td>${corpoProposta(d)}</td></tr></tbody>
+          <tfoot><tr><td>${rodape}</td></tr></tfoot>
+        </table>${marca}
+        <script>window.onload = () => window.print();<\/script>`;
+    return `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8" />
+      <title>Proposta ${esc(p.numero)} - ${esc(dados.cliente || p.assunto)}</title>
+      <style>${CSS_PROPOSTA}${CSS_TIMBRADO}${modo === 'tela' ? CSS_TELA : CSS_IMPRESSAO}</style></head>
+      <body class="ob-proposta">${corpo}</body></html>`;
+  }
+
   function imprimirProposta(p, d, dados) {
     const w = window.open('', '_blank');
     if (!w) { aviso('Libere as janelas pop-up para imprimir.'); return; }
-    const eu = { ...(isOwner() ? LOGO_DONO : {}), ...(dados.eu || {}) };
-    w.document.write(`<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8" />
-      <title>Proposta ${esc(p.numero)} - ${esc(dados.cliente || p.assunto)}</title>
-      <style>${CSS_PROPOSTA}${CSS_IMPRESSAO}</style></head><body class="ob-proposta">
-      <table class="prop-pagina">
-        <thead><tr><td>${cabecalhoProposta(eu)}</td></tr></thead>
-        <tbody><tr><td>${corpoProposta(d)}</td></tr></tbody>
-        <tfoot><tr><td>${eu.frase ? `<p class="prop-frase">${esc(eu.frase).replace(/\n/g, '<br>')}</p>` : ''}</td></tr></tfoot>
-      </table>
-      ${eu.simbolo ? `<img class="prop-marca-dagua" src="${esc(urlAbsoluta(eu.simbolo))}" alt="" />` : ''}
-      <script>window.onload = () => window.print();<\/script>
-      </body></html>`);
+    w.document.write(paginaProposta(p, d, dados, 'imprimir'));
     w.document.close();
   }
 
@@ -1510,10 +1537,6 @@
     });
     $('ob-modal').addEventListener('click', ev => { if (ev.target.id === 'ob-modal') fecharModal(); });
     window.addEventListener('hashchange', () => { render(); window.scrollTo(0, 0); });
-
-    const estilo = document.createElement('style');
-    estilo.textContent = CSS_PROPOSTA;
-    document.head.appendChild(estilo);
 
     const user = await window.authReady;
     if (!user) return;
