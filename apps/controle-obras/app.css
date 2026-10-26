@@ -217,7 +217,8 @@ input[type="date"].ob-input { color-scheme: dark; }
 .ob-check { display: flex; gap: 10px; align-items: center; font-size: 0.85rem; cursor: pointer; padding: 10px 12px; border-radius: var(--r-sm); background: rgba(251, 191, 36, 0.08); color: var(--ambar); }
 .ob-check[hidden] { display: none; }
 .ob-check input { width: 17px; height: 17px; accent-color: var(--ambar); }
-.ob-form-acoes { display: flex; justify-content: flex-end; gap: 10px; margin-top: 4px; }
+.ob-form-acoes { display: flex; justify-content: flex-end; gap: 10px; margin-top: 4px; flex-wrap: wrap; }
+.ob-form-acoes .ob-btn-esquerda { margin-right: auto; }
 .ob-status { font-size: 0.82rem; color: var(--ambar); }
 .ob-status:empty { display: none; }
 .ob-editor { background: #fdfdfc; color: #1b1b1b; border-radius: var(--r-sm); }

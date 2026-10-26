@@ -57,6 +57,10 @@
       texto: '{saudacao}, {nome}! Tudo certo com {assunto}?\n\nSe ficou alguma pendência, me avise. E se puder indicar o meu trabalho para alguém, agradeço muito!' }
   ];
 
+  // Proposta gerada pelo botão "Gerar proposta": validade em dias e quem assina (do dono do site)
+  const VALIDADE_PROPOSTA = 30;
+  const RESPONSAVEL = { nome: 'Matheus Miranda', titulo: 'Engenheiro Civil' };
+
   let processos = [], documentos = [], andamentos = [], prazos = [], modelos = [];
   let modelosRemoto = false;
   let filtro = { fase: 'ativos', busca: '' };
@@ -96,6 +100,35 @@
     if (s.includes(',')) s = s.replace(/\./g, '').replace(',', '.');
     const n = parseFloat(s);
     return isNaN(n) ? null : n;
+  }
+
+  // 6200 → "seis mil e duzentos reais"
+  function porExtenso(valor) {
+    const un = ['', 'um', 'dois', 'três', 'quatro', 'cinco', 'seis', 'sete', 'oito', 'nove', 'dez', 'onze', 'doze',
+      'treze', 'quatorze', 'quinze', 'dezesseis', 'dezessete', 'dezoito', 'dezenove'];
+    const dez = ['', '', 'vinte', 'trinta', 'quarenta', 'cinquenta', 'sessenta', 'setenta', 'oitenta', 'noventa'];
+    const cen = ['', 'cento', 'duzentos', 'trezentos', 'quatrocentos', 'quinhentos', 'seiscentos', 'setecentos', 'oitocentos', 'novecentos'];
+    const ate999 = n => {
+      if (n === 100) return 'cem';
+      const r = n % 100;
+      const partes = [cen[Math.floor(n / 100)], r < 20 ? un[r] : dez[Math.floor(r / 10)] + (r % 10 ? ' e ' + un[r % 10] : '')];
+      return partes.filter(Boolean).join(' e ');
+    };
+    const total = Math.round(Number(valor) * 100);
+    const inteiro = Math.floor(total / 100), cent = total % 100;
+    const grupos = [];
+    let ultimo = 0;   // valor do último grupo escrito (milhões, milhares ou unidades)
+    const mi = Math.floor(inteiro / 1e6), mil = Math.floor(inteiro / 1000) % 1000, u = inteiro % 1000;
+    if (mi) { grupos.push(ate999(mi) + (mi === 1 ? ' milhão' : ' milhões')); ultimo = mi; }
+    if (mil) { grupos.push(mil === 1 ? 'mil' : ate999(mil) + ' mil'); ultimo = mil; }
+    if (u) { grupos.push(ate999(u)); ultimo = u; }
+    // "e" antes do último grupo quando ele é redondo ou menor que cem: "seis mil e duzentos"
+    let txt = grupos.length > 1 && (ultimo < 100 || ultimo % 100 === 0)
+      ? grupos.slice(0, -1).join(' ') + ' e ' + grupos[grupos.length - 1]
+      : grupos.join(' ');
+    if (inteiro) txt += inteiro === 1 ? ' real' : inteiro % 1e6 === 0 ? ' de reais' : ' reais';
+    if (cent) txt += (inteiro ? ' e ' : '') + ate999(cent) + (cent === 1 ? ' centavo' : ' centavos');
+    return txt || 'zero real';
   }
 
   function fmtTamanho(b) {
@@ -556,6 +589,7 @@
         </dl>
         ${p.descricao ? `<p class="ob-descricao">${esc(p.descricao)}</p>` : ''}
         <div class="ob-dados-acoes">
+          <button type="button" class="ob-btn" data-acao="gerar-proposta">📄 Gerar proposta</button>
           <button type="button" class="ob-btn whats" data-acao="mensagem">💬 Mensagem por WhatsApp</button>
         </div>
       </div>
@@ -659,6 +693,48 @@
   const opcoes = (lista, atual) => lista.map(([v, n]) => `<option value="${esc(v)}" ${v === atual ? 'selected' : ''}>${esc(n)}</option>`).join('');
   const valorBr = v => (v === null || v === undefined ? '' : Number(v).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
 
+  /* Texto inicial da proposta, montado com os dados do processo. O que falta preencher vai realçado. */
+  function modeloProposta(p) {
+    const falta = t => `<span style="background-color: #ffff00;">[${esc(t)}]</span>`;
+    const dataExtenso = new Date().toLocaleDateString('pt-BR', { day: 'numeric', month: 'long', year: 'numeric' });
+    const servico = p.servico === 'outro' ? 'engenharia' : (SERVICOS[p.servico] || '').toLowerCase();
+    const responsavel = isOwner() ? RESPONSAVEL : { nome: 'Seu nome', titulo: 'Sua profissão' };
+    const valor = p.valor_proposta != null
+      ? `<strong>${fmtMoeda(p.valor_proposta)}</strong> (${porExtenso(p.valor_proposta)})`
+      : falta('valor');
+    return `
+      <h2 class="ql-align-center">PROPOSTA DE PRESTAÇÃO DE SERVIÇOS</h2>
+      <p class="ql-align-center">Proposta nº ${esc(p.numero)} — ${dataExtenso}</p>
+      <p><br></p>
+      <p><strong>À</strong> ${p.cliente ? esc(p.cliente) : falta('cliente')}</p>
+      ${p.contato ? `<p>A/C ${esc(p.contato)}</p>` : ''}
+      <p><br></p>
+      <h3>1. Objeto</h3>
+      <p class="ql-align-justify">Prestação de serviços de ${esc(servico)} referentes a ${esc(p.assunto)}${p.local ? `, em ${esc(p.local)}` : ''}.</p>
+      <h3>2. Escopo dos serviços</h3>
+      <p class="ql-align-justify">${p.descricao ? esc(p.descricao) : falta('descreva o que está incluído no serviço')}</p>
+      <h3>3. Prazo de execução</h3>
+      <p class="ql-align-justify">${falta('nº')} dias, contados a partir da assinatura do contrato.</p>
+      <h3>4. Investimento</h3>
+      <p class="ql-align-justify">Valor total de ${valor}.</p>
+      <h3>5. Condições de pagamento</h3>
+      <p class="ql-align-justify">${falta('ex.: 50% na assinatura do contrato e 50% na entrega')}</p>
+      <h3>6. Não estão incluídos</h3>
+      <p class="ql-align-justify">Taxas e emolumentos de órgãos públicos, ensaios, cópias impressas e serviços de terceiros não descritos no escopo.</p>
+      <h3>7. Validade</h3>
+      <p class="ql-align-justify">Esta proposta é válida por ${VALIDADE_PROPOSTA} dias a partir da data de emissão.</p>
+      <p><br></p>
+      <p>Atenciosamente,</p>
+      <p><br></p><p><br></p>
+      <p class="ql-align-center">_______________________________________</p>
+      <p class="ql-align-center"><strong>${esc(responsavel.nome)}</strong></p>
+      <p class="ql-align-center">${esc(responsavel.titulo)} — ${falta('CREA nº')}</p>`.replace(/\n\s*/g, '');
+  }
+
+  function gerarProposta(p) {
+    formInterno(p, null, { tipo: 'Proposta', titulo: p.assunto, conteudo: modeloProposta(p) });
+  }
+
   function formProcesso(p) {
     const novo = !p;
     p = p || { servico: 'execucao', fase: 'prospeccao' };
@@ -675,12 +751,14 @@
         ${campo('Valor do contrato (R$)', `<input class="ob-input" name="valor_contrato" inputmode="decimal" value="${valorBr(p.valor_contrato)}" placeholder="0,00" />`)}
         ${campo('Descrição', `<textarea class="ob-input" name="descricao" rows="3">${esc(p.descricao)}</textarea>`, 'inteiro')}
         <div class="ob-form-acoes inteiro">
+          <button type="submit" class="ob-btn ob-btn-esquerda" name="proposta" value="1" title="Salva os dados e abre uma proposta preenchida com eles">📄 Gerar proposta</button>
           <button type="button" class="ob-btn" data-acao="fechar-modal">Cancelar</button>
           <button type="submit" class="ob-btn primario">${novo ? 'Abrir processo' : 'Salvar'}</button>
         </div>
       </form>`);
     $('ob-form-processo').addEventListener('submit', async ev => {
       ev.preventDefault();
+      const proposta = !!(ev.submitter && ev.submitter.name === 'proposta');
       const f = new FormData(ev.target);
       const dados = {
         assunto: f.get('assunto').trim(), servico: f.get('servico'),
@@ -689,23 +767,25 @@
         valor_proposta: lerNumero(f.get('valor_proposta')), valor_contrato: lerNumero(f.get('valor_contrato')),
         descricao: f.get('descricao').trim() || null
       };
-      ev.target.querySelector('[type=submit]').disabled = true;
+      const botoes = ev.target.querySelectorAll('[type=submit]');
+      botoes.forEach(b => { b.disabled = true; });
+      let proc = p;
       if (novo) {
         const agora = new Date().toISOString();
-        const proc = { id: novoId('p'), numero: proximoNumero(), fase: f.get('fase'), criado_em: agora, atualizado_em: agora, concluido_em: null, ...dados };
-        if (!(await gravar('processos', proc))) { ev.target.querySelector('[type=submit]').disabled = false; return; }
+        proc = { id: novoId('p'), numero: proximoNumero(), fase: f.get('fase'), criado_em: agora, atualizado_em: agora, concluido_em: null, ...dados };
+        if (!(await gravar('processos', proc))) { botoes.forEach(b => { b.disabled = false; }); return; }
         processos.push(proc);
         await registrar(proc, 'criacao', `Processo aberto na fase “${fase(proc.fase).nome}”.`);
         await agendarMensagens(proc, proc.fase, null);
-        fecharModal();
-        location.hash = `#/p/${proc.id}`;
       } else {
         const mudou = Object.keys(dados).filter(k => String(dados[k] ?? '') !== String(p[k] ?? ''));
         Object.assign(p, dados);
         if (mudou.length) await registrar(p, 'anotacao', 'Dados do processo alterados.');
-        fecharModal();
-        render();
       }
+      fecharModal();
+      if (novo) location.hash = `#/p/${proc.id}`;
+      else render();
+      if (proposta) gerarProposta(proc);
     });
   }
 
@@ -725,13 +805,13 @@
     return idx(alvo) > idx(p.fase) ? alvo : null;
   }
 
-  function camposDoc(p, d, padraoTipo) {
+  function camposDoc(p, d, padraoTipo, padraoTitulo = '') {
     const tipo = d ? d.tipo : padraoTipo;
     const sug = !d && sugestaoFase(p, tipo);
     return `
       ${campo('Tipo', `<select class="ob-input" name="tipo">${opcoes(TIPOS_DOC.map(t => [t, t]), tipo)}</select>`)}
       ${campo('Data do documento', `<input type="date" class="ob-input" name="data" value="${esc(d ? d.data : hoje())}" required />`)}
-      ${campo('Título *', `<input class="ob-input" name="titulo" required value="${esc(d ? d.titulo : '')}" placeholder="Ex.: Proposta comercial — revisão 1" />`, 'inteiro')}
+      ${campo('Título *', `<input class="ob-input" name="titulo" required value="${esc(d ? d.titulo : padraoTitulo)}" placeholder="Ex.: Proposta comercial — revisão 1" />`, 'inteiro')}
       ${d ? '' : `<label class="ob-check inteiro" id="ob-sug-fase" ${sug ? '' : 'hidden'}>
         <input type="checkbox" name="avancar" ${sug ? 'checked' : ''} />
         <span>Mudar a fase para “<b>${esc(sug ? fase(sug).nome : '')}</b>”</span>
@@ -831,11 +911,14 @@
     return carregandoQuill;
   }
 
-  async function formInterno(p, d) {
-    abrirModal(d ? `Editar documento ${num4(d.numero)}` : 'Escrever documento', `
+  // modelo (opcional, só em documento novo): { tipo, titulo, conteudo } já preenchidos
+  async function formInterno(p, d, modelo) {
+    const m = (!d && modelo) || {};
+    abrirModal(d ? `Editar documento ${num4(d.numero)}` : m.tipo ? `Gerar ${m.tipo.toLowerCase()}` : 'Escrever documento', `
       <form id="ob-form-doc" class="ob-form">
-        ${camposDoc(p, d, 'Despacho')}
-        <div class="ob-editor inteiro"><div id="ob-editor">${d ? d.conteudo || '' : ''}</div></div>
+        ${camposDoc(p, d, m.tipo || 'Despacho', m.titulo)}
+        ${m.conteudo ? '<p class="ob-sub inteiro">Revise o texto e complete os trechos marcados em amarelo antes de enviar. Depois de incluir, use “Imprimir / PDF”.</p>' : ''}
+        <div class="ob-editor inteiro"><div id="ob-editor">${d ? d.conteudo || '' : m.conteudo || ''}</div></div>
         <p class="ob-status inteiro" id="ob-doc-status"></p>
         <div class="ob-form-acoes inteiro">
           <button type="button" class="ob-btn" data-acao="fechar-modal">Cancelar</button>
@@ -888,7 +971,8 @@
         h1 { font-size: 20px; margin: 6px 0 0; color: #111; }
         .ql-align-center { text-align: center; } .ql-align-right { text-align: right; } .ql-align-justify { text-align: justify; }
       </style></head><body>
-      <header>Processo ${esc(p.numero)} · ${esc(p.assunto)}<br />Documento ${num4(d.numero)} · ${fmtData(d.data)}<h1>${esc(d.tipo)} — ${esc(d.titulo)}</h1></header>
+      ${d.tipo === 'Proposta' ? '' /* vai para o cliente: sem o cabeçalho interno do processo */
+        : `<header>Processo ${esc(p.numero)} · ${esc(p.assunto)}<br />Documento ${num4(d.numero)} · ${fmtData(d.data)}<h1>${esc(d.tipo)} — ${esc(d.titulo)}</h1></header>`}
       ${d.conteudo || ''}
       <script>window.onload = () => window.print();<\/script>
       </body></html>`);
@@ -956,6 +1040,7 @@
     else if (acao === 'excluir-processo' && p) excluirProcesso(p);
     else if (acao === 'doc-externo' && p) formExterno(p, null);
     else if (acao === 'doc-interno' && p) formInterno(p, null);
+    else if (acao === 'gerar-proposta' && p) gerarProposta(p);
     else if (acao === 'editar-doc' && p && d) (d.origem === 'interno' ? formInterno : formExterno)(p, d);
     else if (acao === 'excluir-doc' && p && d) excluirDoc(p, d);
     else if (acao === 'imprimir-doc' && p && d) imprimirDoc(p, d);
