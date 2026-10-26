@@ -219,6 +219,31 @@ input[type="date"].ob-input { color-scheme: dark; }
 .ob-check input { width: 17px; height: 17px; accent-color: var(--ambar); }
 .ob-form-acoes { display: flex; justify-content: flex-end; gap: 10px; margin-top: 4px; flex-wrap: wrap; }
 .ob-form-acoes .ob-btn-esquerda { margin-right: auto; }
+
+/* ─── Gerar proposta ─── */
+.ob-prop-servicos { display: flex; flex-direction: column; border: 1px solid var(--border); border-radius: var(--r-md); overflow: hidden; }
+.ob-prop-item { display: grid; grid-template-columns: minmax(0, 1fr) 150px 140px 34px; gap: 10px; align-items: center; padding: 8px 12px; border-top: 1px solid var(--border); }
+.ob-prop-item:has([name=sel]:checked), .ob-prop-item.outro { background: rgba(96, 165, 250, 0.07); }
+.ob-prop-cab { border-top: 0; background: var(--bg-glass); font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--accent); }
+.ob-prop-nome { display: flex; gap: 10px; align-items: center; cursor: pointer; font-size: 0.88rem; color: var(--silver-bright); }
+.ob-prop-nome input { width: 17px; height: 17px; flex-shrink: 0; accent-color: var(--azul); }
+.ob-prop-nome small { display: block; font-size: 0.74rem; color: var(--accent); }
+.ob-prop-prazo { display: flex; gap: 6px; align-items: center; }
+.ob-prop-prazo .ob-input { width: 64px; padding-left: 8px; padding-right: 4px; }
+.ob-prop-prazo small { font-size: 0.74rem; color: var(--accent); white-space: nowrap; }
+.ob-prop-outro { display: flex; flex-direction: column; gap: 6px; }
+.ob-prop-rodape { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 10px 12px; border-top: 1px solid var(--border); flex-wrap: wrap; }
+.ob-prop-rodape strong { color: var(--silver-bright); font-size: 0.92rem; }
+.ob-prop-secao { font-family: var(--font-display); font-size: 1.15rem; font-weight: 600; color: var(--silver-bright); margin-top: 6px; }
+.ob-prop-eu { border: 1px solid var(--border); border-radius: var(--r-md); padding: 10px 14px; }
+.ob-prop-eu summary { cursor: pointer; font-size: 0.88rem; color: var(--silver-bright); }
+.ob-prop-eu .ob-form { margin-top: 12px; }
+.ob-doc-conteudo.ob-proposta .prop-quebra { border-top: 1px dashed #bbb; margin-top: 26px; padding-top: 20px; }
+@media (max-width: 640px) {
+  .ob-prop-item { grid-template-columns: minmax(0, 1fr) 34px; }
+  .ob-prop-item > :first-child { grid-column: 1 / -1; }
+  .ob-prop-cab { display: none; }
+}
 .ob-status { font-size: 0.82rem; color: var(--ambar); }
 .ob-status:empty { display: none; }
 .ob-editor { background: #fdfdfc; color: #1b1b1b; border-radius: var(--r-sm); }

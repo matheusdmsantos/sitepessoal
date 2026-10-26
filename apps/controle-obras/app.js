@@ -57,10 +57,12 @@
       texto: '{saudacao}, {nome}! Tudo certo com {assunto}?\n\nSe ficou alguma pendência, me avise. E se puder indicar o meu trabalho para alguém, agradeço muito!' }
   ];
 
-  // Proposta gerada pelo botão "Gerar proposta": validade em dias e quem assina (do dono do site)
-  const VALIDADE_PROPOSTA = 30;
-  const RESPONSAVEL = { nome: 'Matheus Miranda', titulo: 'Engenheiro Civil' };
+  // Serviços da proposta (textos em proposta-textos.js). A proposta guarda os dados com que foi montada
+  // num comentário no início do conteúdo, para "Editar" reabrir o formulário.
+  const SERVICOS_PROPOSTA = window.OB_PROPOSTA_SERVICOS || [];
+  const MARCA_PROPOSTA = '<!--ob-proposta:';
 
+  let usuario = null;
   let processos = [], documentos = [], andamentos = [], prazos = [], modelos = [];
   let modelosRemoto = false;
   let filtro = { fase: 'ativos', busca: '' };
@@ -102,20 +104,19 @@
     return isNaN(n) ? null : n;
   }
 
-  // 6200 → "seis mil e duzentos reais"
-  function porExtenso(valor) {
-    const un = ['', 'um', 'dois', 'três', 'quatro', 'cinco', 'seis', 'sete', 'oito', 'nove', 'dez', 'onze', 'doze',
-      'treze', 'quatorze', 'quinze', 'dezesseis', 'dezessete', 'dezoito', 'dezenove'];
-    const dez = ['', '', 'vinte', 'trinta', 'quarenta', 'cinquenta', 'sessenta', 'setenta', 'oitenta', 'noventa'];
-    const cen = ['', 'cento', 'duzentos', 'trezentos', 'quatrocentos', 'quinhentos', 'seiscentos', 'setecentos', 'oitocentos', 'novecentos'];
-    const ate999 = n => {
-      if (n === 100) return 'cem';
-      const r = n % 100;
-      const partes = [cen[Math.floor(n / 100)], r < 20 ? un[r] : dez[Math.floor(r / 10)] + (r % 10 ? ' e ' + un[r % 10] : '')];
-      return partes.filter(Boolean).join(' e ');
-    };
-    const total = Math.round(Number(valor) * 100);
-    const inteiro = Math.floor(total / 100), cent = total % 100;
+  // Números por extenso: 6200 → "seis mil e duzentos"; porExtenso(6200) → "seis mil e duzentos reais"
+  const UNIDADES = ['', 'um', 'dois', 'três', 'quatro', 'cinco', 'seis', 'sete', 'oito', 'nove', 'dez', 'onze', 'doze',
+    'treze', 'quatorze', 'quinze', 'dezesseis', 'dezessete', 'dezoito', 'dezenove'];
+  const DEZENAS = ['', '', 'vinte', 'trinta', 'quarenta', 'cinquenta', 'sessenta', 'setenta', 'oitenta', 'noventa'];
+  const CENTENAS = ['', 'cento', 'duzentos', 'trezentos', 'quatrocentos', 'quinhentos', 'seiscentos', 'setecentos', 'oitocentos', 'novecentos'];
+  function ate999(n) {
+    if (n === 100) return 'cem';
+    const r = n % 100;
+    const partes = [CENTENAS[Math.floor(n / 100)], r < 20 ? UNIDADES[r] : DEZENAS[Math.floor(r / 10)] + (r % 10 ? ' e ' + UNIDADES[r % 10] : '')];
+    return partes.filter(Boolean).join(' e ');
+  }
+
+  function extenso(inteiro) {
     const grupos = [];
     let ultimo = 0;   // valor do último grupo escrito (milhões, milhares ou unidades)
     const mi = Math.floor(inteiro / 1e6), mil = Math.floor(inteiro / 1000) % 1000, u = inteiro % 1000;
@@ -123,9 +124,15 @@
     if (mil) { grupos.push(mil === 1 ? 'mil' : ate999(mil) + ' mil'); ultimo = mil; }
     if (u) { grupos.push(ate999(u)); ultimo = u; }
     // "e" antes do último grupo quando ele é redondo ou menor que cem: "seis mil e duzentos"
-    let txt = grupos.length > 1 && (ultimo < 100 || ultimo % 100 === 0)
+    return (grupos.length > 1 && (ultimo < 100 || ultimo % 100 === 0)
       ? grupos.slice(0, -1).join(' ') + ' e ' + grupos[grupos.length - 1]
-      : grupos.join(' ');
+      : grupos.join(' ')) || 'zero';
+  }
+
+  function porExtenso(valor) {
+    const total = Math.round(Number(valor) * 100);
+    const inteiro = Math.floor(total / 100), cent = total % 100;
+    let txt = inteiro ? extenso(inteiro) : '';
     if (inteiro) txt += inteiro === 1 ? ' real' : inteiro % 1e6 === 0 ? ' de reais' : ' reais';
     if (cent) txt += (inteiro ? ' e ' : '') + ate999(cent) + (cent === 1 ? ' centavo' : ' centavos');
     return txt || 'zero real';
@@ -650,7 +657,7 @@
           </div>
         </div>
         ${externo ? '<div id="ob-visualizador" class="ob-visualizador"><p class="ob-vazio">Carregando…</p></div>'
-          : `<div class="ob-doc-conteudo">${d.conteudo || '<p class="ob-vazio">Documento vazio.</p>'}</div>`}
+          : `<div class="ob-doc-conteudo ${lerProposta(d) ? 'ob-proposta' : ''}">${d.conteudo || '<p class="ob-vazio">Documento vazio.</p>'}</div>`}
       </div>`;
   }
 
@@ -693,47 +700,422 @@
   const opcoes = (lista, atual) => lista.map(([v, n]) => `<option value="${esc(v)}" ${v === atual ? 'selected' : ''}>${esc(n)}</option>`).join('');
   const valorBr = v => (v === null || v === undefined ? '' : Number(v).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
 
-  /* Texto inicial da proposta, montado com os dados do processo. O que falta preencher vai realçado. */
-  function modeloProposta(p) {
-    const falta = t => `<span style="background-color: #ffff00;">[${esc(t)}]</span>`;
-    const dataExtenso = new Date().toLocaleDateString('pt-BR', { day: 'numeric', month: 'long', year: 'numeric' });
-    const servico = p.servico === 'outro' ? 'engenharia' : (SERVICOS[p.servico] || '').toLowerCase();
-    const responsavel = isOwner() ? RESPONSAVEL : { nome: 'Seu nome', titulo: 'Sua profissão' };
-    const valor = p.valor_proposta != null
-      ? `<strong>${fmtMoeda(p.valor_proposta)}</strong> (${porExtenso(p.valor_proposta)})`
-      : falta('valor');
-    return `
-      <h2 class="ql-align-center">PROPOSTA DE PRESTAÇÃO DE SERVIÇOS</h2>
-      <p class="ql-align-center">Proposta nº ${esc(p.numero)} — ${dataExtenso}</p>
-      <p><br></p>
-      <p><strong>À</strong> ${p.cliente ? esc(p.cliente) : falta('cliente')}</p>
-      ${p.contato ? `<p>A/C ${esc(p.contato)}</p>` : ''}
-      <p><br></p>
-      <h3>1. Objeto</h3>
-      <p class="ql-align-justify">Prestação de serviços de ${esc(servico)} referentes a ${esc(p.assunto)}${p.local ? `, em ${esc(p.local)}` : ''}.</p>
-      <h3>2. Escopo dos serviços</h3>
-      <p class="ql-align-justify">${p.descricao ? esc(p.descricao) : falta('descreva o que está incluído no serviço')}</p>
-      <h3>3. Prazo de execução</h3>
-      <p class="ql-align-justify">${falta('nº')} dias, contados a partir da assinatura do contrato.</p>
-      <h3>4. Investimento</h3>
-      <p class="ql-align-justify">Valor total de ${valor}.</p>
-      <h3>5. Condições de pagamento</h3>
-      <p class="ql-align-justify">${falta('ex.: 50% na assinatura do contrato e 50% na entrega')}</p>
-      <h3>6. Não estão incluídos</h3>
-      <p class="ql-align-justify">Taxas e emolumentos de órgãos públicos, ensaios, cópias impressas e serviços de terceiros não descritos no escopo.</p>
-      <h3>7. Validade</h3>
-      <p class="ql-align-justify">Esta proposta é válida por ${VALIDADE_PROPOSTA} dias a partir da data de emissão.</p>
-      <p><br></p>
-      <p>Atenciosamente,</p>
-      <p><br></p><p><br></p>
-      <p class="ql-align-center">_______________________________________</p>
-      <p class="ql-align-center"><strong>${esc(responsavel.nome)}</strong></p>
-      <p class="ql-align-center">${esc(responsavel.titulo)} — ${falta('CREA nº')}</p>`.replace(/\n\s*/g, '');
+  /* =============================================
+     PROPOSTA (botão "Gerar proposta")
+     Montada a partir dos serviços marcados, no formato da proposta do Matheus:
+     capa, objeto, seções técnicas, obrigações, valores, pagamento, prazos e aceite.
+  ============================================= */
+  const servicoDoCatalogo = id => SERVICOS_PROPOSTA.find(s => s.id === id);
+  const maiusculaInicial = s => s.charAt(0).toUpperCase() + s.slice(1);
+  const semPonto = s => String(s || '').trim().replace(/[.;]+$/, '');
+  const ehProjeto = it => it.unidade !== 'meses';
+  const ROMANOS = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X'];
+
+  // Dados do proponente e últimos prazos/valores: ficam no user_metadata da conta (cada usuário tem os seus)
+  function meusDados() {
+    const m = (usuario && usuario.user_metadata) || {};
+    return { profissao: 'Eng.º Civil', email: window.getSessionUser ? getSessionUser() : '', ...(m.proposta_eu || {}) };
+  }
+  const ultimosValores = () => ((usuario && usuario.user_metadata) || {}).proposta_ultimos || {};
+
+  async function salvarMeusDados(eu, itens) {
+    const ultimos = { ...ultimosValores() };
+    itens.forEach(it => { if (servicoDoCatalogo(it.id)) ultimos[it.id] = { valor: it.valor, prazo: it.prazo }; });
+    const { data, error } = await sb.auth.updateUser({ data: { proposta_eu: eu, proposta_ultimos: ultimos } });
+    if (error) console.warn('Não foi possível guardar os seus dados da proposta:', error);
+    else if (data && data.user) usuario = data.user;
   }
 
-  function gerarProposta(p) {
-    formInterno(p, null, { tipo: 'Proposta', titulo: p.assunto, conteudo: modeloProposta(p) });
+  // Os dados com que a proposta foi montada ficam num comentário no início do conteúdo
+  function lerProposta(d) {
+    const c = d && d.conteudo;
+    if (!c || !c.startsWith(MARCA_PROPOSTA)) return null;
+    try { return JSON.parse(decodeURIComponent(c.slice(MARCA_PROPOSTA.length, c.indexOf('-->')))); }
+    catch { return null; }
   }
+  const corpoProposta = d => d.conteudo.slice(d.conteudo.indexOf('-->') + 3);
+  const totalProposta = itens => itens.reduce((s, it) => s + (Number(it.valor) || 0), 0);
+
+  function subtituloProposta(itens) {
+    if (itens.length === 1) return itens[0].nome.toUpperCase();
+    if (itens.some(it => it.id === 'estrutural') && itens.filter(ehProjeto).length > 1) return 'PROJETO ESTRUTURAL E PROJETOS COMPLEMENTARES';
+    return itens.every(ehProjeto) ? 'PROJETOS DE ENGENHARIA' : 'SERVIÇOS DE ENGENHARIA';
+  }
+
+  function htmlProposta(dados) {
+    const { itens, ed, eu } = dados;
+    const total = totalProposta(itens);
+    const sub = subtituloProposta(itens);
+    const paraEdif = ed.tipo ? `PARA EDIFICAÇÃO ${esc(ed.tipo.toUpperCase())}` : '';
+    const mes = new Date(dados.data + 'T12:00:00').toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' }).toUpperCase();
+    const lista = xs => `<ul>${xs.map(x => `<li>${x}</li>`).join('')}</ul>`;
+    const comQuebras = s => esc(s).replace(/\n/g, '<br>');
+    const rotulado = linha => {
+      const i = linha.indexOf(':');
+      return i > 0 && i < 40 ? `<b>${esc(linha.slice(0, i + 1))}</b>${esc(linha.slice(i + 1))}` : esc(linha);
+    };
+    const valorTxt = v => `${fmtMoeda(v)} (${maiusculaInicial(porExtenso(v))})`;
+    const proponente = [eu.profissao, eu.nomeCompleto, eu.registro].filter(Boolean).join(' ');
+    const projetos = itens.filter(ehProjeto);
+    const sondagem = itens.some(it => (servicoDoCatalogo(it.id) || {}).sondagem);
+    let n = 0;
+    const secao = t => `${ROMANOS[n++]}- ${t}`;
+
+    const caract = [];
+    if (ed.area || ed.pavimentos) {
+      caract.push(`<b>Imóvel:</b> ${ed.area ? `Aproximadamente ${esc(ed.area)} m² de área construída${ed.pavimentos ? ', distribuídos em ' : ''}` : ''}${esc(ed.area ? semPonto(ed.pavimentos) : maiusculaInicial(semPonto(ed.pavimentos)))}.`);
+    }
+    if (ed.endereco) caract.push(`<b>Endereço:</b> ${esc(semPonto(ed.endereco))}.`);
+    if (ed.sistema) caract.push(`<b>Trata-se de edificação${ed.tipo ? ' ' + esc(ed.tipo) : ''} em ${esc(semPonto(ed.sistema))}.</b>`);
+    const composicao = String(ed.composicao || '').split('\n').map(s => s.trim()).filter(Boolean);
+
+    const secoes = itens.map((it, i) => {
+      const s = servicoDoCatalogo(it.id);
+      if (!s) {
+        return it.descricao ? `<section class="prop-quebra"><h3>${i + 1}) ${esc(it.nome.toUpperCase())}</h3><p>${comQuebras(it.descricao)}</p></section>` : '';
+      }
+      return `<section class="prop-quebra">
+        <h3>${i + 1}) ${esc(s.titulo)}</h3>
+        <p>${esc(s.intro)}</p>
+        <p>Nossos serviços são desenvolvidos para assegurar:</p>
+        ${lista(s.vantagens.map(([r, t]) => `<b>${esc(r)}:</b> ${esc(t)}`))}
+        <h4>Escopo Técnico de Serviços:</h4>
+        <ol>${s.escopo.map(([g, xs]) => `<li>${esc(g)}:<ul class="prop-sub">${xs.map(x => `<li>${esc(x)}</li>`).join('')}</ul></li>`).join('')}</ol>
+      </section>`;
+    }).join('');
+
+    const doProponente = [
+      'Manter sob sua responsabilidade todo o pessoal necessário à execução dos serviços objeto desta PROPOSTA, arcando com os respectivos encargos sociais;',
+      `Responder perante o CONTRATANTE pela execução e entrega de todos os ${projetos.length ? 'Projetos' : 'serviços'};`,
+      `Assumir, na qualidade de ${projetos.length ? 'autor' : 'responsável técnico'}, a responsabilidade técnica pelos ${projetos.length ? 'projetos' : 'serviços'}, com a emissão das respectivas ARTs (Anotação de Responsabilidade Técnica)${eu.conselho ? ' junto ao ' + esc(eu.conselho) : ''}, atendendo prontamente às exigências e aos esclarecimentos solicitados pelos órgãos competentes;`
+    ];
+    if (projetos.length) {
+      doProponente.push('Fornecer ao CONTRATANTE o arquivo digital (não editável) de cada uma das pranchas e detalhes relativos ao desenvolvimento dos projetos;',
+        'Elaborar os projetos objeto da presente PROPOSTA em obediência às normas e especificações técnicas vigentes, compatibilizando-os entre si e responsabilizando-se pelos serviços prestados, na forma da legislação em vigor.');
+    }
+    const doContratante = ['Fornecer o projeto arquitetônico definitivo em arquivo editável (DWG/DXF), incluindo plantas, cortes, fachadas e planta de cobertura;'];
+    itens.forEach(it => ((servicoDoCatalogo(it.id) || {}).contratante || []).forEach(x => { if (!doContratante.includes(x)) doContratante.push(esc(x)); }));
+    doContratante.push('Informar previamente qualquer alteração no projeto arquitetônico.');
+
+    const cents = Math.round(total * 100);
+    const pct = Math.min(100, Math.max(0, Number(dados.entrada) || 0));
+    const entCents = Math.round(cents * pct / 100);
+    const entrega = itens.every(ehProjeto) ? 'na entrega dos projetos' : 'na entrega dos serviços';
+    const parcelas = [];
+    if (entCents) parcelas.push(`${valorTxt(entCents / 100)} no aceite da proposta (${pct}%)`);
+    if (cents - entCents) parcelas.push(`${valorTxt((cents - entCents) / 100)} ${entrega} (${100 - pct}%)`);
+
+    // Etapas dos projetos em sequência; serviços contínuos (acompanhamento) no fim da tabela
+    let etapa = 0, totalDias = 0;
+    const linhasPrazo = [...projetos, ...itens.filter(it => !ehProjeto(it))].map(it => {
+      const qtd = Number(it.prazo) || 0;
+      if (!ehProjeto(it)) {
+        return `<tr><td>Obra</td><td>${esc(it.nome.toUpperCase())}</td><td>${qtd ? `${qtd} ${qtd === 1 ? 'MÊS' : 'MESES'}` : '—'}</td><td>Durante a execução da obra, com visitas periódicas.</td></tr>`;
+      }
+      etapa++;
+      totalDias += qtd;
+      const obs = etapa === 1
+        ? `O prazo inicia após o aceite da proposta, o pagamento da entrada e o recebimento do projeto arquitetônico${sondagem ? ' e da sondagem' : ''}.`
+        : `Inicia após a conclusão da ${etapa - 1}ª Etapa.`;
+      return `<tr><td>${etapa}ª Etapa</td><td>${esc(it.nome.toUpperCase())}</td><td>${qtd} ${qtd === 1 ? 'DIA ÚTIL' : 'DIAS ÚTEIS'}</td><td>${obs}</td></tr>`;
+    }).join('');
+    const pranchas = Number(dados.pranchas) || 0;
+
+    return `
+      <section class="prop-capa">
+        <p>PROPOSTA PARA PRESTAÇÃO DE SERVIÇOS</p>
+        <p>${esc(sub)}</p>
+        <p>${esc(mes)}</p>
+      </section>
+
+      <section class="prop-quebra">
+        <div class="prop-titulo">
+          <p>PROPOSTA PARA PRESTAÇÃO DE SERVIÇOS<br>${esc(sub)}${paraEdif ? '<br>' + paraEdif : ''}</p>
+          <p>${dados.cliente ? `CONTRATANTE: ${esc(dados.cliente.toUpperCase())}<br>` : ''}OBRA/SERVIÇO: ${esc(dados.assunto.toUpperCase())}${proponente ? `<br>PROPONENTE: ${esc(proponente.toUpperCase())}` : ''}</p>
+        </div>
+        <h3>${secao('OBJETO DA PROPOSTA:')}</h3>
+        ${lista([`${projetos.length ? 'Elaboração' : 'Prestação'} dos serviços relacionados abaixo para edificação${ed.tipo ? ' ' + esc(ed.tipo) : ''}, conforme o projeto arquitetônico (Plantas Baixas / Plantas de Layout) fornecido pelo contratante;`])}
+        ${caract.length ? `<h4>Características da Edificação:</h4>${lista(caract)}` : ''}
+        ${composicao.length ? `<h4>Composição da Edificação (conforme projeto arquitetônico)</h4>${lista(composicao.map(rotulado))}` : ''}
+        <h4>Descrição dos Serviços</h4>
+        <ol>${itens.map(it => `<li>${esc(it.nome)}${it.detalhe ? ` (${esc(it.detalhe)})` : ''};</li>`).join('')}</ol>
+      </section>
+
+      ${secoes}
+
+      <section class="prop-quebra">
+        <h3>${secao('OBRIGAÇÕES DO PROPONENTE')}</h3>
+        <h4>Constituem obrigações do PROPONENTE:</h4>
+        ${lista(doProponente)}
+        <h3>${secao('OBRIGAÇÕES DO CONTRATANTE')}</h3>
+        ${lista(doContratante)}
+        ${projetos.length ? `<h3>${secao('APRESENTAÇÃO DOS PROJETOS')}</h3>
+        <p>Os Projetos serão apresentados em folhas (pranchas) de desenho no formato A1, ou em tamanho maior quando julgado necessário pelo PROPONENTE; os memoriais, especificações e listas de materiais serão apresentados em papel A4.${pranchas ? ` Estima-se um total de ${pranchas} (${extenso(pranchas)}) folhas.` : ''}</p>` : ''}
+      </section>
+
+      <section class="prop-quebra">
+        <h3>${secao(itens.every(ehProjeto) ? 'VALOR DA PROPOSTA PARA PROJETOS' : 'VALOR DA PROPOSTA')}</h3>
+        ${itens.map((it, i) => `<p><b>${i + 1}. ${esc(it.nome)}</b>${it.detalhe ? ` (${esc(it.detalhe)})` : ''}.<br>- ${valorTxt(it.valor)}.</p>`).join('')}
+        ${projetos.length ? '<p><b>Obs. Todos os Projetos acompanham lista de materiais / quantitativos e especificações técnicas.</b></p>' : ''}
+        <p><b>TOTAL (R$)<br>- ${valorTxt(total)}.</b></p>
+        <div class="prop-obs">
+          <p>Observações:</p>
+          <p>1. No valor referido estão embutidos os impostos referentes à emissão de nota fiscal de prestação de serviços;</p>
+          <p>2. Despesas com taxas e emolumentos de Cartório, Prefeitura, CREA, Corpo de Bombeiros, concessionárias e outros não estão inclusas no preço acima;</p>
+          ${projetos.length ? '<p>3. Os valores mencionados podem ser alterados caso haja modificações no projeto arquitetônico após o início dos projetos. Sendo assim, será feita uma nova proposta ao contratante com os valores corrigidos.</p>' : ''}
+        </div>
+        <h3>${secao('CONDIÇÕES DE PAGAMENTO')}</h3>
+        ${lista(parcelas.map((x, i) => x + (i === parcelas.length - 1 ? '.' : ';')))}
+      </section>
+
+      <section class="prop-quebra">
+        <h3>${secao(projetos.length ? 'PRAZO DE ENTREGA DOS PROJETOS' : 'PRAZO DOS SERVIÇOS')}</h3>
+        <table class="prop-prazo">
+          <thead><tr><th>ETAPA</th><th>SERVIÇO CONTEMPLADO</th><th>PRAZO ESTIMADO DE EXECUÇÃO</th><th>OBSERVAÇÕES</th></tr></thead>
+          <tbody>${linhasPrazo}</tbody>
+        </table>
+        ${totalDias ? `<p><b>Prazo Total Estimado:</b> O prazo total para entrega de todos os projetos é de <b>${totalDias} (${extenso(totalDias)}) ${totalDias === 1 ? 'dia útil' : 'dias úteis'}</b>.</p>` : ''}
+        ${eu.pagamento ? `<h3>${secao('DADOS PARA PAGAMENTO')}</h3>
+        ${lista([`Pagamento via depósito/transferência ou PIX:<br>${comQuebras(eu.pagamento)}`])}
+        <p class="prop-obs">Obs: O comprovante de pagamento e esta proposta assinada deverão ser enviados via e-mail ou WhatsApp para a consolidação da proposta e dos prazos.</p>` : ''}
+        <p class="prop-aceite">Aceito os termos acima descritos nesta proposta, comprometendo-me a fornecer todas as informações necessárias para o objeto desta proposta e a cumprir com os pagamentos dentro dos prazos previstos.<br>Data: ___/___/___</p>
+        <p class="prop-assinatura"><span></span>CONTRATANTE${dados.cliente ? '<br>' + esc(dados.cliente.toUpperCase()) : ''}</p>
+        <p class="prop-assinatura"><span></span>${esc(proponente || eu.nome || '')}</p>
+      </section>`.replace(/\n\s*/g, '');
+  }
+
+  // Estilo da proposta: o mesmo na tela (dentro do documento) e na impressão
+  const CSS_PROPOSTA = `
+    .ob-proposta { font-family: 'Times New Roman', Times, serif; color: #111; font-size: 13.5px; line-height: 1.45; }
+    .ob-proposta h3 { font-size: 15px; margin: 18px 0 8px; }
+    .ob-proposta h4 { font-size: 13.5px; margin: 12px 0 4px; }
+    .ob-proposta p { margin: 0 0 6px; text-align: justify; }
+    .ob-proposta ul, .ob-proposta ol { margin: 0 0 8px; padding-left: 28px; }
+    .ob-proposta li { margin-bottom: 3px; text-align: justify; }
+    .ob-proposta ul.prop-sub { list-style: circle; padding-left: 22px; margin: 2px 0 4px; }
+    .ob-proposta .prop-capa { display: flex; flex-direction: column; justify-content: space-between; align-items: center; min-height: 300px; padding: 30px 0; font-weight: bold; font-size: 16px; }
+    .ob-proposta .prop-capa p, .ob-proposta .prop-titulo p { text-align: center; }
+    .ob-proposta .prop-titulo { font-weight: bold; margin: 4px 0 18px; }
+    .ob-proposta .prop-titulo p { margin-bottom: 14px; }
+    .ob-proposta table.prop-prazo { width: 100%; border-collapse: collapse; font-size: 11.5px; margin: 6px 0 10px; }
+    .ob-proposta .prop-prazo th, .ob-proposta .prop-prazo td { border: 1px solid #999; padding: 7px 8px; vertical-align: middle; }
+    .ob-proposta .prop-prazo th { background: #e8e8e8; text-align: center; }
+    .ob-proposta .prop-prazo td:nth-child(-n+3) { text-align: center; font-weight: bold; }
+    .ob-proposta .prop-prazo th:first-child, .ob-proposta .prop-prazo td:first-child { white-space: nowrap; }
+    .ob-proposta .prop-obs, .ob-proposta .prop-obs p { font-size: 11px; }
+    .ob-proposta .prop-aceite { text-align: center; font-weight: bold; margin-top: 16px; }
+    .ob-proposta .prop-assinatura { text-align: center; font-weight: bold; margin-top: 48px; }
+    .ob-proposta .prop-assinatura span { display: block; width: 300px; max-width: 100%; margin: 0 auto 4px; border-top: 1px solid #111; }`;
+
+  const CSS_IMPRESSAO = `
+    @page { size: A4; margin: 10mm 16mm 12mm; }
+    body { margin: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    table.prop-pagina { width: 100%; border-collapse: collapse; }
+    table.prop-pagina > * > tr > td { padding: 0; border: 0; }
+    .prop-quebra { break-before: page; }
+    .ob-proposta .prop-capa { min-height: 180mm; padding: 20mm 0 0; }
+    .prop-prazo tr { break-inside: avoid; }
+    .prop-cab { display: flex; justify-content: space-between; align-items: center; gap: 20px; margin-bottom: 16px; }
+    .prop-cab-dados { font-size: 12px; line-height: 1.6; }
+    .prop-cab-marca { position: relative; min-width: 330px; min-height: 92px; padding: 14px 22px 12px 96px; display: flex; flex-direction: column; align-items: flex-end; justify-content: flex-end;
+      background: #4b5059; color: #fff; clip-path: polygon(24% 0, 100% 0, 100% 100%, 0 100%); font-family: Arial, Helvetica, sans-serif; }
+    .prop-cab-nome { font-size: 19px; font-weight: bold; letter-spacing: 0.02em; }
+    .prop-cab-prof { font-size: 8.5px; letter-spacing: 0.32em; margin-top: 2px; }
+    .prop-frase { text-align: center !important; font-style: italic; font-size: 9px !important; margin-top: 14px; }`;
+
+  function cabecalhoProposta(eu) {
+    const dados = [eu.nome ? `<b>${esc(eu.nome)}</b>` : '', esc(eu.cargo), esc(eu.telefone), esc(eu.email)].filter(Boolean).join('<br>');
+    return `<div class="prop-cab">
+      <div class="prop-cab-dados">${dados}</div>
+      ${eu.nome ? `<div class="prop-cab-marca"><span class="prop-cab-nome">${esc(eu.nome.toUpperCase())}</span>
+        ${eu.profissao ? `<span class="prop-cab-prof">${esc(eu.profissao.toUpperCase())}</span>` : ''}
+        ${eu.registro ? `<span class="prop-cab-prof">${esc(eu.registro.toUpperCase())}</span>` : ''}</div>` : ''}
+    </div>`;
+  }
+
+  function imprimirProposta(p, d, dados) {
+    const w = window.open('', '_blank');
+    if (!w) { aviso('Libere as janelas pop-up para imprimir.'); return; }
+    const eu = dados.eu || {};
+    w.document.write(`<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8" />
+      <title>Proposta ${esc(p.numero)} - ${esc(dados.cliente || p.assunto)}</title>
+      <style>${CSS_PROPOSTA}${CSS_IMPRESSAO}</style></head><body class="ob-proposta">
+      <table class="prop-pagina">
+        <thead><tr><td>${cabecalhoProposta(eu)}</td></tr></thead>
+        <tbody><tr><td>${corpoProposta(d)}</td></tr></tbody>
+        <tfoot><tr><td>${eu.frase ? `<p class="prop-frase">${esc(eu.frase).replace(/\n/g, '<br>')}</p>` : ''}</td></tr></tfoot>
+      </table>
+      <script>window.onload = () => window.print();<\/script>
+      </body></html>`);
+    w.document.close();
+  }
+
+  function formProposta(p, d) {
+    const salvo = d && lerProposta(d);
+    const eu = { ...(salvo ? salvo.eu : {}), ...meusDados() };
+    const ult = ultimosValores();
+    const ed = salvo ? salvo.ed : {
+      tipo: 'residencial', area: '', pavimentos: '', endereco: p.local || '',
+      sistema: 'estrutura de concreto armado e vedação em alvenaria', composicao: p.descricao || ''
+    };
+    const marcados = salvo ? salvo.itens : [];
+    const sug = !d && sugestaoFase(p, 'Proposta');
+
+    const linhaCatalogo = s => {
+      const it = marcados.find(x => x.id === s.id);
+      const prazo = it ? it.prazo : (ult[s.id] && ult[s.id].prazo) || s.prazo;
+      const valor = it ? it.valor : ult[s.id] && ult[s.id].valor;
+      return `<div class="ob-prop-item" data-id="${esc(s.id)}">
+        <label class="ob-prop-nome"><input type="checkbox" name="sel" ${it ? 'checked' : ''} />
+          <span>${esc(s.nome)}<small>${esc(s.detalhe)}</small></span></label>
+        <label class="ob-prop-prazo"><input class="ob-input" type="number" min="0" step="1" name="prazo" value="${esc(prazo)}" aria-label="Prazo: ${esc(s.nome)}" />
+          <small>${s.unidade === 'meses' ? 'meses' : 'dias úteis'}</small></label>
+        <input class="ob-input" name="valor" inputmode="decimal" placeholder="R$ 0,00" value="${valorBr(valor)}" aria-label="Valor: ${esc(s.nome)}" />
+        <span></span>
+      </div>`;
+    };
+    const linhaOutro = it => `<div class="ob-prop-item outro" data-id="${esc(it.id)}">
+        <div class="ob-prop-outro">
+          <input class="ob-input" name="nome" value="${esc(it.nome)}" placeholder="Nome do serviço" aria-label="Nome do serviço" />
+          <textarea class="ob-input" name="descricao" rows="2" placeholder="Descrição (opcional; vira uma seção da proposta)" aria-label="Descrição do serviço">${esc(it.descricao)}</textarea>
+        </div>
+        <label class="ob-prop-prazo"><input class="ob-input" type="number" min="0" step="1" name="prazo" value="${esc(it.prazo)}" aria-label="Prazo do serviço" /><small>dias úteis</small></label>
+        <input class="ob-input" name="valor" inputmode="decimal" placeholder="R$ 0,00" value="${valorBr(it.valor)}" aria-label="Valor do serviço" />
+        <button type="button" class="ob-btn sutil" data-prop="remover" aria-label="Remover serviço">✕</button>
+      </div>`;
+    const campoEu = (rot, nome, ph = '', cls = '') => campo(rot, `<input class="ob-input" name="eu_${nome}" value="${esc(eu[nome])}" placeholder="${esc(ph)}" />`, cls);
+
+    abrirModal(d ? `Editar proposta ${num4(d.numero)}` : `Gerar proposta — ${p.numero}`, `
+      <form id="ob-form-proposta" class="ob-form" novalidate>
+        <div class="ob-prop-servicos inteiro">
+          <div class="ob-prop-item ob-prop-cab"><span>Serviços da proposta</span><span>Prazo</span><span>Valor (R$)</span><span></span></div>
+          ${SERVICOS_PROPOSTA.map(linhaCatalogo).join('')}
+          ${marcados.filter(it => !servicoDoCatalogo(it.id)).map(linhaOutro).join('')}
+          <div class="ob-prop-rodape">
+            <button type="button" class="ob-btn sutil" data-prop="outro">+ Outro serviço</button>
+            <strong id="ob-prop-total"></strong>
+          </div>
+        </div>
+
+        <h3 class="ob-prop-secao inteiro">Edificação</h3>
+        ${campo('Tipo de edificação', `<input class="ob-input" name="ed_tipo" value="${esc(ed.tipo)}" placeholder="residencial, comercial…" />`)}
+        ${campo('Área construída (m²)', `<input class="ob-input" name="ed_area" inputmode="decimal" value="${esc(ed.area)}" placeholder="270" />`)}
+        ${campo('Pavimentos', `<input class="ob-input" name="ed_pavimentos" value="${esc(ed.pavimentos)}" placeholder="três pavimentos (Térreo, 1º e 2º Pavimentos)" />`, 'inteiro')}
+        ${campo('Endereço da obra', `<input class="ob-input" name="ed_endereco" value="${esc(ed.endereco)}" />`, 'inteiro')}
+        ${campo('Sistema construtivo', `<input class="ob-input" name="ed_sistema" value="${esc(ed.sistema)}" />`, 'inteiro')}
+        ${campo('Composição da edificação (um item por linha; o que vem antes de “:” sai em negrito)', `<textarea class="ob-input" name="ed_composicao" rows="4" placeholder="Térreo: garagem, área gourmet e WC">${esc(ed.composicao)}</textarea>`, 'inteiro')}
+
+        <h3 class="ob-prop-secao inteiro">Pagamento e documento</h3>
+        ${campo('Entrada no aceite (%)', `<input class="ob-input" type="number" min="0" max="100" name="entrada" value="${esc(salvo ? salvo.entrada : 50)}" />`)}
+        ${campo('Pranchas estimadas (opcional)', `<input class="ob-input" type="number" min="0" name="pranchas" value="${esc(salvo && salvo.pranchas ? salvo.pranchas : '')}" />`)}
+        ${campo('Data da proposta', `<input type="date" class="ob-input" name="data" value="${esc(d ? d.data : hoje())}" required />`)}
+        ${campo('Título no processo', `<input class="ob-input" name="titulo" value="${esc(d ? d.titulo : p.assunto)}" />`)}
+        ${sug ? `<label class="ob-check inteiro"><input type="checkbox" name="avancar" checked /><span>Mudar a fase para “<b>${esc(fase(sug).nome)}</b>”</span></label>` : ''}
+
+        <details class="ob-prop-eu inteiro" ${eu.nomeCompleto ? '' : 'open'}>
+          <summary>Seus dados no cabeçalho, na assinatura e no pagamento</summary>
+          <div class="ob-form">
+            ${campoEu('Nome no cabeçalho', 'nome', 'Ex.: Matheus Miranda')}
+            ${campoEu('Cargo no cabeçalho', 'cargo', 'Ex.: Projetista Estrutural')}
+            ${campoEu('Profissão', 'profissao', 'Eng.º Civil')}
+            ${campoEu('Nome completo (assinatura)', 'nomeCompleto')}
+            ${campoEu('Registro profissional', 'registro', 'Ex.: RN 0000000000')}
+            ${campoEu('Conselho das ARTs', 'conselho', 'Ex.: CREA-PI')}
+            ${campoEu('Telefone', 'telefone', '+55 (86) 90000-0000')}
+            ${campoEu('E-mail', 'email')}
+            ${campo('Dados para pagamento', `<textarea class="ob-input" name="eu_pagamento" rows="4" placeholder="Banco, agência, conta, titular e chave PIX">${esc(eu.pagamento)}</textarea>`, 'inteiro')}
+            ${campo('Frase do rodapé (opcional)', `<textarea class="ob-input" name="eu_frase" rows="2">${esc(eu.frase)}</textarea>`, 'inteiro')}
+            <p class="ob-sub inteiro">Ficam guardados na sua conta e valem para as próximas propostas.</p>
+          </div>
+        </details>
+
+        <p class="ob-status inteiro" id="ob-prop-status"></p>
+        <div class="ob-form-acoes inteiro">
+          <button type="button" class="ob-btn" data-acao="fechar-modal">Cancelar</button>
+          <button type="submit" class="ob-btn primario">${d ? 'Salvar proposta' : 'Gerar proposta'}</button>
+        </div>
+      </form>`, true);
+
+    const form = $('ob-form-proposta');
+    const linhas = () => [...form.querySelectorAll('.ob-prop-item[data-id]')];
+    const escolhida = row => (servicoDoCatalogo(row.dataset.id) ? row.querySelector('[name=sel]').checked : !!row.querySelector('[name=nome]').value.trim());
+    const atualizarTotal = () => {
+      const sel = linhas().filter(escolhida);
+      const total = sel.reduce((s, row) => s + (lerNumero(row.querySelector('[name=valor]').value) || 0), 0);
+      const dias = sel.filter(row => (servicoDoCatalogo(row.dataset.id) || {}).unidade !== 'meses')
+        .reduce((s, row) => s + (Number(row.querySelector('[name=prazo]').value) || 0), 0);
+      $('ob-prop-total').textContent = sel.length ? `Total ${fmtMoeda(total)} · ${dias} dias úteis` : 'Marque os serviços';
+    };
+    form.addEventListener('input', ev => {
+      const row = ev.target.closest('.ob-prop-item');
+      // Mexer no prazo ou no valor já marca o serviço
+      if (row && ev.target.name !== 'sel' && servicoDoCatalogo(row.dataset.id)) row.querySelector('[name=sel]').checked = true;
+      atualizarTotal();
+    });
+    form.addEventListener('change', atualizarTotal);
+    form.addEventListener('click', ev => {
+      const el = ev.target.closest('[data-prop]');
+      if (!el) return;
+      if (el.dataset.prop === 'remover') el.closest('.ob-prop-item').remove();
+      else {
+        form.querySelector('.ob-prop-rodape').insertAdjacentHTML('beforebegin', linhaOutro({ id: novoId('s'), nome: '', descricao: '', prazo: '', valor: null }));
+        [...form.querySelectorAll('.ob-prop-item.outro [name=nome]')].pop().focus();
+      }
+      atualizarTotal();
+    });
+    atualizarTotal();
+
+    form.addEventListener('submit', async ev => {
+      ev.preventDefault();
+      const status = $('ob-prop-status');
+      const itens = [];
+      for (const row of linhas().filter(escolhida)) {
+        const s = servicoDoCatalogo(row.dataset.id);
+        const nome = s ? s.nome : row.querySelector('[name=nome]').value.trim();
+        const valor = lerNumero(row.querySelector('[name=valor]').value);
+        if (!valor) { status.textContent = `Informe o valor de “${nome}”.`; row.querySelector('[name=valor]').focus(); return; }
+        itens.push({
+          id: row.dataset.id, nome, detalhe: s ? s.detalhe : '', unidade: s && s.unidade ? s.unidade : '',
+          prazo: Number(row.querySelector('[name=prazo]').value) || 0, valor,
+          ...(s ? {} : { descricao: row.querySelector('[name=descricao]').value.trim() })
+        });
+      }
+      if (!itens.length) { status.textContent = 'Marque ao menos um serviço.'; return; }
+      const f = new FormData(form);
+      const g = k => String(f.get(k) || '').trim();
+      const novoEu = {};
+      ['nome', 'cargo', 'profissao', 'nomeCompleto', 'registro', 'conselho', 'telefone', 'email', 'pagamento', 'frase'].forEach(k => { novoEu[k] = g('eu_' + k); });
+      const dados = {
+        v: 1, numero: p.numero, cliente: p.cliente || '', assunto: p.assunto, data: g('data') || hoje(), itens,
+        ed: { tipo: g('ed_tipo'), area: g('ed_area'), pavimentos: g('ed_pavimentos'), endereco: g('ed_endereco'), sistema: g('ed_sistema'), composicao: g('ed_composicao') },
+        entrada: Number(f.get('entrada')) || 0, pranchas: Number(f.get('pranchas')) || 0, eu: novoEu
+      };
+      const btn = form.querySelector('[type=submit]');
+      btn.disabled = true;
+      status.textContent = '';
+      const doc = d || { id: novoId('d'), processo_id: p.id, numero: proximoNumeroDoc(p), origem: 'interno', tipo: 'Proposta', criado_em: new Date().toISOString() };
+      Object.assign(doc, {
+        titulo: g('titulo') || p.assunto, data: dados.data,
+        conteudo: MARCA_PROPOSTA + encodeURIComponent(JSON.stringify(dados)) + '-->' + htmlProposta(dados)
+      });
+      if (!(await gravar('documentos', doc))) { btn.disabled = false; return; }
+      const total = totalProposta(itens);
+      p.valor_proposta = total;   // registrar() grava o processo com o valor novo
+      if (!d) {
+        documentos.push(doc);
+        await registrar(p, 'documento', `Documento ${num4(doc.numero)} incluído: Proposta — ${doc.titulo} (${fmtMoeda(total)}).`);
+        if (f.get('avancar')) await mudarFase(p, sugestaoFase(p, 'Proposta'), `inclusão do documento ${num4(doc.numero)}`);
+      } else {
+        await registrar(p, 'documento', `Documento ${num4(doc.numero)} alterado: Proposta — ${fmtMoeda(total)}.`);
+      }
+      salvarMeusDados(novoEu, itens);
+      fecharModal();
+      location.hash = `#/p/${p.id}/d/${doc.id}`;
+      render();
+    });
+  }
+
+  const gerarProposta = p => formProposta(p, null);
 
   function formProcesso(p) {
     const novo = !p;
@@ -805,13 +1187,13 @@
     return idx(alvo) > idx(p.fase) ? alvo : null;
   }
 
-  function camposDoc(p, d, padraoTipo, padraoTitulo = '') {
+  function camposDoc(p, d, padraoTipo) {
     const tipo = d ? d.tipo : padraoTipo;
     const sug = !d && sugestaoFase(p, tipo);
     return `
       ${campo('Tipo', `<select class="ob-input" name="tipo">${opcoes(TIPOS_DOC.map(t => [t, t]), tipo)}</select>`)}
       ${campo('Data do documento', `<input type="date" class="ob-input" name="data" value="${esc(d ? d.data : hoje())}" required />`)}
-      ${campo('Título *', `<input class="ob-input" name="titulo" required value="${esc(d ? d.titulo : padraoTitulo)}" placeholder="Ex.: Proposta comercial — revisão 1" />`, 'inteiro')}
+      ${campo('Título *', `<input class="ob-input" name="titulo" required value="${esc(d ? d.titulo : '')}" placeholder="Ex.: Proposta comercial — revisão 1" />`, 'inteiro')}
       ${d ? '' : `<label class="ob-check inteiro" id="ob-sug-fase" ${sug ? '' : 'hidden'}>
         <input type="checkbox" name="avancar" ${sug ? 'checked' : ''} />
         <span>Mudar a fase para “<b>${esc(sug ? fase(sug).nome : '')}</b>”</span>
@@ -911,14 +1293,11 @@
     return carregandoQuill;
   }
 
-  // modelo (opcional, só em documento novo): { tipo, titulo, conteudo } já preenchidos
-  async function formInterno(p, d, modelo) {
-    const m = (!d && modelo) || {};
-    abrirModal(d ? `Editar documento ${num4(d.numero)}` : m.tipo ? `Gerar ${m.tipo.toLowerCase()}` : 'Escrever documento', `
+  async function formInterno(p, d) {
+    abrirModal(d ? `Editar documento ${num4(d.numero)}` : 'Escrever documento', `
       <form id="ob-form-doc" class="ob-form">
-        ${camposDoc(p, d, m.tipo || 'Despacho', m.titulo)}
-        ${m.conteudo ? '<p class="ob-sub inteiro">Revise o texto e complete os trechos marcados em amarelo antes de enviar. Depois de incluir, use “Imprimir / PDF”.</p>' : ''}
-        <div class="ob-editor inteiro"><div id="ob-editor">${d ? d.conteudo || '' : m.conteudo || ''}</div></div>
+        ${camposDoc(p, d, 'Despacho')}
+        <div class="ob-editor inteiro"><div id="ob-editor">${d ? d.conteudo || '' : ''}</div></div>
         <p class="ob-status inteiro" id="ob-doc-status"></p>
         <div class="ob-form-acoes inteiro">
           <button type="button" class="ob-btn" data-acao="fechar-modal">Cancelar</button>
@@ -1041,9 +1420,12 @@
     else if (acao === 'doc-externo' && p) formExterno(p, null);
     else if (acao === 'doc-interno' && p) formInterno(p, null);
     else if (acao === 'gerar-proposta' && p) gerarProposta(p);
-    else if (acao === 'editar-doc' && p && d) (d.origem === 'interno' ? formInterno : formExterno)(p, d);
+    else if (acao === 'editar-doc' && p && d) (lerProposta(d) ? formProposta : d.origem === 'interno' ? formInterno : formExterno)(p, d);
     else if (acao === 'excluir-doc' && p && d) excluirDoc(p, d);
-    else if (acao === 'imprimir-doc' && p && d) imprimirDoc(p, d);
+    else if (acao === 'imprimir-doc' && p && d) {
+      const prop = lerProposta(d);
+      if (prop) imprimirProposta(p, d, prop); else imprimirDoc(p, d);
+    }
     else if ((acao === 'abrir-arquivo' || acao === 'baixar-arquivo') && d) {
       const janela = window.open('', '_blank');   // aberta já no clique, para o navegador não bloquear
       const url = await linkArquivo(d, acao === 'baixar-arquivo');
@@ -1110,8 +1492,13 @@
     $('ob-modal').addEventListener('click', ev => { if (ev.target.id === 'ob-modal') fecharModal(); });
     window.addEventListener('hashchange', () => { render(); window.scrollTo(0, 0); });
 
+    const estilo = document.createElement('style');
+    estilo.textContent = CSS_PROPOSTA;
+    document.head.appendChild(estilo);
+
     const user = await window.authReady;
     if (!user) return;
+    usuario = user;
     if (!canUseApp('controle-obras', user)) { location.replace('/apps.html'); return; }
     $('ob-usuario').textContent = window.getSessionUser ? getSessionUser() : '';
     $('ob-app').innerHTML = '<p class="ob-vazio">Carregando…</p>';
