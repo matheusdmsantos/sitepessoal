@@ -424,6 +424,8 @@
         </div>
       </section>
 
+      ${window.estErros ? window.estErros.blocoFicha(e.id, d.id, t.id) : ''}
+
       <section class="est-ed-ficha-bloco">
         <h3>Revisões</h3>
         ${revs.length ? `<ul class="est-ed-ficha-lista">${revs.map(x => x.concluida_em

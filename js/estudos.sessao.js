@@ -779,6 +779,9 @@
   window.estSessao = {
     abrir, abrirResumo, fechar, minutosDe, selo, separarPaginas,
     irPagina: mostrarPagina, apagarPagina,
-    zerarCrono: id => gravarCrono(id, null)
+    zerarCrono: id => gravarCrono(id, null),
+    // Usados pelo Caderno de Erros (estudos.erros.js)
+    contexto: () => ctx && { disc: ctx.disc, topico: ctx.topico },
+    limparHtmlColado, reduzirImagem
   };
 })();

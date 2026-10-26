@@ -51,6 +51,7 @@ js/
   estudos.sessao.js   Janela de estudo/resumo: cronômetro (livre/Pomodoro, só pelo plano) e resumo em páginas
   estudos.resumos.js  Meus Resumos: resumo geral da matéria montado dos resumos dos assuntos; exporta Word/PDF
   estudos.edital.js   Edital Verticalizado: painel, filtros, selos por tópico, ficha lateral, exporta PDF/Excel
+  estudos.erros.js    Caderno de Erros: questões erradas do TEC, revisão por cartão (1/7/30/90 dias)
   estudos.usuario.js  Separa por usuário as chaves est_*/disc_order_* do localStorage (roda antes do v5)
 editais/              PDFs de teste; fora do git (.gitignore) para não serem publicados
 assets/               imagens
@@ -63,6 +64,7 @@ netlify/functions/usuarios.mjs  Netlify Function com a chave service_role (vari�
 supabase/rls.sql      Row Level Security: por usuário nas tabelas com coluna dono; só o dono nas demais
 supabase/multiusuario.sql  coluna dono nas tabelas do Painel de Estudos e papel 'dono' no app_metadata
 supabase/estudos-plano.sql  tabelas do Painel de Estudos (sessoes, metas, revisoes, plano_estudos…)
+supabase/erros.sql    tabela do Caderno de Erros, já com dono e RLS
 supabase/obras.sql    tabelas do Controle de Obras e o bucket "obras-docs"
 ```
 
@@ -119,7 +121,7 @@ A página usa `<body class="auth-pending">` (com `visibility: hidden`) e remove 
 
 ## Supabase
 
-- Tabelas: `editais`, `disciplinas` (com `ordem`, ver `estudos-plano.sql`), `topicos`, `resumos` e, criadas por `supabase/estudos-plano.sql`, `sessoes`, `metas`, `revisoes`, `plano_estudos`, `incidencias` e `materiais`; criadas por `supabase/obras.sql`, `processos`, `documentos`, `andamentos`, `prazos` e `modelos_mensagem` (as três do meio são filhas com `on delete cascade`). Os ids são texto.
+- Tabelas: `editais`, `disciplinas` (com `ordem`, ver `estudos-plano.sql`), `topicos`, `resumos` e, criadas por `supabase/estudos-plano.sql`, `sessoes`, `metas`, `revisoes`, `plano_estudos`, `incidencias` e `materiais`; criada por `supabase/erros.sql`, `erros`; criadas por `supabase/obras.sql`, `processos`, `documentos`, `andamentos`, `prazos` e `modelos_mensagem` (as três do meio são filhas com `on delete cascade`). Os ids são texto.
 - Storage: bucket privado `obras-docs` (25 MB por arquivo), com a política `obras_docs_dono` em `storage.objects` criada pelo próprio `obras.sql` (o `rls.sql` só cobre as tabelas de `public`). Arquivos abrem por link assinado de 10 min.
 - `incidencias` e `materiais` são carregadas à parte: se faltarem, só os dados delas ficam no navegador e o resto do plano continua no Supabase.
 - Sem as tabelas do plano, o `estudos.plano.js` guarda tudo no `localStorage` e mostra um aviso; quando elas aparecem, envia esses dados uma vez (flag `est_plano_migrado`).
@@ -154,6 +156,7 @@ A página usa `<body class="auth-pending">` (com `visibility: hidden`) e remove 
 - [x] `supabase/estudos-plano.sql` e `supabase/rls.sql` executados no SQL Editor (23/10/2026): 10 tabelas com RLS e `dono_acesso_total`.
 - [ ] Senha antiga trocada nos outros serviços onde era usada (ela ficou exposta no site antigo).
 - [ ] Repositório do GitHub passado para privado.
+- [ ] `supabase/erros.sql` executado (Caderno de Erros).
 
 **Plano semanal no Painel de Estudos (branch `feat/plano-semanal`, ainda não publicada).** Inspirado na Guruja:
 - *Planejamento Semanal* (seção `metas`): um planejamento só, com tópicos novos e revisões juntos em cada dia. Horas/semana, dias de estudo, peso e nível por disciplina; rodízio ponderado (a disciplina da vez é a que recebeu menos tempo em relação a peso × (4 − nível)); tempo do tópico pelo nível: 120/90/60 min.
@@ -184,6 +187,13 @@ A página usa `<body class="auth-pending">` (com `visibility: hidden`) e remove 
 - *Tópico*: recuo pela numeração; selos de incidência, páginas, resumo, revisão (`estPlano.revisoesDoTopico`) e tempo; acerto colorido. Clicar abre a *ficha lateral* (números, ações, TEC, resumo, revisões, PDFs, histórico de sessões, renomear/excluir). Renomear tópico ou disciplina leva junto o resumo (atualiza `disciplina_nome`/`topico_nome` em `resumos`).
 - *Ordem das disciplinas*: coluna `disciplinas.ordem` (adicionada no fim do `estudos-plano.sql`); sem ela, vale a ordem do navegador.
 - *Exportar*: PDF (html2pdf) e Excel (SheetJS 0.18.5), na pasta escolhida em Meus Resumos (`estResumos.pastaDestino`/`gravarArquivo`).
+
+**Caderno de Erros (`js/estudos.erros.js`, branch `feat/caderno-erros`).** Seção "Caderno de Erros" do painel (antes um espaço reservado):
+- *Registro por questão* (só do TEC): link ou número da questão (`tec_id`/`link`; o número também é achado no texto colado), enunciado colado num editor simples (contenteditable; limpeza por `estSessao.limparHtmlColado` e depois `sanitizar`, que só deixa tags de texto, tabelas e imagens; imagem colada reduzida por `estSessao.reduzirImagem`), tipo Certo/Errado ou A–E (detectado no texto colado), gabarito, a resposta dada (no C/E pode ser "em branco"), motivo (`MOTIVOS`: conteúdo, esqueci, leitura, pegadinha, pressa, gabarito discutível), a regra certa em uma frase e um comentário opcional. Disciplina e tópico vêm do contexto ou do último registro (`est_erros_ultimo`). "Salvar e registrar outra" mantém disciplina e tópico.
+- *Onde registrar*: botão na seção, bloco "Caderno de erros" na ficha lateral do tópico (`estErros.blocoFicha`, chamado pelo `estudos.edital.js`) e "❌ Registrar erro" na janela de estudo (usa `estSessao.contexto()`).
+- *Revisão por cartão*: o enunciado aparece sem gabarito; acertou, avança a etapa (`INTERVALOS` = 1, 7, 30, 90 dias); errou, volta para amanhã (etapa 0). Acertar na última etapa marca `dominado_em` e tira a questão da fila. A primeira revisão é no dia seguinte ao registro. O menu mostra quantas estão para hoje.
+- *Tela*: KPIs, "Por que você erra" (barras por motivo; clicar filtra), filtros por disciplina, tópico, motivo, situação e busca. Mostra os erros do edital ativo.
+- Sem a tabela `erros`, tudo fica em `localStorage['est_erros']` (separado por usuário pelo `estudos.usuario.js`) e é enviado quando a tabela aparece. O `.page-estudos button` zera borda e fundo, por isso os botões do caderno usam seletores `.page-estudos .est-erro-*`.
 
 **Gestão de Contratos (antes "Controle de Obras"; id, pasta `apps/controle-obras/` e tabelas mantidos).** Gerenciador de processos no estilo SEI, em `apps/controle-obras/` (abre em página cheia):
 - *Processo* `AAAA.NNNN` (numeração por ano): assunto, serviço (projeto, execução, fiscalização, laudo, consultoria), cliente, contato, local, valores da proposta e do contrato, e fase: Prospecção → Proposta enviada → Em negociação → Contratado → Em execução → Entregue → Encerrado, ou Proposta recusada / Cancelado (finais: marcam `concluido_em`).

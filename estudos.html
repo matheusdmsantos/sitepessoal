@@ -10,7 +10,7 @@
   <!-- Fontes do editor de resumo (js/estudos.sessao.js, FONTES): só são baixadas quando usadas -->
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Architects+Daughter&family=Caveat:wght@400;700&family=Dancing+Script:wght@400;700&family=Gloria+Hallelujah&family=Indie+Flower&family=Kalam:wght@400;700&family=Lato:ital,wght@0,400;0,700;1,400&family=Lora:ital,wght@0,400;0,700;1,400&family=Merriweather:ital,wght@0,400;0,700;1,400&family=Montserrat:ital,wght@0,400;0,700;1,400&family=Open+Sans:ital,wght@0,400;0,700;1,400&family=Patrick+Hand&family=Permanent+Marker&family=Roboto+Mono:wght@400;700&family=Roboto:ital,wght@0,400;0,700;1,400&family=Shadows+Into+Light&display=swap" />
   <link href="https://cdn.quilljs.com/1.3.6/quill.snow.css" rel="stylesheet">
-  <link rel="stylesheet" href="css/estudos.css?v=17" />
+  <link rel="stylesheet" href="css/estudos.css?v=18" />
 </head>
 <body class="page-estudos">
 
@@ -285,11 +285,9 @@
         <div id="est-plano-desempenho"></div>
       </section>
 
-      <section id="est-section-erros" class="est-placeholder-section" data-section="erros">
-        <div class="est-placeholder-icon">❌</div>
-        <div class="est-placeholder-badge">Em desenvolvimento</div>
-        <h2 class="est-placeholder-title">Caderno de Erros</h2>
-        <p class="est-placeholder-text">Registre e revise as questões que errou para fixar o aprendizado. Módulo em breve.</p>
+      <!-- ─── SEÇÃO: CADERNO DE ERROS (renderizada por estudos.erros.js) ─── -->
+      <section id="est-section-erros" class="est-placeholder-section est-plano-section" data-section="erros" aria-label="Caderno de erros">
+        <div id="est-erros"></div>
       </section>
 
     </main>
@@ -764,6 +762,7 @@
         </div>
         <div class="est-sessao-acoes">
           <span class="est-sessao-status" id="est-sessao-status" role="status"></span>
+          <button type="button" class="est-plano-btn" id="est-sessao-erro" title="Registrar uma questão errada deste tópico no Caderno de Erros">❌ Registrar erro</button>
           <button type="button" class="est-plano-btn" id="est-sessao-ver-materia" title="Ver este assunto no resumo geral da matéria">📚 Resumo da matéria</button>
           <button type="button" class="est-plano-btn primario" id="est-sessao-concluir">Concluir</button>
           <button type="button" class="est-modal-close" id="est-sessao-fechar" aria-label="Fechar e salvar">✕</button>
@@ -782,6 +781,80 @@
           <div id="est-sessao-editor"></div>
         </div>
       </div>
+    </div>
+  </div>
+
+  <!-- ─── MODAL: REGISTRAR ERRO (js/estudos.erros.js) ─── -->
+  <div class="est-modal-overlay" id="est-modal-erro">
+    <div class="est-modal est-modal-largo" role="dialog" aria-modal="true" aria-labelledby="est-erro-form-titulo">
+      <div class="est-modal-header" style="margin-bottom: 10px;">
+        <h2 class="est-modal-title" id="est-erro-form-titulo">Registrar questão errada</h2>
+        <button type="button" class="est-modal-close" id="est-modal-erro-close" aria-label="Fechar">✕</button>
+      </div>
+      <form id="est-erro-form" class="est-erro-form" novalidate>
+        <label class="est-erro-campo">
+          <span class="est-form-label">Questão no TEC (link ou número)</span>
+          <input type="text" id="est-erro-tec" class="est-form-input" placeholder="https://www.tecconcursos.com.br/questoes/1234567" autocomplete="off" />
+        </label>
+        <div class="est-erro-campo">
+          <span class="est-form-label" id="est-erro-enunciado-rotulo">Enunciado</span>
+          <div id="est-erro-enunciado" class="est-erro-editor" contenteditable="true" role="textbox" aria-multiline="true"
+            aria-labelledby="est-erro-enunciado-rotulo" data-vazio="Copie a questão no TEC e cole aqui (Ctrl+V). Imagens também podem ser coladas."></div>
+        </div>
+        <div class="est-erro-linha">
+          <fieldset class="est-erro-campo">
+            <legend class="est-form-label">Tipo</legend>
+            <div class="est-erro-tipos">
+              <label><input type="radio" name="est-erro-tipo" value="ce" /> Certo ou Errado</label>
+              <label><input type="radio" name="est-erro-tipo" value="me" /> Múltipla escolha (A–E)</label>
+            </div>
+          </fieldset>
+          <div class="est-erro-campo">
+            <span class="est-form-label">Gabarito</span>
+            <div id="est-erro-gabarito" class="est-erro-ops" role="group" aria-label="Gabarito"></div>
+          </div>
+          <div class="est-erro-campo">
+            <span class="est-form-label">Sua resposta</span>
+            <div id="est-erro-resposta" class="est-erro-ops" role="group" aria-label="Sua resposta"></div>
+          </div>
+        </div>
+        <div class="est-erro-campo">
+          <span class="est-form-label">Por que errei</span>
+          <div id="est-erro-motivos" class="est-erro-motivos" role="group" aria-label="Motivo do erro"></div>
+        </div>
+        <label class="est-erro-campo">
+          <span class="est-form-label">A regra certa, em uma frase</span>
+          <textarea id="est-erro-regra" class="est-form-input" rows="2" maxlength="500" placeholder="Ex.: Autarquia é pessoa jurídica de direito público, criada por lei."></textarea>
+        </label>
+        <details id="est-erro-comentario-bloco" class="est-erro-campo est-erro-coment">
+          <summary>Comentário do professor ou anotações (opcional)</summary>
+          <div id="est-erro-comentario" class="est-erro-editor pequeno" contenteditable="true" role="textbox" aria-multiline="true"
+            aria-label="Comentário" data-vazio="Cole aqui o comentário do TEC, se quiser."></div>
+        </details>
+        <div class="est-erro-linha">
+          <label class="est-erro-campo">
+            <span class="est-form-label">Disciplina</span>
+            <select id="est-erro-disc" class="est-form-select"></select>
+          </label>
+          <label class="est-erro-campo est-erro-campo-largo">
+            <span class="est-form-label">Tópico do edital</span>
+            <select id="est-erro-topico" class="est-form-select"></select>
+          </label>
+        </div>
+        <p id="est-erro-form-status" class="est-erro-form-status" role="alert" hidden></p>
+        <div class="est-importar-acoes">
+          <button type="button" class="est-btn-cancelar" id="est-erro-cancelar">Cancelar</button>
+          <button type="button" class="est-btn-cancelar" id="est-erro-outro">Salvar e registrar outra</button>
+          <button type="submit" class="est-form-submit" id="est-erro-salvar" style="flex: 2; margin-top: 0;">Salvar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ─── MODAL: REVISÃO DE ERROS (js/estudos.erros.js) ─── -->
+  <div class="est-modal-overlay" id="est-modal-erro-rev">
+    <div class="est-modal est-modal-largo" role="dialog" aria-modal="true" aria-labelledby="est-erro-rev-titulo">
+      <div id="est-erro-rev-conteudo"></div>
     </div>
   </div>
 
@@ -814,11 +887,12 @@
   </script>
   <script src="js/estudos.v5.js?v=9"></script>
   <script src="js/estudos.plano.js?v=9"></script>
-  <script src="js/estudos.sessao.js?v=6"></script>
+  <script src="js/estudos.sessao.js?v=7"></script>
   <script src="js/estudos.resumos.js?v=4"></script>
-  <script src="js/estudos.edital.js?v=1"></script>
+  <script src="js/estudos.edital.js?v=2"></script>
   <script src="js/estudos.importar.js?v=2"></script>
   <script src="js/estudos.incidencia.js?v=2"></script>
   <script src="js/estudos.materiais.js?v=3"></script>
+  <script src="js/estudos.erros.js?v=1"></script>
 </body>
 </html>

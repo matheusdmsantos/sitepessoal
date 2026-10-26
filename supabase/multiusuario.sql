@@ -24,7 +24,7 @@ declare
   tabelas  text[] := array[
     -- Painel de Estudos
     'editais', 'disciplinas', 'topicos', 'resumos', 'sessoes',
-    'metas', 'revisoes', 'plano_estudos', 'incidencias', 'materiais',
+    'metas', 'revisoes', 'plano_estudos', 'incidencias', 'materiais', 'erros',
     -- Controle de Obras
     'processos', 'documentos', 'andamentos', 'prazos', 'modelos_mensagem'];
   t        text;
