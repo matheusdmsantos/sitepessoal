@@ -1,7 +1,7 @@
 /* ─── js/estudos.materiais.js — PDFs de estudo ligados aos tópicos ───
  *
  * Recebe os PDFs de uma disciplina, conta as páginas de cada um e sugere o tópico
- * do edital pelo nome do arquivo (ou pelo texto das primeiras páginas). Um PDF
+ * do edital pelo nome do arquivo ou pelo índice da apostila (ver lerPdf). Um PDF
  * pode ser ligado a vários tópicos, com a faixa de páginas de cada um.
  *
  * Com as páginas e a incidência do TEC, a tela mostra a prioridade de estudo
@@ -22,37 +22,124 @@
   }
 
   /* =============================================
-     PDF → PÁGINAS E TÓPICO SUGERIDO
+     PDF → PÁGINAS E TÓPICOS SUGERIDOS
+     Apostila de cursinho ("curso-393065-aula-03-….pdf") não diz o assunto no nome;
+     quem diz é o índice (sumário) das primeiras páginas. Cada item do índice é
+     comparado aos tópicos do edital e o PDF é ligado a todos os que ele cobre.
+     Sem índice, vale o texto das primeiras páginas, sem cabeçalho e rodapé.
   ============================================= */
+  const PAGINAS_LIDAS = 4;     // o índice costuma estar na 2ª ou 3ª página
+  const MAX_TOPICOS = 6;
+  // Palavra inteira, inclusive com acento (o \b do JavaScript não entende "índice")
+  const palavras = lista => new RegExp(`(?<![\\p{L}\\d])(${lista})(?![\\p{L}\\d])`, 'giu');
+  // Partes do nome do arquivo que não dizem o assunto
+  const RUIDO_NOME = palavras('curso|aula|prof|professor|completo|simplificado|somente|pdf|versao|v\\d+|[0-9a-f]{4}|\\d+');
+  // Partes de itens do índice que não dizem o assunto
+  const GENERICOS = palavras('considera[cç][oõ]es (iniciais|finais)|apresenta[cç][aã]o( do curso)?|introdu[cç][aã]o|' +
+    'resumo|gabarito|lista de quest[oõ]es|quest[oõ]es( comentadas| com coment[aá]rios)?|exerc[ií]cios|cronograma|' +
+    'refer[eê]ncias( bibliogr[aá]ficas)?|bibliografia|sum[aá]rio|[ií]ndice|parte \\d+|in[eé]ditas?|multibancas?|' +
+    'cebraspe|cespe|fgv|fcc|vunesp|cesgranrio|quadrix|idecan|ibfc|aocp');
+  const PONTILHADO = /(\.\s?){4,}|…{2,}|_{4,}/;
+
+  // Linhas da página: o pdf.js entrega pedaços de texto; quebra quando muda a altura
+  async function linhasDaPagina(pdf, n) {
+    const c = await (await pdf.getPage(n)).getTextContent();
+    const linhas = [];
+    let atual = '', y = null, fimX = null;
+    const quebra = () => { const l = atual.replace(/\s+/g, ' ').trim(); if (l) linhas.push(l); atual = ''; fimX = null; };
+    c.items.forEach(i => {
+      if (typeof i.str !== 'string') return;
+      const [, , , , x, yi] = i.transform;
+      if (y !== null && Math.abs(yi - y) > 3) quebra();
+      // Pedaços colados ("Ad" + "ministração") não ganham espaço
+      atual += (fimX !== null && x - fimX > 1 ? ' ' : '') + i.str;
+      y = yi;
+      fimX = x + (i.width || 0);
+      if (i.hasEOL) { quebra(); y = null; }
+    });
+    quebra();
+    return linhas;
+  }
+
+  // Itens do índice: linhas com pontilhado ou, depois de "Sumário"/"Índice", terminadas no número da página
+  function itensDoIndice(paginas) {
+    const itens = [];
+    paginas.forEach(linhas => {
+      let noIndice = false;
+      linhas.forEach(l => {
+        if (/^(sum[aá]rio|[ií]ndice)(?!\p{L})/iu.test(l)) { noIndice = true; return; }
+        if (!PONTILHADO.test(l) && !(noIndice && /\D\s\d{1,3}$/.test(l))) return;
+        const t = l.replace(PONTILHADO, ' ').replace(/[.…_]{2,}/g, ' ')
+          .replace(/^\s*\d+(\.\d+)*\s*[).\-–]?\s*/, '')   // "1) ", "2.3 - "
+          .replace(/\s\d{1,3}\s*$/, '')                       // número da página
+          .replace(GENERICOS, ' ').replace(/[()\-–—:]+/g, ' ').replace(/\s+/g, ' ').trim();
+        if (/[a-zà-ú]{4,}/i.test(t)) itens.push(t);
+      });
+    });
+    return itens;
+  }
+
+  // Texto sem as linhas que se repetem em várias páginas (cabeçalho, rodapé, nome do aluno)
+  function textoSemCabecalho(paginas) {
+    const vezes = {};
+    paginas.forEach(ls => new Set(ls).forEach(l => { vezes[l] = (vezes[l] || 0) + 1; }));
+    return paginas.flat().filter(l => vezes[l] < 2 && !PONTILHADO.test(l)).join(' ');
+  }
+
+  // Tópicos na ordem em que aparecem no índice; se passar do limite, ficam os mais fortes.
+  // PDF de outra matéria acerta um item ou outro por acaso ("Contradição" ~ "Contratação"),
+  // por isso pelo menos um terço dos itens precisa bater com o edital.
+  function sugerirTopicos(itens) {
+    itens = [...new Set(itens.map(t => t.toLowerCase()))];
+    const achados = new Map();
+    let batem = 0;
+    itens.forEach((t, k) => {
+      const r = ctx.comparar(t, true);
+      if (!r.id) return;
+      batem++;
+      const a = achados.get(r.id) || { nota: 0, ordem: k };
+      a.nota += r.nota;
+      achados.set(r.id, a);
+    });
+    if (batem < itens.length / 3) return [];
+    return [...achados].sort((a, b) => b[1].nota - a[1].nota).slice(0, MAX_TOPICOS)
+      .sort((a, b) => a[1].ordem - b[1].ordem).map(([id]) => id);
+  }
+
   async function lerPdf(arquivo) {
     await window.estImportar.carregarPdfjs();
     const pdf = await window.pdfjsLib.getDocument({ data: new Uint8Array(await arquivo.arrayBuffer()) }).promise;
     const nome = arquivo.name.replace(/\.pdf$/i, '');
-    let sugestao = ctx.comparar(nome.replace(/[_-]+/g, ' '));
-    if (!sugestao) {
-      // Sem pista no nome ("Aula 03.pdf"), tenta pelo começo do texto
-      let texto = '';
-      for (let p = 1; p <= Math.min(2, pdf.numPages); p++) {
-        const c = await (await pdf.getPage(p)).getTextContent();
-        texto += ' ' + c.items.map(i => i.str).join(' ');
+    const peloNome = ctx.comparar(nome.replace(/[_-]+/g, ' ').replace(RUIDO_NOME, ' '));
+    let topicos = peloNome ? [peloNome] : [];
+    if (!topicos.length) {
+      const paginas = [];
+      for (let p = 1; p <= Math.min(PAGINAS_LIDAS, pdf.numPages); p++) paginas.push(await linhasDaPagina(pdf, p));
+      const itens = itensDoIndice(paginas);
+      topicos = sugerirTopicos(itens);
+      if (!itens.length) {
+        const peloTexto = ctx.comparar(textoSemCabecalho(paginas).slice(0, 4000));
+        if (peloTexto) topicos = [peloTexto];
       }
-      sugestao = ctx.comparar(texto.slice(0, 1500));
     }
     const paginas = pdf.numPages;
     pdf.destroy();
-    return { nome, paginas, sugestao };
+    return { nome, paginas, topicos };
   }
+
+  const ligacoes = ids => ids.map(topico_id => ({ topico_id, de: null, ate: null }));
 
   async function lerArquivos(arquivos) {
     if (!ctx || !arquivos.length) return;
     const novos = [];
-    let repetidos = 0;
+    const repetidos = [];
     for (let i = 0; i < arquivos.length; i++) {
       status(`Lendo ${i + 1} de ${arquivos.length}: ${arquivos[i].name}…`);
       try {
         const r = await lerPdf(arquivos[i]);
-        if (ctx.lista.some(m => m.nome === r.nome && m.paginas === r.paginas)) { repetidos++; continue; }
-        const m = { id: novoId(), nome: r.nome, paginas: r.paginas, topicos: r.sugestao ? [{ topico_id: r.sugestao, de: null, ate: null }] : [] };
+        const ja = ctx.lista.find(m => m.nome === r.nome && m.paginas === r.paginas);
+        if (ja) { repetidos.push({ m: ja, topicos: r.topicos }); continue; }
+        const m = { id: novoId(), nome: r.nome, paginas: r.paginas, topicos: ligacoes(r.topicos) };
         ctx.lista.push(m);
         novos.push(m);
       } catch (e) {
@@ -62,11 +149,23 @@
         return;
       }
     }
+    // PDF já na lista: troca as ligações pela nova sugestão, se o usuário quiser
+    const mudam = repetidos.filter(x => x.topicos.length &&
+      x.topicos.join() !== x.m.topicos.map(l => l.topico_id).join());
+    let trocados = 0;
+    if (mudam.length && confirm(`${mudam.length} PDF${mudam.length > 1 ? 's' : ''} já estava${mudam.length > 1 ? 'm' : ''} na lista com outros tópicos.
+
+` +
+      'Trocar pelos tópicos sugeridos agora? As faixas de páginas digitadas nesses PDFs serão apagadas.')) {
+      mudam.forEach(x => { x.m.topicos = ligacoes(x.topicos); });
+      trocados = mudam.length;
+    }
     const ligados = novos.filter(m => m.topicos.length).length;
     status(`${novos.length} PDF${novos.length === 1 ? '' : 's'} adicionado${novos.length === 1 ? '' : 's'}` +
-      (novos.length ? `, ${ligados} ligado${ligados === 1 ? '' : 's'} automaticamente a um tópico: confira abaixo.` : '.') +
-      (repetidos ? ` ${repetidos} já estava${repetidos === 1 ? '' : 'm'} na lista.` : ''));
-    $('est-mat-salvar').disabled = false;
+      (novos.length ? `, ${ligados} ligado${ligados === 1 ? '' : 's'} automaticamente a tópicos: confira abaixo.` : '.') +
+      (repetidos.length ? ` ${repetidos.length} já estava${repetidos.length === 1 ? '' : 'm'} na lista` +
+        (trocados ? ` (${trocados} com os tópicos trocados).` : '.') : ''));
+    $('est-mat-salvar').disabled = !(novos.length || trocados) && $('est-mat-salvar').disabled;
     render();
   }
 

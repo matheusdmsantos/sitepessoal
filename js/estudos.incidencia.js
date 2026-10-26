@@ -106,7 +106,8 @@
     const df = {};
     docs.forEach(d => d.todos.forEach(p => { df[p] = (df[p] || 0) + 1; }));
     const idf = p => Math.log((docs.length + 1) / ((df[p] || 0) + 0.5));
-    return assunto => {
+    // comNota: devolve { id, nota } para quem precisa comparar sugestões entre si
+    return (assunto, comNota) => {
       const ts = termos(assunto);
       let melhor = null, nota = 0;
       docs.forEach(d => {
@@ -120,7 +121,8 @@
         });
         if (s > nota) { nota = s; melhor = d.id; }
       });
-      return nota >= 1 ? melhor : '';
+      const id = nota >= 1 ? melhor : '';
+      return comNota ? { id, nota } : id;
     };
   }
 
