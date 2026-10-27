@@ -267,6 +267,134 @@ input[type="date"].ob-input { color-scheme: dark; }
   .ob-prop-item > :first-child { grid-column: 1 / -1; }
   .ob-prop-cab { display: none; }
 }
+/* ─── Acompanhamento de obra (obra.js) ─── */
+.ob-andamento li.tipo-obra::before { background: #fb923c; }
+.ob-arvore-obra { border: 1px dashed var(--border-silver); margin: 2px 0 6px; }
+.ob-card-titulo > .ob-btn, .ob-card-titulo > .ob-link { margin-left: auto; font-weight: 400; }
+.ob-card-titulo > .ob-btn { padding: 5px 14px; font-size: 0.8rem; }
+.ob-aviso-inline { padding: 10px 12px; border-radius: var(--r-sm); background: rgba(251, 191, 36, 0.1); color: var(--ambar); font-size: 0.86rem; }
+.ob-obra-inicio p { font-size: 0.9rem; margin-bottom: 14px; max-width: 640px; }
+.ob-obra-topo { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; align-items: flex-start; }
+.ob-obra-topo .ob-card-titulo { margin-bottom: 4px; }
+.ob-obra-acoes { display: flex; gap: 8px; flex-wrap: wrap; }
+.ob-obra-abas { margin: 14px 0 0; }
+a.ob-chip:hover { color: var(--silver-bright); }
+.ob-obra-kpis .ob-kpi strong { font-size: 1.35rem; }
+.ob-ok { color: var(--verde); }
+.ob-tag { display: inline-block; padding: 2px 9px; border-radius: var(--r-full); font-size: 0.74rem; background: var(--bg-glass); border: 1px solid var(--border); color: var(--silver); }
+.ob-tag.verde { background: rgba(74, 222, 128, 0.1); border-color: rgba(74, 222, 128, 0.3); color: var(--verde); }
+.ob-tag.ambar { background: rgba(251, 191, 36, 0.1); border-color: rgba(251, 191, 36, 0.3); color: var(--ambar); }
+
+.ob-barra { position: relative; height: 10px; border-radius: var(--r-full); background: var(--bg-card-2); border: 1px solid var(--border); }
+.ob-barra.grande { height: 16px; }
+.ob-barra i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: var(--r-full); background: linear-gradient(90deg, #3b82f6, var(--azul)); }
+.ob-barra b { position: absolute; top: -4px; bottom: -4px; width: 2px; margin-left: -1px; background: var(--ambar); border-radius: 1px; }
+.ob-avanco-geral { margin-bottom: 16px; display: flex; flex-direction: column; gap: 6px; }
+.ob-avanco-geral strong { color: var(--silver-bright); }
+.ob-etapas { display: flex; flex-direction: column; gap: 10px; }
+.ob-etapa { display: grid; grid-template-columns: minmax(150px, 1.1fr) 2fr 52px minmax(0, 0.8fr); gap: 12px; align-items: center; font-size: 0.85rem; }
+.ob-etapa-nome { color: var(--silver-bright); overflow-wrap: anywhere; }
+.ob-etapa-nome small { display: block; font-size: 0.72rem; color: var(--accent-muted); }
+.ob-etapa-pct { text-align: right; font-variant-numeric: tabular-nums; color: var(--silver-bright); }
+.ob-etapa-sit { font-size: 0.75rem; color: var(--accent); }
+.ob-etapa.feita .ob-barra i { background: var(--verde); }
+.ob-etapa.feita .ob-etapa-sit { color: var(--verde); }
+.ob-etapas:has(.ob-etapa-sit) .ob-etapa { grid-template-columns: minmax(150px, 1.1fr) 2fr 52px minmax(90px, 0.8fr); }
+.ob-etapas:not(:has(.ob-etapa-sit)) .ob-etapa { grid-template-columns: minmax(150px, 1fr) 2fr 52px; }
+.ob-legenda { margin-top: 14px; }
+.ob-legenda i, .ob-legenda b { display: inline-block; vertical-align: middle; margin-right: 4px; }
+.ob-legenda i { width: 18px; height: 8px; border-radius: 4px; background: var(--azul); }
+.ob-legenda b { width: 2px; height: 12px; background: var(--ambar); margin-left: 10px; }
+
+.ob-visita { padding: 14px 0; border-top: 1px solid var(--border); font-size: 0.87rem; display: flex; flex-direction: column; gap: 6px; }
+.ob-visita:first-of-type { border-top: 0; padding-top: 0; }
+.ob-visita header { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.ob-visita header strong { color: var(--silver-bright); font-size: 0.95rem; }
+.ob-visita b { color: var(--silver-bright); font-weight: 600; }
+.ob-visita-acoes { margin-left: auto; display: flex; }
+.ob-visita-avancos { display: flex; gap: 6px; flex-wrap: wrap; }
+.ob-fotos { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 10px; margin-top: 4px; }
+.ob-fotos figure { display: flex; flex-direction: column; gap: 4px; }
+.ob-fotos figcaption { font-size: 0.74rem; color: var(--accent); line-height: 1.3; }
+.ob-foto { display: block; padding: 0; border: 1px solid var(--border); border-radius: var(--r-sm); overflow: hidden; background: var(--bg-card-2); cursor: zoom-in; aspect-ratio: 4 / 3; width: 100%; }
+.ob-foto img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.ob-foto:hover { border-color: var(--azul); }
+
+.ob-pend { display: grid; grid-template-columns: 62px minmax(0, 1fr) auto auto; gap: 12px; align-items: center; padding: 10px 0; border-top: 1px solid rgba(200, 204, 212, 0.05); font-size: 0.86rem; }
+.ob-pend-txt { display: flex; flex-direction: column; gap: 2px; }
+.ob-pend-txt strong { color: var(--silver-bright); font-weight: 500; }
+.ob-pend-txt small { font-size: 0.75rem; color: var(--accent); }
+.ob-pend-txt small.ob-erro { color: var(--vermelho); }
+.ob-pend-txt small.ob-ok { color: var(--verde); }
+.ob-pend.feita strong { text-decoration: line-through; color: var(--accent); }
+.ob-pend-fotos { display: flex; gap: 6px; }
+.ob-pend-fotos .ob-foto { width: 64px; }
+.ob-pend-acoes { display: flex; gap: 2px; align-items: center; }
+.ob-pend-acoes .ob-btn:not(.sutil) { padding: 5px 12px; font-size: 0.8rem; }
+.ob-grav { text-align: center; font-size: 0.7rem; font-weight: 600; padding: 2px 6px; border-radius: var(--r-full); }
+.ob-grav.alta { background: rgba(248, 113, 113, 0.15); color: var(--vermelho); }
+.ob-grav.media { background: rgba(251, 191, 36, 0.15); color: var(--ambar); }
+.ob-grav.baixa { background: rgba(200, 204, 212, 0.12); color: var(--silver); }
+
+.ob-hon-resumo { margin-bottom: 14px; }
+.ob-hon tbody tr { cursor: default; }
+.ob-hon td small { display: block; font-size: 0.72rem; color: var(--accent-muted); }
+.ob-hon input { width: 17px; height: 17px; accent-color: var(--verde); cursor: pointer; }
+.ob-hon td:nth-child(2)::first-letter { text-transform: uppercase; }
+.ob-hon tr.pago .ob-hon-sit { color: var(--verde); }
+.ob-hon tr.vencido .ob-hon-sit { color: var(--vermelho); font-weight: 600; }
+.ob-hon tr.perto .ob-hon-sit { color: var(--ambar); }
+.ob-hon-acoes { white-space: nowrap; text-align: right; }
+.ob-hon-acoes .ob-btn.whats { padding: 4px 12px; font-size: 0.78rem; }
+
+.ob-rel-linha { display: grid; grid-template-columns: 54px minmax(0, 1fr) auto auto; gap: 14px; align-items: center; padding: 10px 8px; border-top: 1px solid rgba(200, 204, 212, 0.05); border-radius: var(--r-sm); font-size: 0.86rem; }
+.ob-rel-linha:hover { background: var(--bg-glass); }
+.ob-rel-linha strong { color: var(--silver-bright); display: block; }
+.ob-rel-linha small { color: var(--accent); font-size: 0.75rem; }
+
+/* formulários da obra */
+.ob-check.azul { background: rgba(96, 165, 250, 0.08); color: var(--azul); }
+.ob-check.azul input { accent-color: var(--azul); }
+.ob-grupo { border: 1px solid var(--border); border-radius: var(--r-md); padding: 10px 14px 14px; display: flex; flex-direction: column; gap: 10px; }
+.ob-grupo legend { font-size: 0.78rem; color: var(--accent); padding: 0 6px; }
+.ob-vis-etapas { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 6px 16px; }
+.ob-vis-etapas label { display: flex; justify-content: space-between; align-items: center; gap: 10px; font-size: 0.82rem; }
+.ob-vis-etapas .ob-input { width: 74px; flex-shrink: 0; padding: 6px 8px; }
+.ob-vis-fotos { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+.ob-vis-foto { position: relative; display: flex; flex-direction: column; gap: 4px; }
+.ob-vis-foto img { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; border-radius: var(--r-sm); background: var(--bg-card-2); }
+.ob-vis-foto .ob-input { padding: 5px 8px; font-size: 0.8rem; }
+.ob-vis-foto .ob-btn { position: absolute; top: 4px; right: 4px; background: rgba(10, 12, 20, 0.75); padding: 3px 8px; }
+.ob-vis-foto.removida img { opacity: 0.25; }
+.ob-vis-foto.removida .ob-input { text-decoration: line-through; opacity: 0.5; }
+.ob-btn-arquivo { align-self: flex-start; }
+.ob-rel-fotos { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; }
+.ob-rel-foto { position: relative; display: flex; flex-direction: column; gap: 4px; font-size: 0.75rem; color: var(--accent); cursor: pointer; }
+.ob-rel-foto img { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; border-radius: var(--r-sm); background: var(--bg-card-2); border: 2px solid transparent; }
+.ob-rel-foto input { position: absolute; top: 6px; left: 6px; width: 18px; height: 18px; accent-color: var(--azul); }
+.ob-rel-foto:has(input:checked) img { border-color: var(--azul); }
+.ob-rel-foto:has(input:not(:checked)) img { opacity: 0.4; }
+.ob-crono { display: flex; flex-direction: column; gap: 6px; }
+.ob-crono-linha { display: grid; grid-template-columns: minmax(0, 1fr) 64px 140px 140px 70px auto; gap: 6px; align-items: center; }
+.ob-crono-linha .ob-input { padding: 6px 8px; font-size: 0.82rem; }
+.ob-crono-cab { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--accent-muted); }
+.ob-crono-mover { display: flex; }
+.ob-crono-mover .ob-btn { padding: 4px 7px; }
+.ob-crono-rodape { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+[data-linhas] { display: flex; flex-direction: column; gap: 6px; }
+@media (max-width: 760px) {
+  .ob-etapa, .ob-etapas:has(.ob-etapa-sit) .ob-etapa, .ob-etapas:not(:has(.ob-etapa-sit)) .ob-etapa { grid-template-columns: minmax(0, 1fr) 52px; }
+  .ob-etapa .ob-barra { grid-column: 1 / -1; grid-row: 2; }
+  .ob-etapa-sit { grid-column: 1 / -1; }
+  .ob-pend { grid-template-columns: 54px minmax(0, 1fr); }
+  .ob-pend-fotos, .ob-pend-acoes { grid-column: 2; }
+  .ob-crono-cab { display: none; }
+  .ob-crono-linha { grid-template-columns: 1fr 1fr; padding: 8px; border: 1px solid var(--border); border-radius: var(--r-sm); }
+  .ob-crono-linha [name=nome] { grid-column: 1 / -1; }
+  .ob-rel-linha { grid-template-columns: 48px minmax(0, 1fr); }
+  .ob-rel-linha > :nth-child(n+3) { grid-column: 2; }
+}
+
 .ob-status { font-size: 0.82rem; color: var(--ambar); }
 .ob-status:empty { display: none; }
 .ob-editor { background: #fdfdfc; color: #1b1b1b; border-radius: var(--r-sm); }

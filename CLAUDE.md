@@ -66,6 +66,7 @@ supabase/multiusuario.sql  coluna dono nas tabelas do Painel de Estudos e papel 
 supabase/estudos-plano.sql  tabelas do Painel de Estudos (sessoes, metas, revisoes, plano_estudos…)
 supabase/erros.sql    tabela do Caderno de Erros, já com dono e RLS
 supabase/obras.sql    tabelas do Controle de Obras e o bucket "obras-docs"
+supabase/acompanhamento.sql  tabelas do Acompanhamento de Obra (obras, obra_*), já com dono e RLS
 ```
 
 `/supabase/*`, `/netlify/*` e `/README.md` retornam 404 no site, por regra no `netlify.toml`.
@@ -157,6 +158,7 @@ A página usa `<body class="auth-pending">` (com `visibility: hidden`) e remove 
 - [ ] Senha antiga trocada nos outros serviços onde era usada (ela ficou exposta no site antigo).
 - [ ] Repositório do GitHub passado para privado.
 - [ ] `supabase/erros.sql` executado (Caderno de Erros).
+- [ ] `supabase/acompanhamento.sql` executado (Acompanhamento de Obra).
 
 **Plano semanal no Painel de Estudos (branch `feat/plano-semanal`, ainda não publicada).** Inspirado na Guruja:
 - *Planejamento Semanal* (seção `metas`): um planejamento só, com tópicos novos e revisões juntos em cada dia. Horas/semana, dias de estudo, peso e nível por disciplina; rodízio ponderado (a disciplina da vez é a que recebeu menos tempo em relação a peso × (4 − nível)); tempo do tópico pelo nível: 120/90/60 min.
@@ -202,6 +204,13 @@ A página usa `<body class="auth-pending">` (com `visibility: hidden`) e remove 
 - *Revisões da proposta*: "Nova revisão" (no documento) ou "Gerar proposta" num processo que já tem proposta abre o formulário preenchido com a mais recente e salva um **documento novo** (`dados.revisao`, título "… — Rev. 01"); a anterior fica intacta. Desconto em % ou R$ (`dados.desconto`/`descontoTipo`, conta em `contaProposta`: subtotal, desconto e total; as parcelas usam o total). Motivo da revisão vai para o andamento ("Proposta revisada (Rev. 01…): R$ A → R$ B — motivo") e para o histórico mostrado acima da prévia (`htmlHistoricoProposta`: valor, diferença e "vigente"; revisão antiga avisa que foi substituída). `valor_proposta` do processo é sempre o da revisão mais recente (também ao excluir uma). Revisar com o processo em "Proposta enviada" sugere "Em negociação".
 - *Andamento*: tudo o que acontece entra sozinho (abertura, fase, documentos, prazos), além de anotações manuais.
 - *WhatsApp*: o processo tem "Pessoa de contato" e "WhatsApp" (`telefone`, normalizado para `55DDDNÚMERO` em `numeroWhats`). Modelos editáveis na tabela `modelos_mensagem` (5 padrões em `MODELOS_PADRAO`, criados quando a tabela está vazia; sem a tabela, valem os padrões só para leitura), com variáveis `{saudacao}`, `{nome}`, `{assunto}`, `{valor_proposta}`, `{data_proposta}` etc. Modelo com `gatilho` (fase) e `dias` cria um prazo-lembrete (`prazos.modelo_id`) quando o processo entra na fase (domingo passa para segunda); ao sair da fase, os lembretes pendentes dela são apagados. "💬 Enviar" abre `wa.me` com o texto (editável), registra a mensagem no andamento (`tipo = 'mensagem'`) e marca o lembrete como cumprido. Mensagens e anotações manuais do andamento têm ✕ para excluir (mensagem aberta e não enviada); excluir uma mensagem que cumpriu um lembrete (mesmo modelo, no mesmo dia) oferece reabri-lo.
+- *Acompanhamento de obra* (`apps/controle-obras/obra.js`, `window.OB_OBRA(nucleo)`; o `app.js` passa as funções que compartilha em `nucleo()`). Rota `#/p/<processo>/obra/<aba>` (geral, visitas, cronograma, pendencias, honorarios, relatorios); item "🏗️ Acompanhamento da obra" na árvore e botão no card de dados. Tabelas do `supabase/acompanhamento.sql`: `obras` (id = processo; início, término, endereço, área, sistema, `valor_mensal`, `dia_vencimento`), `obra_etapas` (peso, %, início/fim previstos), `obra_visitas` (clima, equipe, atividades, orientações, `avancos` jsonb `[{etapa_id, de, para}]`, `fotos` jsonb `[{caminho, legenda}]`), `obra_pendencias` (gravidade, prazo, foto antes/depois) e `obra_honorarios` (competência `AAAA-MM`, vencimento no mês seguinte, `pago_em`). Sem as tabelas, a aba mostra o aviso para rodar o SQL.
+  - *Iniciar*: preenche com a proposta (item em meses: valor e prazo; edificação), cria 11 etapas padrão (`ETAPAS_PADRAO`, pesos somam 100, datas distribuídas no prazo), gera as mensalidades e sugere a fase "Em execução".
+  - *Avanço*: média ponderada pelo peso; previsto = linear entre início e fim de cada etapa (marcador âmbar); "atrasada" se 10 pontos abaixo (`ATRASO`). A visita guarda de/para de cada etapa alterada; `pctEm(etapa, dia)` reconstrói o % numa data. Editar visita antiga só muda o % do campo mexido.
+  - *Fotos*: reduzidas a 1600 px JPEG 85% (`reduzirFoto`) e enviadas para `obras-docs/<processo>/obra/`; links assinados de 1 h (`linksFotos`). Excluir visita/pendência/processo apaga as fotos.
+  - *Honorários*: marcar recebido registra no andamento; "💬 Cobrar" abre o `formMensagem` com texto livre (4º parâmetro) e os dados de pagamento do proponente.
+  - *Relatório Gerencial da Obra*: documento interno tipo "Relatório" com os dados num comentário `<!--ob-relatorio:…-->` (período, retrato do progresso, visitas, fotos escolhidas, pendências, próximas etapas). Prévia e impressão no papel timbrado por `paginaTimbrada` (a mesma da proposta); as fotos ganham links novos a cada abertura. Editar mantém o progresso salvo, salvo se marcar "Atualizar…" ou mudar o período.
+  - Andamento: entradas do tipo `obra` (ponto laranja).
 - *Prazos* por processo; a lista mostra os vencidos e os dos próximos 7 dias. KPIs: ativos, propostas em aberto (R$), contratados/em execução (R$) e % de propostas aceitas.
 - Ficou para depois: cronograma físico, medições e pendências com fotos (escolhidos antes, adiados quando o escopo virou "estilo SEI").
 

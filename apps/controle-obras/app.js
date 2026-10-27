@@ -65,6 +65,7 @@
   const LOGO_DONO = { logo: '/assets/logo-mm.webp', simbolo: '/assets/logo-mm-simbolo.webp' };
 
   let usuario = null;
+  let obra = null;   // acompanhamento de obra (obra.js), criado no init
   let processos = [], documentos = [], andamentos = [], prazos = [], modelos = [];
   let modelosRemoto = false;
   let filtro = { fase: 'ativos', busca: '' };
@@ -183,7 +184,7 @@
       return false;
     }
     [processos, documentos, andamentos, prazos] = r.map(x => x.data || []);
-    await carregarModelos();
+    await Promise.all([carregarModelos(), obra && obra.carregar()]);
     return true;
   }
 
@@ -318,16 +319,17 @@
     }
   }
 
-  function formMensagem(p, modeloId, prazoId) {
+  // textoLivre: mensagem já pronta (ex.: cobrança de honorário), sem modelo
+  function formMensagem(p, modeloId, prazoId, textoLivre) {
     const tel = numeroWhats(p.telefone);
     const lista = modelosOrdenados();
-    const atual = lista.find(m => m.id === modeloId) || lista[0];
+    const atual = textoLivre ? null : lista.find(m => m.id === modeloId) || lista[0];
     abrirModal('Mensagem por WhatsApp', `
       <form id="ob-form-msg" class="ob-form">
         ${tel ? `<p class="ob-sub inteiro">Para ${esc(p.contato || p.cliente || '')} · ${esc(p.telefone)}</p>`
           : `<p class="ob-status inteiro">Cadastre o WhatsApp do contato em “Editar dados” para abrir a conversa. Você ainda pode copiar o texto.</p>`}
-        ${campo('Modelo', `<select class="ob-input" name="modelo">${opcoes(lista.map(m => [m.id, m.nome]), atual && atual.id)}<option value="">Mensagem livre</option></select>`, 'inteiro')}
-        ${campo('Mensagem (pode editar antes de enviar)', `<textarea class="ob-input" name="texto" rows="9">${esc(atual ? preencherModelo(atual.texto, p) : '')}</textarea>`, 'inteiro')}
+        ${campo('Modelo', `<select class="ob-input" name="modelo">${opcoes(lista.map(m => [m.id, m.nome]), atual && atual.id)}<option value="" ${atual ? '' : 'selected'}>Mensagem livre</option></select>`, 'inteiro')}
+        ${campo('Mensagem (pode editar antes de enviar)', `<textarea class="ob-input" name="texto" rows="9">${esc(atual ? preencherModelo(atual.texto, p) : preencherModelo(textoLivre || '', p))}</textarea>`, 'inteiro')}
         <div class="ob-form-acoes inteiro">
           <button type="button" class="ob-btn" data-acao="copiar-msg">Copiar texto</button>
           <button type="submit" class="ob-btn whats" ${tel ? '' : 'disabled'}>💬 Abrir no WhatsApp</button>
@@ -434,7 +436,7 @@
   ============================================= */
   function rota() {
     const [, p, id, d, docId] = location.hash.split('/');
-    if (p === 'p' && id) return { processo: id, documento: d === 'd' ? docId : null };
+    if (p === 'p' && id) return { processo: id, documento: d === 'd' ? docId : null, obra: d === 'obra' ? docId || 'geral' : null };
     return {};
   }
 
@@ -442,8 +444,9 @@
     const r = rota();
     const proc = r.processo && processos.find(p => p.id === r.processo);
     if (r.processo && !proc) { location.hash = '#/'; return; }
-    $('ob-app').innerHTML = proc ? htmlProcesso(proc, r.documento) : htmlLista();
+    $('ob-app').innerHTML = proc ? htmlProcesso(proc, r.documento, r.obra) : htmlLista();
     if (proc && r.documento) mostrarArquivo(r.documento);
+    if (proc && obra) obra.depoisRender(proc);
   }
 
   /* =============================================
@@ -537,9 +540,10 @@
   /* =============================================
      PROCESSO
   ============================================= */
-  function htmlProcesso(p, docId) {
+  function htmlProcesso(p, docId, abaObra) {
     const docs = docsDe(p.id);
     const doc = docId && docs.find(d => d.id === docId);
+    const naObra = !!(abaObra && obra);
     return `
       <section class="ob-proc-cab">
         <div>
@@ -560,7 +564,8 @@
 
       <div class="ob-proc-grade">
         <aside class="ob-card ob-arvore" aria-label="Documentos do processo">
-          <a class="ob-arvore-item raiz ${doc ? '' : 'ativo'}" href="#/p/${esc(p.id)}">📁 Processo ${esc(p.numero)}</a>
+          <a class="ob-arvore-item raiz ${doc || naObra ? '' : 'ativo'}" href="#/p/${esc(p.id)}">📁 Processo ${esc(p.numero)}</a>
+          ${obra ? obra.htmlArvore(p, naObra) : ''}
           ${docs.map(d => `
           <a class="ob-arvore-item ${doc && doc.id === d.id ? 'ativo' : ''}" href="#/p/${esc(p.id)}/d/${esc(d.id)}" title="${esc(d.titulo)}">
             <span class="ob-arvore-num">${num4(d.numero)}</span>
@@ -574,7 +579,7 @@
           </div>
         </aside>
         <section class="ob-painel">
-          ${doc ? htmlDocumento(p, doc) : htmlResumo(p)}
+          ${doc ? htmlDocumento(p, doc) : naObra ? obra.htmlTela(p, abaObra) : htmlResumo(p)}
         </section>
       </div>`;
   }
@@ -599,6 +604,7 @@
         ${p.descricao ? `<p class="ob-descricao">${esc(p.descricao)}</p>` : ''}
         <div class="ob-dados-acoes">
           <button type="button" class="ob-btn" data-acao="gerar-proposta">📄 Gerar proposta</button>
+          ${obra ? `<a class="ob-btn" href="#/p/${esc(p.id)}/obra">🏗️ Acompanhamento de obra</a>` : ''}
           <button type="button" class="ob-btn whats" data-acao="mensagem">💬 Mensagem por WhatsApp</button>
         </div>
       </div>
@@ -641,6 +647,7 @@
   }
 
   function htmlDocumento(p, d) {
+    if (obra && obra.ehRelatorio(d)) return obra.htmlDocumento(p, d);
     const externo = d.origem !== 'interno';
     return `
       <div class="ob-card ob-doc">
@@ -985,27 +992,32 @@
     </div>`;
   }
 
-  // Página completa da proposta: modo 'imprimir' (abre o diálogo de impressão) ou 'tela' (prévia em folhas)
-  function paginaProposta(p, d, dados, modo) {
-    const eu = { ...(isOwner() ? LOGO_DONO : {}), ...(dados.eu || {}) };
+  // Página no papel timbrado (proposta e relatório de obra): modo 'imprimir' (abre o diálogo de
+  // impressão) ou 'tela' (prévia com uma folha A4 por <section>)
+  function paginaTimbrada(titulo, corpoHtml, euSalvo, modo, cssExtra = '') {
+    const eu = { ...(isOwner() ? LOGO_DONO : {}), ...(euSalvo || {}) };
     const cab = cabecalhoProposta(eu);
     const rodape = eu.frase ? `<p class="prop-frase">${esc(eu.frase).replace(/\n/g, '<br>')}</p>` : '';
     const marca = eu.simbolo ? `<img class="prop-marca-dagua" src="${esc(urlAbsoluta(eu.simbolo))}" alt="" />` : '';
     const corpo = modo === 'tela'
-      ? (corpoProposta(d).match(/<section[\s\S]*?<\/section>/g) || [])
+      ? (corpoHtml.match(/<section[\s\S]*?<\/section>/g) || [])
         .map(sec => `<div class="folha">${cab}<div class="folha-corpo">${sec}</div>${rodape}${marca}</div>`).join('')
         // Folha de 210 mm reduzida para caber na largura da prévia
         + '<script>const caber = () => { document.body.style.zoom = Math.min(1, (innerWidth - 40) / 800); }; caber(); addEventListener("resize", caber);<\/script>'
       : `<table class="prop-pagina">
           <thead><tr><td>${cab}</td></tr></thead>
-          <tbody><tr><td>${corpoProposta(d)}</td></tr></tbody>
+          <tbody><tr><td>${corpoHtml}</td></tr></tbody>
           <tfoot><tr><td>${rodape}</td></tr></tfoot>
         </table>${marca}
         <script>window.onload = () => window.print();<\/script>`;
     return `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8" />
-      <title>Proposta ${esc(p.numero)} - ${esc(dados.cliente || p.assunto)}</title>
-      <style>${CSS_PROPOSTA}${CSS_TIMBRADO}${modo === 'tela' ? CSS_TELA : CSS_IMPRESSAO}</style></head>
+      <title>${esc(titulo)}</title>
+      <style>${CSS_PROPOSTA}${CSS_TIMBRADO}${modo === 'tela' ? CSS_TELA : CSS_IMPRESSAO}${cssExtra}</style></head>
       <body class="ob-proposta">${corpo}</body></html>`;
+  }
+
+  function paginaProposta(p, d, dados, modo) {
+    return paginaTimbrada(`Proposta ${p.numero} - ${dados.cliente || p.assunto}`, corpoProposta(d), dados.eu, modo);
   }
 
   function imprimirProposta(p, d, dados) {
@@ -1501,13 +1513,14 @@
   async function excluirProcesso(p) {
     const docs = docsDe(p.id);
     if (!confirm(`Excluir o processo ${p.numero} (${p.assunto}) com ${docs.length} documento(s), andamento e prazos? Não dá para desfazer.`)) return;
-    const caminhos = docs.map(d => d.arquivo_caminho).filter(Boolean);
+    const caminhos = [...docs.map(d => d.arquivo_caminho), ...(obra ? obra.fotosDoProcesso(p.id) : [])].filter(Boolean);
     if (!(await apagar('processos', p.id))) return;   // documentos, andamentos e prazos saem em cascata
     if (caminhos.length) sb.storage.from(BUCKET).remove(caminhos);
     processos = processos.filter(x => x.id !== p.id);
     documentos = documentos.filter(x => x.processo_id !== p.id);
     andamentos = andamentos.filter(x => x.processo_id !== p.id);
     prazos = prazos.filter(x => x.processo_id !== p.id);
+    if (obra) obra.esquecer(p.id);
     aviso(`Processo ${p.numero} excluído.`);
     location.hash = '#/';
   }
@@ -1539,11 +1552,17 @@
     else if (acao === 'doc-interno' && p) formInterno(p, null);
     else if (acao === 'gerar-proposta' && p) gerarProposta(p);
     else if (acao === 'revisar-proposta' && p && d) formProposta(p, d, true);
-    else if (acao === 'editar-doc' && p && d) (lerProposta(d) ? formProposta : d.origem === 'interno' ? formInterno : formExterno)(p, d);
+    else if (acao.startsWith('obra-') && obra) obra.aoClicar(acao, el, p);
+    else if (acao === 'editar-doc' && p && d) {
+      if (obra && obra.ehRelatorio(d)) obra.formRelatorio(p, d);
+      else (lerProposta(d) ? formProposta : d.origem === 'interno' ? formInterno : formExterno)(p, d);
+    }
     else if (acao === 'excluir-doc' && p && d) excluirDoc(p, d);
     else if (acao === 'imprimir-doc' && p && d) {
       const prop = lerProposta(d);
-      if (prop) imprimirProposta(p, d, prop); else imprimirDoc(p, d);
+      if (prop) imprimirProposta(p, d, prop);
+      else if (obra && obra.ehRelatorio(d)) obra.imprimirRelatorio(p, d);
+      else imprimirDoc(p, d);
     }
     else if ((acao === 'abrir-arquivo' || acao === 'baixar-arquivo') && d) {
       const janela = window.open('', '_blank');   // aberta já no clique, para o navegador não bloquear
@@ -1580,6 +1599,8 @@
     if (el.id === 'ob-fase' && p) {
       await mudarFase(p, el.value);
       render();
+    } else if (obra && p && String(el.dataset.acao || '').startsWith('obra-')) {
+      obra.aoMudar(el, p);
     } else if (el.dataset.acao === 'prazo-feito' && p) {
       const z = prazos.find(x => x.id === el.dataset.id);
       if (!z) return;
@@ -1610,7 +1631,18 @@
     }
   }
 
+  // O que o acompanhamento de obra (obra.js) usa daqui
+  function nucleo() {
+    return {
+      sb, BUCKET, esc, dataLocal, hoje, diasAte, fmtData, fmtDataHora, fmtMoeda, lerNumero, valorBr, num4, novoId,
+      campo, opcoes, abrirModal, fecharModal, aviso, tabelaFaltando, gravar, apagar, registrar, render, fase, mudarFase,
+      docsDe, proximoNumeroDoc, incluirDocumento: d => documentos.push(d), meusDados, fmtTelefone, paginaTimbrada,
+      propostasDe, formMensagem
+    };
+  }
+
   async function init() {
+    if (window.OB_OBRA) obra = window.OB_OBRA(nucleo());
     document.addEventListener('click', aoClicar);
     document.addEventListener('change', aoMudar);
     document.addEventListener('submit', aoEnviar);

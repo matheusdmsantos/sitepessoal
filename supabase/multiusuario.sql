@@ -26,7 +26,8 @@ declare
     'editais', 'disciplinas', 'topicos', 'resumos', 'sessoes',
     'metas', 'revisoes', 'plano_estudos', 'incidencias', 'materiais', 'erros',
     -- Controle de Obras
-    'processos', 'documentos', 'andamentos', 'prazos', 'modelos_mensagem'];
+    'processos', 'documentos', 'andamentos', 'prazos', 'modelos_mensagem',
+    'obras', 'obra_etapas', 'obra_visitas', 'obra_pendencias', 'obra_honorarios'];
   t        text;
   c        record;
 begin
