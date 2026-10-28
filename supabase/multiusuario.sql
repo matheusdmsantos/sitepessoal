@@ -27,7 +27,7 @@ declare
     'metas', 'revisoes', 'plano_estudos', 'incidencias', 'materiais', 'erros',
     -- Controle de Obras
     'processos', 'documentos', 'andamentos', 'prazos', 'modelos_mensagem',
-    'obras', 'obra_etapas', 'obra_visitas', 'obra_pendencias', 'obra_honorarios'];
+    'obras', 'obra_etapas', 'obra_visitas', 'obra_pendencias', 'obra_honorarios', 'recebimentos'];
   t        text;
   c        record;
 begin

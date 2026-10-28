@@ -67,6 +67,7 @@ supabase/estudos-plano.sql  tabelas do Painel de Estudos (sessoes, metas, reviso
 supabase/erros.sql    tabela do Caderno de Erros, já com dono e RLS
 supabase/obras.sql    tabelas do Controle de Obras e o bucket "obras-docs"
 supabase/acompanhamento.sql  tabelas do Acompanhamento de Obra (obras, obra_*), já com dono e RLS
+supabase/financeiro.sql  tabela recebimentos (financeiro), já com dono e RLS; copia as mensalidades de obra_honorarios
 ```
 
 `/supabase/*`, `/netlify/*` e `/README.md` retornam 404 no site, por regra no `netlify.toml`.
@@ -159,6 +160,7 @@ A página usa `<body class="auth-pending">` (com `visibility: hidden`) e remove 
 - [ ] Repositório do GitHub passado para privado.
 - [ ] `supabase/erros.sql` executado (Caderno de Erros).
 - [ ] `supabase/acompanhamento.sql` executado (Acompanhamento de Obra).
+- [ ] `supabase/financeiro.sql` executado (Financeiro), depois do acompanhamento.sql.
 - [ ] Coluna `processos.mensal` criada (`alter table public.processos add column if not exists mensal boolean not null default false;`, também no fim do `obras.sql`).
 
 **Plano semanal no Painel de Estudos (branch `feat/plano-semanal`, ainda não publicada).** Inspirado na Guruja:
@@ -209,9 +211,13 @@ A página usa `<body class="auth-pending">` (com `visibility: hidden`) e remove 
   - *Iniciar*: preenche com a proposta (item em meses: valor e prazo; edificação), cria 11 etapas padrão (`ETAPAS_PADRAO`, pesos somam 100, datas distribuídas no prazo), gera as mensalidades e sugere a fase "Em execução".
   - *Avanço*: média ponderada pelo peso; previsto = linear entre início e fim de cada etapa (marcador âmbar); "atrasada" se 10 pontos abaixo (`ATRASO`). A visita guarda de/para de cada etapa alterada; `pctEm(etapa, dia)` reconstrói o % numa data. Editar visita antiga só muda o % do campo mexido.
   - *Fotos*: reduzidas a 1600 px JPEG 85% (`reduzirFoto`) e enviadas para `obras-docs/<processo>/obra/`; links assinados de 1 h (`linksFotos`). Excluir visita/pendência/processo apaga as fotos.
-  - *Honorários*: marcar recebido registra no andamento; "💬 Cobrar" abre o `formMensagem` com texto livre (4º parâmetro) e os dados de pagamento do proponente.
+  - *Honorários*: aba "Financeiro" da obra = card do `financeiro.js`; "Iniciar" gera as mensalidades por `fin.gerarMensalidades`. A tabela `obra_honorarios` não é mais usada (o `financeiro.sql` copia os dados dela).
   - *Relatório Gerencial da Obra*: documento interno tipo "Relatório" com os dados num comentário `<!--ob-relatorio:…-->` (período, retrato do progresso, visitas, fotos escolhidas, pendências, próximas etapas). Prévia e impressão no papel timbrado por `paginaTimbrada` (a mesma da proposta); as fotos ganham links novos a cada abertura. Editar mantém o progresso salvo, salvo se marcar "Atualizar…" ou mudar o período.
   - Andamento: entradas do tipo `obra` (ponto laranja).
+- *Financeiro* (`apps/controle-obras/financeiro.js`, `window.OB_FIN(nucleo)`, criado antes da obra, que o recebe como `nucleo.fin`). Tabela `recebimentos`: descrição, `origem` (mensal | proposta | avulso), competência, valor, vencimento, `recebido_em`/`valor_recebido`/forma, nota fiscal (`nf_numero`, `nf_emitida_em`, `nf_enviada_em`, `nf_documento_id` = documento "Nota fiscal" do processo com o PDF/XML no bucket).
+  - No processo: card "💰 Financeiro" (resumo e tabela; "Gerar mensalidades" se `p.mensal`; "Parcelas da proposta": entrada (% da proposta) hoje e saldo na entrega, em dias úteis, sobre o valor dos projetos com o desconto; itens em meses ficam de fora).
+  - Visão geral `#/financeiro` (botão na lista e aviso de vencidos/notas): KPIs do mês, "Mês a mês" (previsto pelo vencimento × recebido, 2 meses atrás a 5 à frente; clicar filtra), filtros A receber / Vencidos / NF a emitir (sem NF e vence em até 7 dias, vencido ou recebido) / NF a enviar / Recebidos / Todos, mês e busca.
+  - Marcar recebido, emitir ou enviar NF entram no andamento (tipo `financeiro`). "💬" cobra por WhatsApp com os dados de pagamento do proponente.
 - *Prazos* por processo; a lista mostra os vencidos e os dos próximos 7 dias. KPIs: ativos, propostas em aberto (R$), contratados/em execução (R$) e % de propostas aceitas.
 - Ficou para depois: cronograma físico, medições e pendências com fotos (escolhidos antes, adiados quando o escopo virou "estilo SEI").
 

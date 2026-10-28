@@ -2,10 +2,10 @@
  *
  * Parte "Obra" de um processo da Gestão de Contratos: cronograma físico (etapas
  * com peso e % concluído), visitas técnicas com fotos, pendências, honorários
- * mensais e o Relatório Gerencial da Obra, que é um documento do processo
+ * mensais (no financeiro.js, tabela recebimentos) e o Relatório Gerencial da Obra, que é um documento do processo
  * impresso no mesmo papel timbrado da proposta.
  *
- * Tabelas: obras, obra_etapas, obra_visitas, obra_pendencias e obra_honorarios
+ * Tabelas: obras, obra_etapas, obra_visitas e obra_pendencias
  * (supabase/acompanhamento.sql). Fotos no bucket obras-docs, em <processo>/obra/.
  * Rotas: #/p/<processo>/obra/<aba>. Carregado antes do app.js, que chama
  * window.OB_OBRA(nucleo) com as funções que compartilha.
@@ -23,13 +23,13 @@ window.OB_OBRA = function (n) {
   const CLIMAS = ['☀️ Ensolarado', '⛅ Nublado', '🌧️ Chuvoso', '⛈️ Chuva forte (obra parada)'];
   const GRAVIDADES = { alta: 'Alta', media: 'Média', baixa: 'Baixa' };
   const ABAS = [['geral', 'Visão geral'], ['visitas', 'Visitas'], ['cronograma', 'Cronograma'],
-    ['pendencias', 'Pendências'], ['honorarios', 'Honorários'], ['relatorios', 'Relatórios']];
+    ['pendencias', 'Pendências'], ['honorarios', 'Financeiro'], ['relatorios', 'Relatórios']];
   const MARCA_RELATORIO = '<!--ob-relatorio:';
   const FOTO_MAX = 1600;   // lado maior da foto enviada (px)
   const ATRASO = 10;       // pontos abaixo do previsto para a etapa aparecer como atrasada
 
   let disponivel = false;
-  let obras = [], etapas = [], visitas = [], pendencias = [], honorarios = [];
+  let obras = [], etapas = [], visitas = [], pendencias = [];
   let filtroPend = 'abertas';
   const urls = {};   // links assinados das fotos: caminho → { url, ate }
 
@@ -37,7 +37,7 @@ window.OB_OBRA = function (n) {
      DADOS
   ============================================= */
   async function carregar() {
-    const tabelas = ['obras', 'obra_etapas', 'obra_visitas', 'obra_pendencias', 'obra_honorarios'];
+    const tabelas = ['obras', 'obra_etapas', 'obra_visitas', 'obra_pendencias'];
     const r = await Promise.all(tabelas.map(t => sb.from(t).select('*')));
     const falha = r.find(x => x.error);
     if (falha) {
@@ -46,7 +46,7 @@ window.OB_OBRA = function (n) {
       return;
     }
     disponivel = true;
-    [obras, etapas, visitas, pendencias, honorarios] = r.map(x => x.data || []);
+    [obras, etapas, visitas, pendencias] = r.map(x => x.data || []);
   }
 
   const obraDe = pid => obras.find(o => o.processo_id === pid);
@@ -55,7 +55,6 @@ window.OB_OBRA = function (n) {
   const pendenciasDe = pid => pendencias.filter(x => x.processo_id === pid)
     .sort((a, b) => (!!a.corrigida_em - !!b.corrigida_em) || ordemGrav(a) - ordemGrav(b) || a.aberta_em.localeCompare(b.aberta_em));
   const ordemGrav = x => Object.keys(GRAVIDADES).indexOf(x.gravidade);
-  const honorariosDe = pid => honorarios.filter(h => h.processo_id === pid).sort((a, b) => a.competencia.localeCompare(b.competencia));
   const relatoriosDe = pid => n.docsDe(pid).filter(ehRelatorio);
 
   function fotosDoProcesso(pid) {
@@ -67,7 +66,7 @@ window.OB_OBRA = function (n) {
   function esquecer(pid) {
     const fora = x => x.processo_id !== pid;
     obras = obras.filter(fora); etapas = etapas.filter(fora); visitas = visitas.filter(fora);
-    pendencias = pendencias.filter(fora); honorarios = honorarios.filter(fora);
+    pendencias = pendencias.filter(fora);
   }
 
   /* =============================================
@@ -116,31 +115,8 @@ window.OB_OBRA = function (n) {
     return n.dataLocal(new Date(a, m - 1 + k, Math.min(d, ultimo)));
   }
   const addDias = (dia, k) => { const d = new Date(dia + 'T12:00:00'); d.setDate(d.getDate() + k); return n.dataLocal(d); };
-  const mesAno = comp => { const [a, m] = comp.split('-'); return `${new Date(a, m - 1, 1).toLocaleDateString('pt-BR', { month: 'long' })}/${a}`; };
   const diaSemana = dia => new Date(dia + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'long' });
   const comQuebras = s => esc(s).replace(/\n/g, '<br>');
-
-  // Mensalidades de início a término: competência = mês trabalhado; vence no dia escolhido do mês seguinte
-  function mensalidades(o) {
-    if (!o.inicio || !o.valor_mensal) return [];
-    const fim = o.termino && o.termino > o.inicio ? o.termino : addMeses(o.inicio, 1);
-    const lista = [];
-    for (let i = 0; i < 60; i++) {
-      const ini = addMeses(o.inicio, i);
-      if (i && ini >= fim) break;
-      const comp = ini.slice(0, 7);
-      const venc = addMeses(comp + '-01', 1).slice(0, 8) + String(Math.min(28, Math.max(1, Number(o.dia_vencimento) || 5))).padStart(2, '0');
-      lista.push({ competencia: comp, vencimento: venc, valor: o.valor_mensal });
-    }
-    return lista;
-  }
-
-  function situacaoHonorario(h) {
-    if (h.pago_em) return { cls: 'pago', txt: `Recebido em ${fmtData(h.pago_em)}` };
-    const d = n.diasAte(h.vencimento);
-    if (d < 0) return { cls: 'vencido', txt: `Vencido há ${-d} dia${d < -1 ? 's' : ''}` };
-    return { cls: d <= 7 ? 'perto' : '', txt: d === 0 ? 'Vence hoje' : `Vence em ${d} dia${d > 1 ? 's' : ''}` };
-  }
 
   /* =============================================
      FOTOS (reduzidas antes do envio; links assinados de 1 h)
@@ -220,7 +196,7 @@ window.OB_OBRA = function (n) {
     const contagem = {
       visitas: visitasDe(p.id).length, cronograma: etapasDe(p.id).length,
       pendencias: pendenciasDe(p.id).filter(x => !x.corrigida_em).length,
-      honorarios: honorariosDe(p.id).filter(h => !h.pago_em).length, relatorios: relatoriosDe(p.id).length
+      honorarios: n.fin ? n.fin.resumoProcesso(p.id).qtdAberto : 0, relatorios: relatoriosDe(p.id).length
     };
     const sub = [o.endereco, o.inicio && `início ${fmtData(o.inicio)}`, o.termino && `término previsto ${fmtData(o.termino)}`,
       o.valor_mensal && `${fmtMoeda(o.valor_mensal)}/mês`].filter(Boolean).map(esc).join(' · ');
@@ -252,16 +228,14 @@ window.OB_OBRA = function (n) {
     const vs = visitasDe(p.id);
     const abertas = pendenciasDe(p.id).filter(x => !x.corrigida_em);
     const atrasadas = abertas.filter(x => x.prazo && n.diasAte(x.prazo) < 0).length;
-    const hs = honorariosDe(p.id).filter(h => !h.pago_em);
-    const vencidos = hs.filter(h => n.diasAte(h.vencimento) < 0);
-    const soma = l => l.reduce((s, h) => s + (Number(h.valor) || 0), 0);
+    const fin = n.fin && n.fin.disponivel() ? n.fin.resumoProcesso(p.id) : null;
     const ult = vs[0];
     return `
       <section class="ob-kpis ob-obra-kpis">
         <div class="ob-kpi"><span>Avanço físico</span><strong>${fmtPct(real)}</strong><small>${prev != null ? `previsto para hoje: ${fmtPct(prev)}` : 'defina as datas no cronograma'}</small></div>
         <div class="ob-kpi"><span>Visitas</span><strong>${vs.length}</strong><small>${ult ? `última em ${fmtData(ult.data)}` : 'nenhuma ainda'}</small></div>
         <div class="ob-kpi"><span>Pendências abertas</span><strong>${abertas.length}</strong><small class="${atrasadas ? 'ob-erro' : ''}">${atrasadas ? `${atrasadas} com prazo vencido` : 'nenhuma atrasada'}</small></div>
-        <div class="ob-kpi"><span>Honorários em aberto</span><strong>${fmtMoeda(soma(hs))}</strong><small class="${vencidos.length ? 'ob-erro' : ''}">${vencidos.length ? `${fmtMoeda(soma(vencidos))} vencido` : `${hs.length} mensalidade${hs.length === 1 ? '' : 's'}`}</small></div>
+        <div class="ob-kpi"><span>A receber</span><strong>${fin ? fmtMoeda(fin.aberto) : '—'}</strong><small class="${fin && fin.qtdVencido ? 'ob-erro' : ''}">${!fin ? 'rode supabase/financeiro.sql' : fin.qtdVencido ? `${fmtMoeda(fin.vencido)} vencido` : `${fin.qtdAberto} recebimento${fin.qtdAberto === 1 ? '' : 's'} em aberto`}</small></div>
       </section>
       <div class="ob-card">
         <h3 class="ob-card-titulo">Cronograma físico <a class="ob-link" href="#/p/${esc(p.id)}/obra/cronograma">ver tudo</a></h3>
@@ -373,40 +347,7 @@ window.OB_OBRA = function (n) {
     </div>`;
   }
 
-  function telaHonorarios(p, o) {
-    const hs = honorariosDe(p.id);
-    const soma = l => l.reduce((s, h) => s + (Number(h.valor) || 0), 0);
-    const pagos = hs.filter(h => h.pago_em), abertos = hs.filter(h => !h.pago_em);
-    const vencidos = abertos.filter(h => n.diasAte(h.vencimento) < 0);
-    return `<div class="ob-card">
-      <h3 class="ob-card-titulo">Honorários mensais
-        <button type="button" class="ob-btn" data-acao="obra-honorario-novo">+ Mensalidade</button></h3>
-      <dl class="ob-dados ob-hon-resumo">
-        <div><dt>Total previsto</dt><dd>${fmtMoeda(soma(hs))}</dd></div>
-        <div><dt>Recebido</dt><dd class="ob-ok">${fmtMoeda(soma(pagos))}</dd></div>
-        <div><dt>Em aberto</dt><dd>${fmtMoeda(soma(abertos))}</dd></div>
-        <div><dt>Vencido</dt><dd class="${vencidos.length ? 'ob-erro' : ''}">${fmtMoeda(soma(vencidos))}</dd></div>
-      </dl>
-      ${hs.length ? `<div class="ob-tabela-wrap"><table class="ob-tabela ob-hon">
-        <thead><tr><th>Recebido</th><th>Competência</th><th>Valor</th><th>Vencimento</th><th>Situação</th><th></th></tr></thead>
-        <tbody>${hs.map(h => {
-          const s = situacaoHonorario(h);
-          return `<tr class="${s.cls}">
-            <td><input type="checkbox" data-acao="obra-honorario-pago" data-id="${esc(h.id)}" ${h.pago_em ? 'checked' : ''} aria-label="Recebido: ${esc(mesAno(h.competencia))}" /></td>
-            <td>${esc(mesAno(h.competencia))}${h.observacao ? `<small>${esc(h.observacao)}</small>` : ''}</td>
-            <td>${fmtMoeda(h.valor)}</td>
-            <td>${fmtData(h.vencimento)}</td>
-            <td class="ob-hon-sit">${esc(s.txt)}</td>
-            <td class="ob-hon-acoes">
-              ${h.pago_em ? '' : `<button type="button" class="ob-btn whats" data-acao="obra-honorario-cobrar" data-id="${esc(h.id)}">💬 Cobrar</button>`}
-              <button type="button" class="ob-btn sutil" data-acao="obra-honorario-editar" data-id="${esc(h.id)}" aria-label="Editar mensalidade">✎</button>
-              <button type="button" class="ob-btn sutil" data-acao="obra-honorario-excluir" data-id="${esc(h.id)}" aria-label="Excluir mensalidade">✕</button>
-            </td>
-          </tr>`;
-        }).join('')}</tbody></table></div>`
-        : `<p class="ob-vazio">Nenhuma mensalidade. ${o.valor_mensal && o.inicio ? 'Use “+ Mensalidade” ou gere todas em “⚙️ Configurar”.' : 'Informe o início e o valor mensal em “⚙️ Configurar”.'}</p>`}
-    </div>`;
-  }
+  const telaHonorarios = p => (n.fin ? n.fin.htmlCardProcesso(p) : '');
 
   function telaRelatorios(p) {
     const rs = relatoriosDe(p.id).slice().reverse();
@@ -497,11 +438,8 @@ window.OB_OBRA = function (n) {
         if (await n.gravar('obra_etapas', novas)) etapas.push(...novas);
       }
       let geradas = 0;
-      if (f.get('mensalidades')) {
-        const ja = new Set(honorariosDe(p.id).map(h => h.competencia));
-        const novas = mensalidades(nova).filter(m => !ja.has(m.competencia))
-          .map(m => ({ id: n.novoId('h'), processo_id: p.id, ...m, pago_em: null, observacao: null }));
-        if (novas.length && await n.gravar('obra_honorarios', novas)) { honorarios.push(...novas); geradas = novas.length; }
+      if (f.get('mensalidades') && n.fin) {
+        geradas = await n.fin.gerarMensalidades(p, { inicio: nova.inicio, fim: nova.termino, valor: nova.valor_mensal, dia: nova.dia_vencimento });
       }
       await n.registrar(p, 'obra', o ? 'Dados da obra alterados.'
         : `Acompanhamento de obra iniciado em ${fmtData(nova.inicio)}${nova.valor_mensal ? `, honorário de ${fmtMoeda(nova.valor_mensal)}/mês` : ''}.`);
@@ -776,47 +714,6 @@ window.OB_OBRA = function (n) {
     });
   }
 
-  function formHonorario(p, h) {
-    const o = obraDe(p.id);
-    const ultimo = honorariosDe(p.id).pop();
-    const comp = h ? h.competencia : ultimo ? addMeses(ultimo.competencia + '-01', 1).slice(0, 7) : (o.inicio || n.hoje()).slice(0, 7);
-    const venc = h ? h.vencimento : addMeses(comp + '-01', 1).slice(0, 8) + String(o.dia_vencimento || 5).padStart(2, '0');
-    n.abrirModal(h ? `Mensalidade de ${mesAno(h.competencia)}` : 'Nova mensalidade', `
-      <form id="ob-form-hon" class="ob-form">
-        ${campo('Competência (mês trabalhado)', `<input type="month" class="ob-input" name="competencia" value="${esc(comp)}" required />`)}
-        ${campo('Valor (R$)', `<input class="ob-input" name="valor" inputmode="decimal" required value="${n.valorBr(h ? h.valor : o.valor_mensal)}" />`)}
-        ${campo('Vencimento', `<input type="date" class="ob-input" name="vencimento" value="${esc(venc)}" required />`)}
-        ${campo('Recebido em', `<input type="date" class="ob-input" name="pago_em" value="${esc(h && h.pago_em)}" />`)}
-        ${campo('Observação', `<input class="ob-input" name="observacao" value="${esc(h && h.observacao)}" placeholder="Ex.: pago por PIX; nota fiscal 123" />`, 'inteiro')}
-        ${acoesForm()}
-      </form>`);
-    const form = document.getElementById('ob-form-hon');
-    form.addEventListener('submit', async ev => {
-      ev.preventDefault();
-      const f = new FormData(form);
-      const valor = n.lerNumero(f.get('valor'));
-      if (!valor) { status(form, 'Informe o valor.'); return; }
-      const linha = { ...(h || { id: n.novoId('h'), processo_id: p.id }), competencia: f.get('competencia'), valor,
-        vencimento: f.get('vencimento'), pago_em: f.get('pago_em') || null, observacao: f.get('observacao').trim() || null };
-      botaoSalvar(form, false);
-      if (!(await n.gravar('obra_honorarios', linha))) { botaoSalvar(form, true); return; }
-      if (h) Object.assign(h, linha); else honorarios.push(linha);
-      if ((!h || !h.pago_em) && linha.pago_em) await registrarRecebimento(p, linha);
-      n.fecharModal();
-      n.render();
-    });
-  }
-
-  const registrarRecebimento = (p, h) =>
-    n.registrar(p, 'obra', `Honorário de ${mesAno(h.competencia)} recebido: ${fmtMoeda(h.valor)}.`);
-
-  function cobrar(p, h) {
-    const eu = n.meusDados();
-    const texto = `{saudacao}, {nome}! Tudo bem?\n\nPassando para lembrar do honorário do acompanhamento da obra referente a ${mesAno(h.competencia)}, no valor de ${fmtMoeda(h.valor)}, com vencimento em ${fmtData(h.vencimento)}.`
-      + (eu.pagamento ? `\n\nDados para pagamento:\n${eu.pagamento}` : '') + '\n\nObrigado!';
-    n.formMensagem(p, null, null, texto);
-  }
-
   /* =============================================
      RELATÓRIO GERENCIAL DA OBRA
   ============================================= */
@@ -1073,9 +970,6 @@ window.OB_OBRA = function (n) {
     else if (acao === 'obra-pendencia-nova') formPendencia(p, null);
     else if (acao === 'obra-pendencia-editar') formPendencia(p, pendencias.find(x => x.id === id));
     else if (acao === 'obra-pendencia-corrigir') formCorrigir(p, pendencias.find(x => x.id === id));
-    else if (acao === 'obra-honorario-novo') formHonorario(p, null);
-    else if (acao === 'obra-honorario-editar') formHonorario(p, honorarios.find(h => h.id === id));
-    else if (acao === 'obra-honorario-cobrar') cobrar(p, honorarios.find(h => h.id === id));
     else if (acao === 'obra-filtro-pend') { filtroPend = el.dataset.filtro; n.render(); }
     else if (acao === 'obra-foto') {
       const c = urls[el.dataset.caminho];
@@ -1103,29 +997,11 @@ window.OB_OBRA = function (n) {
       pendencias = pendencias.filter(y => y.id !== x.id);
       apagarFotos([x.foto_antes, x.foto_depois]);
       n.render();
-    } else if (acao === 'obra-honorario-excluir') {
-      const h = honorarios.find(y => y.id === id);
-      if (!h || !confirm(`Excluir a mensalidade de ${mesAno(h.competencia)}?`)) return;
-      if (!(await n.apagar('obra_honorarios', h.id))) return;
-      honorarios = honorarios.filter(y => y.id !== h.id);
-      n.render();
     }
-  }
-
-  async function aoMudar(el, p) {
-    if (el.dataset.acao !== 'obra-honorario-pago') return;
-    const h = honorarios.find(x => x.id === el.dataset.id);
-    if (!h) return;
-    const linha = { ...h, pago_em: el.checked ? n.hoje() : null };
-    if (!(await n.gravar('obra_honorarios', linha))) { el.checked = !el.checked; return; }
-    Object.assign(h, linha);
-    if (h.pago_em) await registrarRecebimento(p, h);
-    else await n.registrar(p, 'obra', `Honorário de ${mesAno(h.competencia)} voltou a ficar em aberto.`);
-    n.render();
   }
 
   return {
     carregar, esquecer, fotosDoProcesso, htmlArvore, htmlTela, htmlDocumento, depoisRender,
-    ehRelatorio, formRelatorio, imprimirRelatorio, aoClicar, aoMudar
+    ehRelatorio, formRelatorio, imprimirRelatorio, aoClicar
   };
 };

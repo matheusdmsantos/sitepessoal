@@ -336,17 +336,6 @@ a.ob-chip:hover { color: var(--silver-bright); }
 .ob-grav.media { background: rgba(251, 191, 36, 0.15); color: var(--ambar); }
 .ob-grav.baixa { background: rgba(200, 204, 212, 0.12); color: var(--silver); }
 
-.ob-hon-resumo { margin-bottom: 14px; }
-.ob-hon tbody tr { cursor: default; }
-.ob-hon td small { display: block; font-size: 0.72rem; color: var(--accent-muted); }
-.ob-hon input { width: 17px; height: 17px; accent-color: var(--verde); cursor: pointer; }
-.ob-hon td:nth-child(2)::first-letter { text-transform: uppercase; }
-.ob-hon tr.pago .ob-hon-sit { color: var(--verde); }
-.ob-hon tr.vencido .ob-hon-sit { color: var(--vermelho); font-weight: 600; }
-.ob-hon tr.perto .ob-hon-sit { color: var(--ambar); }
-.ob-hon-acoes { white-space: nowrap; text-align: right; }
-.ob-hon-acoes .ob-btn.whats { padding: 4px 12px; font-size: 0.78rem; }
-
 .ob-rel-linha { display: grid; grid-template-columns: 54px minmax(0, 1fr) auto auto; gap: 14px; align-items: center; padding: 10px 8px; border-top: 1px solid rgba(200, 204, 212, 0.05); border-radius: var(--r-sm); font-size: 0.86rem; }
 .ob-rel-linha:hover { background: var(--bg-glass); }
 .ob-rel-linha strong { color: var(--silver-bright); display: block; }
@@ -393,6 +382,60 @@ a.ob-chip:hover { color: var(--silver-bright); }
   .ob-crono-linha [name=nome] { grid-column: 1 / -1; }
   .ob-rel-linha { grid-template-columns: 48px minmax(0, 1fr); }
   .ob-rel-linha > :nth-child(n+3) { grid-column: 2; }
+}
+
+/* ─── Financeiro (financeiro.js) ─── */
+.ob-andamento li.tipo-financeiro::before { background: #a3e635; }
+.ob-card-titulo > .ob-fin-botoes { margin-left: auto; display: flex; gap: 6px; flex-wrap: wrap; }
+.ob-fin-botoes .ob-btn { padding: 5px 14px; font-size: 0.8rem; font-weight: 500; }
+.ob-fin-resumo { margin-bottom: 14px; }
+.ob-fin tbody tr { cursor: default; }
+.ob-fin td { vertical-align: middle; }
+.ob-fin td small { display: block; font-size: 0.72rem; color: var(--accent-muted); }
+.ob-fin input[type=checkbox] { width: 17px; height: 17px; accent-color: var(--verde); cursor: pointer; }
+.ob-fin-data, .ob-fin-valor { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.ob-fin tr.pago .ob-fin-sit { color: var(--verde); }
+.ob-fin tr.pago .ob-fin-valor { color: var(--accent); }
+.ob-fin tr.vencido .ob-fin-sit, .ob-fin tr.vencido .ob-fin-data { color: var(--vermelho); font-weight: 600; }
+.ob-fin tr.perto .ob-fin-sit { color: var(--ambar); }
+.ob-fin-sit { font-size: 0.8rem; white-space: nowrap; }
+.ob-fin .ob-tag { white-space: nowrap; }
+.ob-fin-nf { display: inline-flex; flex-direction: column; gap: 2px; font-size: 0.82rem; }
+.ob-fin-nf .ob-tag { align-self: flex-start; }
+.ob-tag.azul { background: rgba(96, 165, 250, 0.1); border-color: rgba(96, 165, 250, 0.3); color: var(--azul); }
+.ob-fin-acoes { white-space: nowrap; text-align: right; }
+.ob-fin-acoes .ob-btn { padding: 4px 8px; }
+.ob-fin-acoes .ob-btn.whats { padding: 4px 10px; }
+.ob-fin-alerta { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 14px 20px; font-size: 0.88rem; border-color: rgba(163, 230, 53, 0.3); }
+.ob-fin-alerta .ob-link { margin-left: auto; }
+.ob-fin-alerta:hover { border-color: rgba(163, 230, 53, 0.6); }
+.ob-lista-cab .ob-input.ob-fin-mes { flex: 0 0 170px; min-width: 0; margin-left: auto; }
+.ob-lista-cab .ob-fin-mes + .ob-input { margin-left: 0; }
+.ob-fin-total { margin-top: 10px; text-align: right; }
+.ob-fluxo { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 8px; }
+.ob-fluxo-mes { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 8px 4px; border-radius: var(--r-md); border: 1px solid transparent; background: transparent; color: var(--silver); cursor: pointer; font-size: 0.78rem; }
+.ob-fluxo-mes:hover { background: var(--bg-glass); }
+.ob-fluxo-mes.atual { border-color: var(--border-silver); }
+.ob-fluxo-mes.ativo { border-color: var(--azul); background: rgba(96, 165, 250, 0.08); }
+.ob-fluxo-mes strong { color: var(--silver-bright); font-weight: 600; text-transform: capitalize; margin-top: 4px; }
+.ob-fluxo-mes small { font-size: 0.7rem; color: var(--accent); white-space: nowrap; min-height: 1em; }
+.ob-fluxo-mes small.ob-ok { color: var(--verde); }
+.ob-fluxo-mes small.ob-erro { color: var(--vermelho); }
+.ob-fluxo-barras { display: flex; align-items: flex-end; justify-content: center; gap: 4px; height: 90px; width: 100%; }
+.ob-fluxo-barras i { width: 14px; border-radius: 3px 3px 0 0; min-height: 2px; }
+i.prev { background: rgba(96, 165, 250, 0.45); }
+i.rec { background: var(--verde); }
+.ob-legenda i.prev, .ob-legenda i.rec { width: 12px; height: 10px; border-radius: 2px; margin-left: 8px; }
+.ob-fin-data-hoje { display: flex; gap: 4px; }
+.ob-fin-data-hoje .ob-btn { padding: 4px 10px; font-size: 0.78rem; }
+#ob-form-fin .ob-grupo .ob-form { margin: 0; }
+.ob-fin-parcelas { display: flex; flex-direction: column; gap: 6px; }
+.ob-fin-parcela { display: grid; grid-template-columns: minmax(0, 1fr) 130px 150px auto; gap: 6px; align-items: center; }
+@media (max-width: 760px) {
+  .ob-fluxo { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .ob-fin-parcela { grid-template-columns: 1fr 1fr auto; }
+  .ob-fin-parcela [name=descricao] { grid-column: 1 / -1; }
+  .ob-card-titulo > .ob-fin-botoes { margin-left: 0; width: 100%; }
 }
 
 .ob-status { font-size: 0.82rem; color: var(--ambar); }

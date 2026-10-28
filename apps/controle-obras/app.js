@@ -66,6 +66,7 @@
 
   let usuario = null;
   let obra = null;   // acompanhamento de obra (obra.js), criado no init
+  let fin = null;    // recebimentos e notas fiscais (financeiro.js), criado no init
   let processos = [], documentos = [], andamentos = [], prazos = [], modelos = [];
   let modelosRemoto = false;
   let temMensal = false;   // coluna processos.mensal existe (obras.sql atualizado)?
@@ -185,7 +186,7 @@
       return false;
     }
     [processos, documentos, andamentos, prazos] = r.map(x => x.data || []);
-    await Promise.all([carregarModelos(), obra && obra.carregar(),
+    await Promise.all([carregarModelos(), obra && obra.carregar(), fin && fin.carregar(),
       sb.from('processos').select('mensal').limit(1).then(x => { temMensal = !x.error; })]);
     return true;
   }
@@ -438,6 +439,7 @@
   ============================================= */
   function rota() {
     const [, p, id, d, docId] = location.hash.split('/');
+    if (p === 'financeiro') return { financeiro: true };
     if (p === 'p' && id) return { processo: id, documento: d === 'd' ? docId : null, obra: d === 'obra' ? docId || 'geral' : null };
     return {};
   }
@@ -446,7 +448,7 @@
     const r = rota();
     const proc = r.processo && processos.find(p => p.id === r.processo);
     if (r.processo && !proc) { location.hash = '#/'; return; }
-    $('ob-app').innerHTML = proc ? htmlProcesso(proc, r.documento, r.obra) : htmlLista();
+    $('ob-app').innerHTML = proc ? htmlProcesso(proc, r.documento, r.obra) : r.financeiro && fin ? fin.htmlTela() : htmlLista();
     if (proc && r.documento) mostrarArquivo(r.documento);
     if (proc && obra) obra.depoisRender(proc);
   }
@@ -478,6 +480,8 @@
         <div class="ob-kpi"><span>Propostas aceitas</span><strong>${ganhos + recusadas ? Math.round(ganhos / (ganhos + recusadas) * 100) + '%' : '—'}</strong><small>${ganhos} de ${ganhos + recusadas} decididas</small></div>
       </section>
 
+      ${fin ? fin.htmlAlerta() : ''}
+
       ${abertosPrazo.length ? `
       <section class="ob-card ob-prazos-alerta">
         <h2 class="ob-card-titulo">⏰ Prazos vencidos e dos próximos 7 dias</h2>
@@ -497,6 +501,7 @@
         <div class="ob-lista-cab">
           <h2 class="ob-card-titulo">Processos</h2>
           <input type="search" class="ob-input" id="ob-busca" placeholder="Buscar por número, assunto ou cliente" value="${esc(filtro.busca)}" aria-label="Buscar processos" />
+          ${fin ? '<a class="ob-btn" href="#/financeiro">💰 Financeiro</a>' : ''}
           <button type="button" class="ob-btn" data-acao="modelos">💬 Modelos de mensagem</button>
           <button type="button" class="ob-btn primario" data-acao="novo-processo">+ Novo processo</button>
         </div>
@@ -610,6 +615,8 @@
           <button type="button" class="ob-btn whats" data-acao="mensagem">💬 Mensagem por WhatsApp</button>
         </div>
       </div>
+
+      ${fin ? fin.htmlCardProcesso(p) : ''}
 
       <div class="ob-card">
         <h3 class="ob-card-titulo">⏰ Prazos</h3>
@@ -1539,6 +1546,7 @@
     andamentos = andamentos.filter(x => x.processo_id !== p.id);
     prazos = prazos.filter(x => x.processo_id !== p.id);
     if (obra) obra.esquecer(p.id);
+    if (fin) fin.esquecer(p.id);
     aviso(`Processo ${p.numero} excluído.`);
     location.hash = '#/';
   }
@@ -1571,6 +1579,7 @@
     else if (acao === 'gerar-proposta' && p) gerarProposta(p);
     else if (acao === 'revisar-proposta' && p && d) formProposta(p, d, true);
     else if (acao.startsWith('obra-') && obra) obra.aoClicar(acao, el, p);
+    else if (acao.startsWith('fin-') && fin) fin.aoClicar(acao, el, p);
     else if (acao === 'editar-doc' && p && d) {
       if (obra && obra.ehRelatorio(d)) obra.formRelatorio(p, d);
       else (lerProposta(d) ? formProposta : d.origem === 'interno' ? formInterno : formExterno)(p, d);
@@ -1617,8 +1626,8 @@
     if (el.id === 'ob-fase' && p) {
       await mudarFase(p, el.value);
       render();
-    } else if (obra && p && String(el.dataset.acao || '').startsWith('obra-')) {
-      obra.aoMudar(el, p);
+    } else if (fin && (el.id === 'ob-fin-mes' || String(el.dataset.acao || '').startsWith('fin-'))) {
+      fin.aoMudar(el, p);
     } else if (el.dataset.acao === 'prazo-feito' && p) {
       const z = prazos.find(x => x.id === el.dataset.id);
       if (!z) return;
@@ -1655,16 +1664,18 @@
       sb, BUCKET, esc, dataLocal, hoje, diasAte, fmtData, fmtDataHora, fmtMoeda, lerNumero, valorBr, num4, novoId,
       campo, opcoes, abrirModal, fecharModal, aviso, tabelaFaltando, gravar, apagar, registrar, render, fase, mudarFase,
       docsDe, proximoNumeroDoc, incluirDocumento: d => documentos.push(d), meusDados, fmtTelefone, paginaTimbrada,
-      propostasDe, formMensagem
+      propostasDe, contaProposta, formMensagem, nomeSeguro, TAMANHO_MAX, processo: id => processos.find(p => p.id === id)
     };
   }
 
   async function init() {
-    if (window.OB_OBRA) obra = window.OB_OBRA(nucleo());
+    if (window.OB_FIN) fin = window.OB_FIN(nucleo());
+    if (window.OB_OBRA) obra = window.OB_OBRA({ ...nucleo(), fin });
     document.addEventListener('click', aoClicar);
     document.addEventListener('change', aoMudar);
     document.addEventListener('submit', aoEnviar);
     document.addEventListener('input', ev => {
+      if (fin && fin.aoDigitar(ev.target)) return;
       if (ev.target.id !== 'ob-busca') return;
       filtro.busca = ev.target.value;
       $('ob-lista-corpo').innerHTML = htmlListaCorpo();
