@@ -61,12 +61,14 @@ apps/
   controle-obras/     Controle de Obras: processos estilo SEI (index.html, app.js, app.css)
   usuarios/           Usuários (só o dono): cria contas, escolhe os apps de cada uma, troca senha e exclui, via a função abaixo
 netlify/functions/usuarios.mjs  Netlify Function com a chave service_role (variável de ambiente)
+netlify/functions/agenda.mjs    agenda iCal da Gestão de Contratos em /agenda/<token>.ics (Google Agenda)
 supabase/rls.sql      Row Level Security: por usuário nas tabelas com coluna dono; só o dono nas demais
 supabase/multiusuario.sql  coluna dono nas tabelas do Painel de Estudos e papel 'dono' no app_metadata
 supabase/estudos-plano.sql  tabelas do Painel de Estudos (sessoes, metas, revisoes, plano_estudos…)
 supabase/erros.sql    tabela do Caderno de Erros, já com dono e RLS
 supabase/obras.sql    tabelas do Controle de Obras e o bucket "obras-docs"
 supabase/acompanhamento.sql  tabelas do Acompanhamento de Obra (obras, obra_*), já com dono e RLS
+supabase/agenda.sql   tabela agenda_links (link secreto da agenda iCal), já com dono e RLS
 supabase/financeiro.sql  tabela recebimentos (financeiro), já com dono e RLS; copia as mensalidades de obra_honorarios
 ```
 
@@ -161,6 +163,7 @@ A página usa `<body class="auth-pending">` (com `visibility: hidden`) e remove 
 - [ ] `supabase/erros.sql` executado (Caderno de Erros).
 - [ ] `supabase/acompanhamento.sql` executado (Acompanhamento de Obra).
 - [ ] `supabase/financeiro.sql` executado (Financeiro), depois do acompanhamento.sql.
+- [ ] `supabase/agenda.sql` executado (Google Agenda).
 - [ ] Coluna `processos.mensal` criada (`alter table public.processos add column if not exists mensal boolean not null default false;`, também no fim do `obras.sql`).
 
 **Plano semanal no Painel de Estudos (branch `feat/plano-semanal`, ainda não publicada).** Inspirado na Guruja:
@@ -218,6 +221,7 @@ A página usa `<body class="auth-pending">` (com `visibility: hidden`) e remove 
   - No processo: card "💰 Financeiro" (resumo e tabela; "Gerar mensalidades" se `p.mensal`; "Parcelas da proposta": entrada (% da proposta) hoje e saldo na entrega, em dias úteis, sobre o valor dos projetos com o desconto; itens em meses ficam de fora).
   - Visão geral `#/financeiro` (botão na lista e aviso de vencidos/notas): KPIs do mês, "Mês a mês" (previsto pelo vencimento × recebido, 2 meses atrás a 5 à frente; clicar filtra), filtros A receber / Vencidos / NF a emitir (sem NF e vence em até 7 dias, vencido ou recebido) / NF a enviar / Recebidos / Todos, mês e busca.
   - Marcar recebido, emitir ou enviar NF entram no andamento (tipo `financeiro`). "💬" cobra por WhatsApp com os dados de pagamento do proponente.
+- *Google Agenda* (link iCal assinado em "Outras agendas → Do URL"): botão "📅 Google Agenda" na lista (`formAgenda` no `app.js`) cria, copia, troca ou desativa o link e escolhe os itens (`agenda_links.itens`: prazos em aberto, recebimentos não pagos, prazos das pendências de obra). Token de 48 hex gerado no navegador; a `netlify/functions/agenda.mjs` acha o dono pelo token com a service_role e lê só os dados dele (eventos de dia inteiro, `TRANSP:TRANSPARENT`, UID estável por item). O `netlify.toml` redireciona `/agenda/*` para a função. Só leitura; o Google relê o link algumas vezes por dia. Só funciona no Netlify (não no servidor local).
 - *Prazos* por processo; a lista mostra os vencidos e os dos próximos 7 dias. KPIs: ativos, propostas em aberto (R$), contratados/em execução (R$) e % de propostas aceitas.
 - Ficou para depois: cronograma físico, medições e pendências com fotos (escolhidos antes, adiados quando o escopo virou "estilo SEI").
 

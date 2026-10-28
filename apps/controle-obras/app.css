@@ -438,6 +438,13 @@ i.rec { background: var(--verde); }
   .ob-card-titulo > .ob-fin-botoes { margin-left: 0; width: 100%; }
 }
 
+/* ─── Google Agenda ─── */
+.ob-agenda-link { display: flex; gap: 8px; }
+.ob-agenda-link .ob-input { flex: 1; min-width: 0; font-family: ui-monospace, Consolas, monospace; font-size: 0.78rem; }
+.ob-agenda-passos { padding-left: 20px; font-size: 0.86rem; display: flex; flex-direction: column; gap: 4px; }
+.ob-agenda-item { display: flex; gap: 10px; align-items: center; font-size: 0.86rem; cursor: pointer; }
+.ob-agenda-item input { width: 17px; height: 17px; accent-color: var(--azul); }
+
 .ob-status { font-size: 0.82rem; color: var(--ambar); }
 .ob-status:empty { display: none; }
 .ob-editor { background: #fdfdfc; color: #1b1b1b; border-radius: var(--r-sm); }

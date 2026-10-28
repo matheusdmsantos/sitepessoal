@@ -435,6 +435,93 @@
   }
 
   /* =============================================
+     GOOGLE AGENDA: link iCal secreto (netlify/functions/agenda.mjs, tabela agenda_links)
+  ============================================= */
+  const ITENS_AGENDA = [['prazos', 'Prazos em aberto'], ['recebimentos', 'Vencimentos de recebimentos ainda não pagos'],
+    ['pendencias', 'Prazos das pendências de obra']];
+  const novoToken = () => [...crypto.getRandomValues(new Uint8Array(24))].map(b => b.toString(16).padStart(2, '0')).join('');
+  const linkAgenda = t => `${location.origin}/agenda/${t}.ics`;
+
+  async function formAgenda() {
+    const { data, error } = await sb.from('agenda_links').select('*').maybeSingle();
+    if (error) {
+      if (tabelaFaltando(error)) abrirModal('Google Agenda', '<p class="ob-aviso-inline">A tabela da agenda ainda não existe no Supabase. Rode <code>supabase/agenda.sql</code> no SQL Editor e tente de novo.</p>');
+      else { console.error('Erro ao abrir a agenda:', error); aviso('Não foi possível abrir a agenda.'); }
+      return;
+    }
+    desenharAgenda(data);
+  }
+
+  function desenharAgenda(link) {
+    const itens = link && Array.isArray(link.itens) ? link.itens : ITENS_AGENDA.map(([id]) => id);
+    abrirModal('Google Agenda', link ? `
+      <div class="ob-form" id="ob-agenda">
+        <p class="inteiro">Assine este link no Google Agenda. Os itens marcados aparecem numa agenda “Gestão de Contratos” e se atualizam sozinhos.</p>
+        <div class="inteiro ob-agenda-link">
+          <input class="ob-input" readonly value="${esc(linkAgenda(link.token))}" aria-label="Link da agenda" />
+          <button type="button" class="ob-btn primario" data-agenda="copiar">Copiar</button>
+        </div>
+        <ol class="inteiro ob-agenda-passos">
+          <li>Copie o link acima.</li>
+          <li>No computador, abra o Google Agenda em <a class="ob-link" href="https://calendar.google.com/calendar/u/0/r/settings/addbyurl" target="_blank" rel="noopener">Configurações → Adicionar agenda → Do URL</a>.</li>
+          <li>Cole o link e clique em <b>Adicionar agenda</b>. Depois ela aparece também no celular.</li>
+        </ol>
+        <fieldset class="ob-grupo inteiro"><legend>O que entra na agenda</legend>
+          ${ITENS_AGENDA.map(([id, nome]) => `<label class="ob-agenda-item"><input type="checkbox" value="${id}" ${itens.includes(id) ? 'checked' : ''} /> ${esc(nome)}</label>`).join('')}
+        </fieldset>
+        <p class="ob-sub inteiro">O Google relê o link algumas vezes por dia: uma mudança pode levar algumas horas para aparecer. Quem tiver o link vê a agenda; se ele vazar, troque-o.</p>
+        <div class="ob-form-acoes inteiro">
+          <button type="button" class="ob-btn perigo ob-btn-esquerda" data-agenda="desativar">Desativar</button>
+          <button type="button" class="ob-btn" data-agenda="trocar">Trocar o link</button>
+          <button type="button" class="ob-btn" data-acao="fechar-modal">Fechar</button>
+        </div>
+      </div>` : `
+      <div class="ob-form" id="ob-agenda">
+        <p class="inteiro">Crie um link secreto para ver os prazos, os vencimentos a receber e as pendências de obra no seu Google Agenda, numa agenda à parte que se atualiza sozinha.</p>
+        <div class="ob-form-acoes inteiro">
+          <button type="button" class="ob-btn" data-acao="fechar-modal">Cancelar</button>
+          <button type="button" class="ob-btn primario" data-agenda="criar">Criar link</button>
+        </div>
+      </div>`);
+    const caixa = $('ob-agenda');
+    caixa.addEventListener('change', async ev => {
+      if (!link || ev.target.type !== 'checkbox') return;
+      const novos = [...caixa.querySelectorAll('.ob-agenda-item input:checked')].map(i => i.value);
+      const { error } = await sb.from('agenda_links').update({ itens: novos }).eq('dono', link.dono);
+      if (error) { aviso('Não foi possível salvar.'); return; }
+      link.itens = novos;
+      aviso('Salvo. O Google mostra a mudança na próxima leitura do link.');
+    });
+    caixa.addEventListener('click', async ev => {
+      const b = ev.target.closest('[data-agenda]');
+      if (!b) return;
+      const acao = b.dataset.agenda;
+      if (acao === 'copiar') {
+        const campoLink = caixa.querySelector('.ob-agenda-link input');
+        try { await navigator.clipboard.writeText(campoLink.value); aviso('Link copiado.'); }
+        catch { campoLink.select(); aviso('Selecione o link e use Ctrl+C.'); }
+      } else if (acao === 'criar') {
+        b.disabled = true;
+        const { data, error } = await sb.from('agenda_links').insert({ token: novoToken() }).select().single();
+        if (error) { console.error('Erro ao criar o link da agenda:', error); aviso('Não foi possível criar o link.'); b.disabled = false; return; }
+        desenharAgenda(data);
+      } else if (acao === 'trocar') {
+        if (!confirm('Trocar o link? O atual para de funcionar, e você precisa remover a agenda antiga do Google e adicionar o link novo.')) return;
+        const { data, error } = await sb.from('agenda_links').update({ token: novoToken() }).eq('dono', link.dono).select().single();
+        if (error) { aviso('Não foi possível trocar o link.'); return; }
+        desenharAgenda(data);
+        aviso('Link novo criado. Adicione-o de novo no Google Agenda.');
+      } else if (acao === 'desativar') {
+        if (!confirm('Desativar o link? A agenda no Google para de receber atualizações (você pode removê-la de lá).')) return;
+        const { error } = await sb.from('agenda_links').delete().eq('dono', link.dono);
+        if (error) { aviso('Não foi possível desativar.'); return; }
+        desenharAgenda(null);
+        aviso('Link desativado.');
+      }
+    });
+  }
+
+  /* =============================================
      ROTAS
   ============================================= */
   function rota() {
@@ -502,6 +589,7 @@
           <h2 class="ob-card-titulo">Processos</h2>
           <input type="search" class="ob-input" id="ob-busca" placeholder="Buscar por número, assunto ou cliente" value="${esc(filtro.busca)}" aria-label="Buscar processos" />
           ${fin ? '<a class="ob-btn" href="#/financeiro">💰 Financeiro</a>' : ''}
+          <button type="button" class="ob-btn" data-acao="agenda">📅 Google Agenda</button>
           <button type="button" class="ob-btn" data-acao="modelos">💬 Modelos de mensagem</button>
           <button type="button" class="ob-btn primario" data-acao="novo-processo">+ Novo processo</button>
         </div>
@@ -1560,6 +1648,7 @@
     if (acao === 'fechar-modal') fecharModal();
     else if (acao === 'novo-processo') formProcesso(null);
     else if (acao === 'modelos') formModelos();
+    else if (acao === 'agenda') formAgenda();
     else if (acao === 'mensagem' && p) formMensagem(p, null, null);
     else if (acao === 'mensagem-prazo') {
       const z = prazos.find(x => x.id === el.dataset.id);

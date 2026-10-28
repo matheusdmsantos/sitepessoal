@@ -34,6 +34,13 @@
   [headers.values]
     Cache-Control = "public, max-age=2592000"
 
+# Agenda iCal da Gestão de Contratos (assinada no Google Agenda): /agenda/<token>.ics
+[[redirects]]
+  from = "/agenda/*"
+  to = "/.netlify/functions/agenda/:splat"
+  status = 200
+  force = true
+
 # Documentação e SQL ficam na pasta, mas não são servidos no site.
 [[redirects]]
   from = "/supabase/*"
