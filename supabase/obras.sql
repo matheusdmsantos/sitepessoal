@@ -19,6 +19,7 @@ create table if not exists public.processos (
   local            text,
   valor_proposta   numeric,
   valor_contrato   numeric,
+  mensal           boolean not null default false,      -- valores por mês (honorário mensal)
   fase             text not null default 'prospeccao',  -- ver FASES em apps/controle-obras/app.js
   descricao        text,
   criado_em        timestamptz not null default now(),
@@ -79,6 +80,7 @@ create table if not exists public.modelos_mensagem (
 
 -- Para quem já tinha rodado uma versão anterior deste script
 alter table public.processos add column if not exists telefone text;
+alter table public.processos add column if not exists mensal boolean not null default false;
 alter table public.prazos add column if not exists modelo_id text;
 
 -- Arquivos: bucket privado (só abre com link assinado), até 25 MB por arquivo

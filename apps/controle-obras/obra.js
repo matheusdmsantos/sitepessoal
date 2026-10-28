@@ -452,12 +452,14 @@ window.OB_OBRA = function (n) {
     const inicio = o ? o.inicio : n.hoje();
     const dados = o || {
       inicio, termino: prop.meses ? addMeses(inicio, prop.meses) : '', endereco: ed.endereco || p.local || '',
-      area: ed.area || '', sistema: ed.sistema || '', valor_mensal: prop.valor || null, dia_vencimento: 5
+      area: ed.area || '', sistema: ed.sistema || '', dia_vencimento: 5,
+      valor_mensal: prop.valor || (p.mensal ? p.valor_contrato ?? p.valor_proposta : null)
     };
     const mudaFase = !o && ['prospeccao', 'proposta', 'negociacao', 'contratado'].includes(p.fase);
     n.abrirModal(o ? 'Dados da obra' : 'Iniciar acompanhamento de obra', `
       <form id="ob-form-obra" class="ob-form">
-        ${prop.valor || prop.meses ? '<p class="ob-sub inteiro">Preenchido com a proposta do processo. Confira antes de salvar.</p>' : ''}
+        ${prop.valor || prop.meses ? '<p class="ob-sub inteiro">Preenchido com a proposta do processo. Confira antes de salvar.</p>'
+          : !o && p.mensal ? '<p class="ob-sub inteiro">Honorário mensal preenchido com o valor do processo. Confira antes de salvar.</p>' : ''}
         ${campo('Início do acompanhamento', `<input type="date" class="ob-input" name="inicio" value="${esc(dados.inicio)}" required />`)}
         ${campo('Término previsto', `<input type="date" class="ob-input" name="termino" value="${esc(dados.termino)}" />`)}
         ${campo('Endereço da obra', `<input class="ob-input" name="endereco" value="${esc(dados.endereco)}" />`, 'inteiro')}

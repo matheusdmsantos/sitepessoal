@@ -68,6 +68,7 @@
   let obra = null;   // acompanhamento de obra (obra.js), criado no init
   let processos = [], documentos = [], andamentos = [], prazos = [], modelos = [];
   let modelosRemoto = false;
+  let temMensal = false;   // coluna processos.mensal existe (obras.sql atualizado)?
   let filtro = { fase: 'ativos', busca: '' };
   let quill = null;
   const urls = {};   // links assinados em cache: caminho → { url, ate }
@@ -184,7 +185,8 @@
       return false;
     }
     [processos, documentos, andamentos, prazos] = r.map(x => x.data || []);
-    await Promise.all([carregarModelos(), obra && obra.carregar()]);
+    await Promise.all([carregarModelos(), obra && obra.carregar(),
+      sb.from('processos').select('mensal').limit(1).then(x => { temMensal = !x.error; })]);
     return true;
   }
 
@@ -596,8 +598,8 @@
           ${linha('Contato', esc(p.contato))}
           ${linha('WhatsApp', p.telefone ? `${esc(p.telefone)}${numeroWhats(p.telefone) ? '' : ' <small class="ob-erro">(número incompleto)</small>'}` : '')}
           ${linha('Local', esc(p.local))}
-          ${linha('Valor da proposta', p.valor_proposta != null ? fmtMoeda(p.valor_proposta) : '')}
-          ${linha('Valor do contrato', p.valor_contrato != null ? fmtMoeda(p.valor_contrato) : '')}
+          ${linha('Valor da proposta', p.valor_proposta != null ? comMes(p, p.valor_proposta) : '')}
+          ${linha('Valor do contrato', p.valor_contrato != null ? comMes(p, p.valor_contrato) : '')}
           ${linha('Aberto em', fmtData(dataLocal(new Date(p.criado_em))))}
           ${linha('Concluído em', p.concluido_em ? fmtData(p.concluido_em) : '')}
         </dl>
@@ -1244,6 +1246,9 @@
     </div>`;
   }
 
+  const rotuloValor = (k, mensal) => `Valor ${mensal ? 'mensal ' : ''}${k === 'proposta' ? 'da proposta' : 'do contrato'} (R$${mensal ? '/mês' : ''})`;
+  const comMes = (p, v) => fmtMoeda(v) + (p.mensal ? '/mês' : '');
+
   function formProcesso(p) {
     const novo = !p;
     p = p || { servico: 'execucao', fase: 'prospeccao' };
@@ -1256,8 +1261,12 @@
         ${campo('Pessoa de contato', `<input class="ob-input" name="contato" value="${esc(p.contato)}" placeholder="Ex.: João Silva (engenheiro)" />`)}
         ${campo('WhatsApp do contato', `<input class="ob-input" name="telefone" type="tel" inputmode="tel" value="${esc(p.telefone)}" placeholder="(98) 99999-0000" />`)}
         ${campo('Local da obra', `<input class="ob-input" name="local" value="${esc(p.local)}" />`, 'inteiro')}
-        ${campo('Valor da proposta (R$)', `<input class="ob-input" name="valor_proposta" inputmode="decimal" value="${valorBr(p.valor_proposta)}" placeholder="0,00" />`)}
-        ${campo('Valor do contrato (R$)', `<input class="ob-input" name="valor_contrato" inputmode="decimal" value="${valorBr(p.valor_contrato)}" placeholder="0,00" />`)}
+        <label class="ob-check azul inteiro" title="${temMensal ? '' : 'Rode no Supabase: alter table public.processos add column if not exists mensal boolean not null default false;'}">
+          <input type="checkbox" name="mensal" ${p.mensal ? 'checked' : ''} ${temMensal ? '' : 'disabled'} />
+          <span>Contrato com valor mensal (honorário por mês, como no acompanhamento de obra)${temMensal ? '' : ' — falta a coluna “mensal” no Supabase'}</span>
+        </label>
+        ${campo(rotuloValor('proposta', p.mensal), `<input class="ob-input" name="valor_proposta" inputmode="decimal" value="${valorBr(p.valor_proposta)}" placeholder="0,00" />`)}
+        ${campo(rotuloValor('contrato', p.mensal), `<input class="ob-input" name="valor_contrato" inputmode="decimal" value="${valorBr(p.valor_contrato)}" placeholder="0,00" />`)}
         ${campo('Descrição', `<textarea class="ob-input" name="descricao" rows="3">${esc(p.descricao)}</textarea>`, 'inteiro')}
         <div class="ob-form-acoes inteiro">
           <button type="submit" class="ob-btn ob-btn-esquerda" name="proposta" value="1" title="Salva os dados e abre uma proposta preenchida com eles">📄 Gerar proposta</button>
@@ -1265,7 +1274,13 @@
           <button type="submit" class="ob-btn primario">${novo ? 'Abrir processo' : 'Salvar'}</button>
         </div>
       </form>`);
-    $('ob-form-processo').addEventListener('submit', async ev => {
+    const formP = $('ob-form-processo');
+    formP.querySelector('[name=mensal]').addEventListener('change', ev => {
+      ['proposta', 'contrato'].forEach(k => {
+        formP.querySelector(`[name=valor_${k}]`).closest('label').querySelector('span').textContent = rotuloValor(k, ev.target.checked);
+      });
+    });
+    formP.addEventListener('submit', async ev => {
       ev.preventDefault();
       const proposta = !!(ev.submitter && ev.submitter.name === 'proposta');
       const f = new FormData(ev.target);
@@ -1276,6 +1291,9 @@
         valor_proposta: lerNumero(f.get('valor_proposta')), valor_contrato: lerNumero(f.get('valor_contrato')),
         descricao: f.get('descricao').trim() || null
       };
+      if (temMensal) dados.mensal = !!f.get('mensal');
+      // Processo que já nasce contratado: sem valor de contrato, vale o da proposta
+      if (novo && GANHAS.includes(f.get('fase')) && dados.valor_contrato == null) dados.valor_contrato = dados.valor_proposta;
       const botoes = ev.target.querySelectorAll('[type=submit]');
       botoes.forEach(b => { b.disabled = true; });
       let proc = p;
