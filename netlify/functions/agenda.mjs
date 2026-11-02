@@ -15,16 +15,43 @@ const APP = `${SITE}/apps/controle-obras/index.html`;
 
 const moeda = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
 
+const buscar = (chave, caminho) => fetch(`${SUPABASE_URL}/${caminho}`, {
+  headers: { apikey: chave, Authorization: `Bearer ${chave}` }
+});
+
 async function ler(chave, caminho) {
-  const r = await fetch(`${SUPABASE_URL}/rest/v1/${caminho}`, {
-    headers: { apikey: chave, Authorization: `Bearer ${chave}` }
-  });
+  const r = await buscar(chave, `rest/v1/${caminho}`);
   if (!r.ok) {
     // Tabela que ainda não existe (ex.: financeiro não instalado) só fica de fora
     console.warn(`agenda: falha ao ler ${caminho.split('?')[0]} (${r.status})`);
     return [];
   }
   return r.json();
+}
+
+/* Lê só as linhas do dono do link. Tabela sem a coluna "dono" (multiusuario.sql não
+ * rodado nela) fica, pelo rls.sql, só com o dono do site: para ele, lê sem o filtro. */
+async function lerDoUsuario(chave, tabela, filtros, usuario) {
+  const r = await buscar(chave, `rest/v1/${tabela}?dono=eq.${usuario.id}&${filtros}`);
+  if (r.ok) return r.json();
+  const erro = await r.json().catch(() => ({}));
+  if (erro.code === '42703' && /dono/.test(erro.message || '') && await usuario.ehDonoDoSite()) {
+    return ler(chave, `${tabela}?${filtros}`);
+  }
+  console.warn(`agenda: falha ao ler ${tabela} (${r.status} ${erro.code || ''})`);
+  return [];
+}
+
+// app_metadata.papel = 'dono' (o mesmo critério do auth.js), consultado uma vez só
+function usuarioDoLink(chave, id) {
+  let papel;
+  return {
+    id,
+    ehDonoDoSite: () => (papel ??= buscar(chave, `auth/v1/admin/users/${id}`)
+      .then(r => (r.ok ? r.json() : {}))
+      .then(u => (u.app_metadata || {}).papel === 'dono')
+      .catch(() => false))
+  };
 }
 
 // Texto no formato iCal: escapa \ ; , e quebras de linha
@@ -82,14 +109,14 @@ export default async (req) => {
 
   const [link] = await ler(chave, `agenda_links?token=eq.${token}&select=dono,itens`);
   if (!link) return naoEncontrado();
-  const dono = `dono=eq.${link.dono}`;
+  const usuario = usuarioDoLink(chave, link.dono);
   const itens = Array.isArray(link.itens) ? link.itens : ['prazos', 'recebimentos', 'pendencias'];
 
   const [processos, prazos, recebimentos, pendencias] = await Promise.all([
-    ler(chave, `processos?${dono}&select=id,numero,assunto,cliente,local,fase`),
-    itens.includes('prazos') ? ler(chave, `prazos?${dono}&concluido_em=is.null&select=*`) : [],
-    itens.includes('recebimentos') ? ler(chave, `recebimentos?${dono}&recebido_em=is.null&select=id,processo_id,descricao,valor,vencimento,nf_numero,nf_emitida_em`) : [],
-    itens.includes('pendencias') ? ler(chave, `obra_pendencias?${dono}&corrigida_em=is.null&prazo=not.is.null&select=id,processo_id,descricao,local,gravidade,prazo`) : []
+    lerDoUsuario(chave, 'processos', 'select=id,numero,assunto,cliente,local,fase', usuario),
+    itens.includes('prazos') ? lerDoUsuario(chave, 'prazos', 'concluido_em=is.null&select=*', usuario) : [],
+    itens.includes('recebimentos') ? lerDoUsuario(chave, 'recebimentos', 'recebido_em=is.null&select=id,processo_id,descricao,valor,vencimento,nf_numero,nf_emitida_em', usuario) : [],
+    itens.includes('pendencias') ? lerDoUsuario(chave, 'obra_pendencias', 'corrigida_em=is.null&prazo=not.is.null&select=id,processo_id,descricao,local,gravidade,prazo', usuario) : []
   ]);
   const proc = id => processos.find(p => p.id === id) || {};
   const sobre = p => [p.numero && `Processo ${p.numero}`, p.assunto, p.cliente && `Cliente: ${p.cliente}`].filter(Boolean).join('\n');
