@@ -164,6 +164,7 @@ A página usa `<body class="auth-pending">` (com `visibility: hidden`) e remove 
 - [ ] `supabase/acompanhamento.sql` executado (Acompanhamento de Obra).
 - [ ] `supabase/financeiro.sql` executado (Financeiro), depois do acompanhamento.sql.
 - [ ] `supabase/agenda.sql` executado (Google Agenda).
+- [ ] Colunas `prazos.mensagem`, `prazos.para_nome` e `prazos.para_telefone` criadas (3 `alter table` no fim do `obras.sql`).
 - [ ] Coluna `processos.mensal` criada (`alter table public.processos add column if not exists mensal boolean not null default false;`, também no fim do `obras.sql`).
 
 **Plano semanal no Painel de Estudos (branch `feat/plano-semanal`, ainda não publicada).** Inspirado na Guruja:
@@ -222,7 +223,7 @@ A página usa `<body class="auth-pending">` (com `visibility: hidden`) e remove 
   - Visão geral `#/financeiro` (botão na lista e aviso de vencidos/notas): KPIs do mês, "Mês a mês" (previsto pelo vencimento × recebido, 2 meses atrás a 5 à frente; clicar filtra), filtros A receber / Vencidos / NF a emitir (sem NF e vence em até 7 dias, vencido ou recebido) / NF a enviar / Recebidos / Todos, mês e busca.
   - Marcar recebido, emitir ou enviar NF entram no andamento (tipo `financeiro`). "💬" cobra por WhatsApp com os dados de pagamento do proponente.
 - *Google Agenda* (link iCal assinado em "Outras agendas → Do URL"): botão "📅 Google Agenda" na lista (`formAgenda` no `app.js`) cria, copia, troca ou desativa o link e escolhe os itens (`agenda_links.itens`: prazos em aberto, recebimentos não pagos, prazos das pendências de obra). Token de 48 hex gerado no navegador; a `netlify/functions/agenda.mjs` acha o dono pelo token com a service_role e lê só os dados dele (eventos de dia inteiro, `TRANSP:TRANSPARENT`, UID estável por item). O `netlify.toml` redireciona `/agenda/*` para a função. Só leitura; o Google relê o link algumas vezes por dia. Só funciona no Netlify (não no servidor local).
-- *Prazos* por processo; a lista mostra os vencidos e os dos próximos 7 dias. KPIs: ativos, propostas em aberto (R$), contratados/em execução (R$) e % de propostas aceitas.
+- *Prazos* por processo (título curto; clicar edita em `formPrazo`). Podem levar uma mensagem pronta para WhatsApp e um destinatário próprio (`para_nome`/`para_telefone`, ex.: o arquiteto; sem eles, vai para o contato do processo); "💬 Enviar" abre a mensagem e cumpre o prazo. Texto longo com ":" na linha rápida abre o formulário já separado em título e mensagem (`separarPrazo`). Sem as colunas (`temPrazoMsg`), o prazo fica só com título e data; a lista mostra os vencidos e os dos próximos 7 dias. KPIs: ativos, propostas em aberto (R$), contratados/em execução (R$) e % de propostas aceitas.
 - Ficou para depois: cronograma físico, medições e pendências com fotos (escolhidos antes, adiados quando o escopo virou "estilo SEI").
 
 **Otimização de desempenho: aplicada** (commit `perf: aplica otimização preparada`, na mesma branch). O conteúdo era este:

@@ -87,7 +87,7 @@ export default async (req) => {
 
   const [processos, prazos, recebimentos, pendencias] = await Promise.all([
     ler(chave, `processos?${dono}&select=id,numero,assunto,cliente,local,fase`),
-    itens.includes('prazos') ? ler(chave, `prazos?${dono}&concluido_em=is.null&select=id,processo_id,descricao,data`) : [],
+    itens.includes('prazos') ? ler(chave, `prazos?${dono}&concluido_em=is.null&select=*`) : [],
     itens.includes('recebimentos') ? ler(chave, `recebimentos?${dono}&recebido_em=is.null&select=id,processo_id,descricao,valor,vencimento,nf_numero,nf_emitida_em`) : [],
     itens.includes('pendencias') ? ler(chave, `obra_pendencias?${dono}&corrigida_em=is.null&prazo=not.is.null&select=id,processo_id,descricao,local,gravidade,prazo`) : []
   ]);
@@ -98,7 +98,8 @@ export default async (req) => {
     ...prazos.map(z => {
       const p = proc(z.processo_id);
       return { uid: `prazo-${z.id}`, dia: z.data, titulo: `⏰ ${z.descricao}${p.numero ? ` · ${p.numero}` : ''}`,
-        descricao: sobre(p), local: p.local, url: `${APP}#/p/${z.processo_id}` };
+        descricao: [z.mensagem && `Mensagem${z.para_nome ? ` para ${z.para_nome}` : ''}:\n${z.mensagem}\n`, sobre(p)].filter(Boolean).join('\n'),
+        local: p.local, url: `${APP}#/p/${z.processo_id}` };
     }),
     ...recebimentos.map(r => {
       const p = proc(r.processo_id);

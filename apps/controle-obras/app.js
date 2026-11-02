@@ -70,6 +70,7 @@
   let processos = [], documentos = [], andamentos = [], prazos = [], modelos = [];
   let modelosRemoto = false;
   let temMensal = false;   // coluna processos.mensal existe (obras.sql atualizado)?
+  let temPrazoMsg = false; // colunas prazos.mensagem/para_nome/para_telefone existem?
   let filtro = { fase: 'ativos', busca: '' };
   let quill = null;
   const urls = {};   // links assinados em cache: caminho → { url, ate }
@@ -187,7 +188,8 @@
     }
     [processos, documentos, andamentos, prazos] = r.map(x => x.data || []);
     await Promise.all([carregarModelos(), obra && obra.carregar(), fin && fin.carregar(),
-      sb.from('processos').select('mensal').limit(1).then(x => { temMensal = !x.error; })]);
+      sb.from('processos').select('mensal').limit(1).then(x => { temMensal = !x.error; }),
+      sb.from('prazos').select('mensagem,para_nome,para_telefone').limit(1).then(x => { temPrazoMsg = !x.error; })]);
     return true;
   }
 
@@ -323,13 +325,18 @@
   }
 
   // textoLivre: mensagem já pronta (ex.: cobrança de honorário), sem modelo
-  function formMensagem(p, modeloId, prazoId, textoLivre) {
-    const tel = numeroWhats(p.telefone);
+  // para: { nome, telefone } de outra pessoa (ex.: o arquiteto), no lugar do contato do processo
+  function formMensagem(p, modeloId, prazoId, textoLivre, para) {
+    const outro = !!(para && (para.nome || para.telefone));
+    const destino = outro ? para : { nome: p.contato || p.cliente || '', telefone: p.telefone };
+    const tel = numeroWhats(destino.telefone);
     const lista = modelosOrdenados();
     const atual = textoLivre ? null : lista.find(m => m.id === modeloId) || lista[0];
+    const origem = prazoId && prazos.find(x => x.id === prazoId);
     abrirModal('Mensagem por WhatsApp', `
       <form id="ob-form-msg" class="ob-form">
-        ${tel ? `<p class="ob-sub inteiro">Para ${esc(p.contato || p.cliente || '')} · ${esc(p.telefone)}</p>`
+        ${tel ? `<p class="ob-sub inteiro">Para ${esc(destino.nome || '')} · ${esc(destino.telefone)}</p>`
+          : outro ? `<p class="ob-status inteiro">Informe o WhatsApp de ${esc(destino.nome || 'quem vai receber')} no prazo para abrir a conversa. Você ainda pode copiar o texto.</p>`
           : `<p class="ob-status inteiro">Cadastre o WhatsApp do contato em “Editar dados” para abrir a conversa. Você ainda pode copiar o texto.</p>`}
         ${campo('Modelo', `<select class="ob-input" name="modelo">${opcoes(lista.map(m => [m.id, m.nome]), atual && atual.id)}<option value="" ${atual ? '' : 'selected'}>Mensagem livre</option></select>`, 'inteiro')}
         ${campo('Mensagem (pode editar antes de enviar)', `<textarea class="ob-input" name="texto" rows="9">${esc(atual ? preencherModelo(atual.texto, p) : preencherModelo(textoLivre || '', p))}</textarea>`, 'inteiro')}
@@ -350,16 +357,88 @@
       window.open(`https://wa.me/${tel}?text=${encodeURIComponent(texto)}`, '_blank', 'noopener');
       const m = modelos.find(x => x.id === form.querySelector('[name=modelo]').value);
       fecharModal();
-      await registrar(p, 'mensagem', `Mensagem por WhatsApp${m ? ` (${m.nome})` : ''}: “${texto}”`);
+      const rotulo = m ? m.nome : origem && !origem.modelo_id ? origem.descricao : '';
+      await registrar(p, 'mensagem', `Mensagem por WhatsApp${rotulo ? ` (${rotulo})` : ''}${outro && destino.nome ? ` para ${destino.nome}` : ''}: “${texto}”`);
       // O lembrete de onde veio a mensagem fica cumprido
-      const z = prazoId ? prazos.find(x => x.id === prazoId)
-        : m && prazos.find(x => x.processo_id === p.id && x.modelo_id === m.id && !x.concluido_em);
+      const z = origem || (m && prazos.find(x => x.processo_id === p.id && x.modelo_id === m.id && !x.concluido_em));
       if (z && !z.concluido_em) {
         z.concluido_em = hoje();
         await gravar('prazos', z);
       }
       render();
       aviso(z ? 'WhatsApp aberto. Lembrete marcado como cumprido.' : 'WhatsApp aberto. A mensagem ficou registrada no andamento.');
+    });
+  }
+
+  /* =============================================
+     PRAZOS
+  ============================================= */
+  /* Texto longo colado na descrição: o que vem antes do primeiro ":" vira o título e o resto, a mensagem */
+  function separarPrazo(texto) {
+    const t = String(texto || '').trim();
+    const i = t.indexOf(':');
+    if (t.length > 80 && i > 3 && i <= 70) return { titulo: t.slice(0, i).trim(), mensagem: t.slice(i + 1).trim() };
+    return { titulo: t, mensagem: '' };
+  }
+
+  const paraDoPrazo = z => (z.para_nome || z.para_telefone ? { nome: z.para_nome || '', telefone: z.para_telefone || '' } : null);
+
+  // inicial: { descricao, data } vindos da linha rápida, num prazo novo
+  function formPrazo(p, z, inicial) {
+    const novo = !z;
+    const base = z || { descricao: '', data: '', ...inicial };
+    let titulo = base.descricao, mensagem = base.mensagem || '';
+    if (temPrazoMsg && !mensagem) ({ titulo, mensagem } = separarPrazo(titulo));
+    const outro = !!(base.para_nome || base.para_telefone);
+    const contato = p.contato || p.cliente;
+    const antes = `${base.descricao}|${base.data}`;
+    abrirModal(novo ? 'Novo prazo' : 'Editar prazo', `
+      <form id="ob-form-prazo-det" class="ob-form">
+        ${campo('O que fazer', `<input class="ob-input" name="descricao" required maxlength="140" value="${esc(titulo)}" placeholder="Ex.: Tirar dúvida com o arquiteto" />`)}
+        ${campo('Data', `<input class="ob-input" type="date" name="data" required value="${esc(base.data || '')}" />`)}
+        ${temPrazoMsg ? `
+        ${campo('Mensagem para enviar por WhatsApp (opcional)', `<textarea class="ob-input" name="mensagem" rows="8" placeholder="Escreva agora; no dia, é só clicar em “💬 Enviar”.">${esc(mensagem)}</textarea>`, 'inteiro')}
+        <fieldset class="ob-grupo inteiro">
+          <legend>Enviar para</legend>
+          <label class="ob-check azul"><input type="radio" name="destino" value="contato" ${outro ? '' : 'checked'} /><span>Contato do processo${contato ? ` (${esc(contato)})` : ''}</span></label>
+          <label class="ob-check azul"><input type="radio" name="destino" value="outro" ${outro ? 'checked' : ''} /><span>Outra pessoa (arquiteto, fornecedor…)</span></label>
+          <div class="ob-form ob-prazo-outro" ${outro ? '' : 'hidden'}>
+            ${campo('Nome', `<input class="ob-input" name="para_nome" value="${esc(base.para_nome || '')}" placeholder="Ex.: Igor (arquiteto)" />`)}
+            ${campo('WhatsApp', `<input class="ob-input" name="para_telefone" inputmode="tel" value="${esc(base.para_telefone || '')}" placeholder="(98) 99999-0000" />`)}
+          </div>
+        </fieldset>` : `
+        <p class="ob-status inteiro">Para guardar uma mensagem e o destinatário no prazo, rode no Supabase o fim do <code>supabase/obras.sql</code> (colunas mensagem, para_nome e para_telefone).</p>`}
+        <div class="ob-form-acoes inteiro">
+          <button type="button" class="ob-btn" data-acao="fechar-modal">Cancelar</button>
+          <button type="submit" class="ob-btn primario">${novo ? 'Adicionar prazo' : 'Salvar'}</button>
+        </div>
+      </form>`, temPrazoMsg);
+    const form = $('ob-form-prazo-det');
+    const caixaOutro = form.querySelector('.ob-prazo-outro');
+    form.querySelectorAll('[name=destino]').forEach(r => r.addEventListener('change', () => {
+      caixaOutro.hidden = form.querySelector('[name=destino]:checked').value !== 'outro';
+      if (!caixaOutro.hidden) caixaOutro.querySelector('input').focus();
+    }));
+    form.addEventListener('submit', async ev => {
+      ev.preventDefault();
+      const f = new FormData(form);
+      const dados = { descricao: f.get('descricao').trim(), data: f.get('data') };
+      if (!dados.descricao || !dados.data) return;
+      if (temPrazoMsg) {
+        const deOutro = f.get('destino') === 'outro';
+        dados.mensagem = (f.get('mensagem') || '').trim() || null;
+        dados.para_nome = deOutro ? f.get('para_nome').trim() || null : null;
+        dados.para_telefone = deOutro ? f.get('para_telefone').trim() || null : null;
+      }
+      const linha = novo ? { id: novoId('z'), processo_id: p.id, concluido_em: null, ...dados } : { ...z, ...dados };
+      if (!(await gravar('prazos', linha))) return;
+      if (novo) prazos.push(linha); else Object.assign(z, dados);
+      fecharModal();
+      const mudou = !novo && `${linha.descricao}|${linha.data}` !== antes;
+      if (novo) await registrar(p, 'prazo', `Prazo definido: ${linha.descricao} até ${fmtData(linha.data)}.`);
+      else if (mudou) await registrar(p, 'prazo', `Prazo alterado: ${linha.descricao} até ${fmtData(linha.data)}.`);
+      render();
+      aviso(novo ? 'Prazo adicionado.' : 'Prazo salvo.');
     });
   }
 
@@ -577,9 +656,9 @@
           const dias = diasAte(z.data);
           return `<div class="ob-prazo-linha ${dias < 0 ? 'vencido' : ''}">
             <span class="ob-prazo-data">${fmtData(z.data)}</span>
-            <a href="#/p/${esc(z.processo_id)}">${esc(z.descricao)} <small>${esc(p ? p.numero + ' · ' + p.assunto : '')}</small></a>
+            <a href="#/p/${esc(z.processo_id)}">${esc(z.descricao)}${z.para_nome ? ` <span class="ob-prazo-para">· para ${esc(z.para_nome)}</span>` : ''} <small>${esc(p ? p.numero + ' · ' + p.assunto : '')}</small></a>
             <span class="ob-prazo-dias">${dias < 0 ? `${-dias} dia${dias < -1 ? 's' : ''} de atraso` : dias === 0 ? 'hoje' : `em ${dias} dia${dias > 1 ? 's' : ''}`}</span>
-            ${z.modelo_id ? `<button type="button" class="ob-btn whats" data-acao="mensagem-prazo" data-id="${esc(z.id)}" data-processo="${esc(z.processo_id)}">💬 Enviar</button>` : '<span></span>'}
+            ${z.modelo_id || z.mensagem ? `<button type="button" class="ob-btn whats" data-acao="mensagem-prazo" data-id="${esc(z.id)}" data-processo="${esc(z.processo_id)}">💬 Enviar</button>` : '<span></span>'}
           </div>`;
         }).join('')}
       </section>` : ''}
@@ -713,9 +792,12 @@
           return `<div class="ob-prazo ${z.concluido_em ? 'feito' : dias < 0 ? 'vencido' : ''}">
             <input type="checkbox" data-acao="prazo-feito" data-id="${esc(z.id)}" ${z.concluido_em ? 'checked' : ''} aria-label="Prazo cumprido: ${esc(z.descricao)}" />
             <span class="ob-prazo-data">${fmtData(z.data)}</span>
-            <span class="ob-prazo-desc">${esc(z.descricao)}</span>
+            <button type="button" class="ob-prazo-desc" data-acao="prazo-editar" data-id="${esc(z.id)}" title="Editar prazo">
+              <span class="ob-prazo-titulo">${esc(z.descricao)}</span>
+              ${z.mensagem ? `<span class="ob-prazo-msg">💬 ${z.para_nome ? `<b>${esc(z.para_nome)}:</b> ` : ''}${esc(z.mensagem)}</span>` : ''}
+            </button>
             <span class="ob-prazo-dias">${z.concluido_em ? `cumprido em ${fmtData(z.concluido_em)}` : dias < 0 ? `${-dias} dia${dias < -1 ? 's' : ''} de atraso` : dias === 0 ? 'hoje' : `em ${dias} dia${dias > 1 ? 's' : ''}`}</span>
-            ${z.modelo_id && !z.concluido_em ? `<button type="button" class="ob-btn whats" data-acao="mensagem-prazo" data-id="${esc(z.id)}" data-processo="${esc(p.id)}">💬 Enviar</button>` : '<span></span>'}
+            ${(z.modelo_id || z.mensagem) && !z.concluido_em ? `<button type="button" class="ob-btn whats" data-acao="mensagem-prazo" data-id="${esc(z.id)}" data-processo="${esc(p.id)}">💬 Enviar</button>` : '<span></span>'}
             <button type="button" class="ob-btn sutil" data-acao="prazo-apagar" data-id="${esc(z.id)}" aria-label="Excluir prazo">✕</button>
           </div>`;
         }).join('') || '<p class="ob-vazio">Nenhum prazo.</p>'}
@@ -723,6 +805,7 @@
           <input type="text" class="ob-input" name="descricao" placeholder="Ex.: retorno do cliente sobre a proposta" required aria-label="Descrição do prazo" />
           <input type="date" class="ob-input" name="data" required aria-label="Data do prazo" />
           <button type="submit" class="ob-btn">Adicionar</button>
+          <button type="button" class="ob-btn" data-acao="prazo-novo" title="Prazo com mensagem para enviar por WhatsApp">+ Com mensagem</button>
         </form>
       </div>
 
@@ -1653,7 +1736,16 @@
     else if (acao === 'mensagem-prazo') {
       const z = prazos.find(x => x.id === el.dataset.id);
       const dono = processos.find(x => x.id === el.dataset.processo);
-      if (z && dono) formMensagem(dono, z.modelo_id, z.id);
+      if (z && dono) {
+        if (z.modelo_id) formMensagem(dono, z.modelo_id, z.id);
+        else formMensagem(dono, null, z.id, z.mensagem, paraDoPrazo(z));
+      }
+    } else if (acao === 'prazo-novo' && p) {
+      const f = $('ob-form-prazo');
+      formPrazo(p, null, { descricao: f.descricao.value.trim(), data: f.data.value });
+    } else if (acao === 'prazo-editar' && p) {
+      const z = prazos.find(x => x.id === el.dataset.id);
+      if (z) formPrazo(p, z);
     } else if (acao === 'copiar-msg') {
       const texto = document.querySelector('#ob-form-msg [name=texto]').value;
       try { await navigator.clipboard.writeText(texto); aviso('Texto copiado.'); }
@@ -1696,8 +1788,8 @@
       if (!a || !confirm(a.tipo === 'mensagem' ? 'Excluir este registro de mensagem do andamento?' : 'Excluir esta anotação do andamento?')) return;
       // Mensagem que cumpriu um lembrete (mesmo modelo, cumprido no dia do envio): oferece reabri-lo
       const dia = dataLocal(new Date(a.data));
-      const z = a.tipo === 'mensagem' && prazos.find(x => x.processo_id === p.id && x.modelo_id && x.concluido_em === dia
-        && a.descricao.startsWith(`Mensagem por WhatsApp (${modelos.find(m => m.id === x.modelo_id)?.nome})`));
+      const z = a.tipo === 'mensagem' && prazos.find(x => x.processo_id === p.id && (x.modelo_id || x.mensagem) && x.concluido_em === dia
+        && a.descricao.startsWith(`Mensagem por WhatsApp (${x.modelo_id ? modelos.find(m => m.id === x.modelo_id)?.nome : x.descricao})`));
       if (!(await apagar('andamentos', a.id))) return;
       andamentos = andamentos.filter(x => x.id !== a.id);
       if (z && confirm(`Esta mensagem tinha cumprido o lembrete “${z.descricao}”. Reabrir o lembrete?`)) {
@@ -1733,6 +1825,11 @@
     if (ev.target.id === 'ob-form-prazo') {
       ev.preventDefault();
       const f = new FormData(ev.target);
+      // Texto longo ("Tirar dúvida: Oi, Igor…"): abre o formulário, que separa o título da mensagem
+      if (temPrazoMsg && separarPrazo(f.get('descricao')).mensagem) {
+        formPrazo(p, null, { descricao: f.get('descricao').trim(), data: f.get('data') });
+        return;
+      }
       const z = { id: novoId('z'), processo_id: p.id, descricao: f.get('descricao').trim(), data: f.get('data'), concluido_em: null };
       if (!(await gravar('prazos', z))) return;
       prazos.push(z);

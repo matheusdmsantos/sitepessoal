@@ -63,7 +63,10 @@ create table if not exists public.prazos (
   descricao        text not null,
   data             date not null,
   concluido_em     date,
-  modelo_id        text                                 -- lembrete de mensagem: modelo a enviar por WhatsApp
+  modelo_id        text,                                -- lembrete de mensagem: modelo a enviar por WhatsApp
+  mensagem         text,                                -- detalhes ou texto pronto para enviar
+  para_nome        text,                                -- destinatário, se não for o contato do processo
+  para_telefone    text
 );
 create index if not exists prazos_processo_idx on public.prazos (processo_id);
 
@@ -82,6 +85,9 @@ create table if not exists public.modelos_mensagem (
 alter table public.processos add column if not exists telefone text;
 alter table public.processos add column if not exists mensal boolean not null default false;
 alter table public.prazos add column if not exists modelo_id text;
+alter table public.prazos add column if not exists mensagem text;
+alter table public.prazos add column if not exists para_nome text;
+alter table public.prazos add column if not exists para_telefone text;
 
 -- Arquivos: bucket privado (só abre com link assinado), até 25 MB por arquivo
 insert into storage.buckets (id, name, public, file_size_limit)
