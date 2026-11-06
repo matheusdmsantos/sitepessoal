@@ -265,8 +265,7 @@
       <div class="est-ed-topico nivel-${nivel} ${t.estudado ? 'feito' : ''} ${ativo ? 'ativo' : ''}" data-topic-id="${esc(t.id)}"
            role="button" tabindex="0" onclick="estEdital.abrirFicha('${e.id}', '${d.id}', '${t.id}')"
            onkeydown="if (event.target === this && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); this.click(); }">
-        <input type="checkbox" class="est-ed-check" ${t.estudado ? 'checked' : ''} aria-label="Estudado: ${esc(t.nome)}"
-               onclick="event.stopPropagation()" onchange="toggleTopic('${e.id}', '${d.id}', '${t.id}', this.checked)">
+        <span class="est-ed-check ${t.estudado ? 'feito' : ''}" title="${t.estudado ? 'Estudado' : 'Não estudado'} (marcado ao concluir a meta; para mudar à mão, abra a ficha)">${t.estudado ? '✓' : ''}</span>
         <span class="est-ed-topico-nome">${esc(t.nome)}</span>
         <span class="est-ed-selos">${selos}</span>
         <span class="est-ed-acerto ${classeAcerto(p)}" title="${t.questoesCertas || 0} certas de ${t.questoesFeitas || 0}">${p === null ? '—' : `${fmtPct(p)} <small>${t.questoesCertas}/${t.questoesFeitas}</small>`}</span>

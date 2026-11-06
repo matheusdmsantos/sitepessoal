@@ -1136,7 +1136,9 @@ html, body {
 .est-ed-topico:focus-visible { outline: 2px solid var(--est-blue); outline-offset: -2px; }
 .est-ed-topico.nivel-2 { padding-left: 44px; }
 .est-ed-topico.nivel-3 { padding-left: 68px; }
-.est-ed-check { width: 16px; height: 16px; accent-color: var(--est-green); cursor: pointer; }
+/* Situação do tópico, só leitura: quem marca é a conclusão da meta (ou a ficha lateral) */
+.est-ed-check { width: 16px; height: 16px; border: 1.5px solid var(--est-accent-faint); border-radius: 4px; display: inline-flex; align-items: center; justify-content: center; font-size: 0.7rem; line-height: 1; }
+.est-ed-check.feito { background: var(--est-green); border-color: var(--est-green); color: #0b1020; font-weight: 700; }
 .est-ed-topico-nome { font-size: 0.86rem; color: var(--est-silver-bright); line-height: 1.4; }
 .est-ed-topico.nivel-1 .est-ed-topico-nome { font-weight: 500; }
 .est-ed-topico.feito .est-ed-topico-nome { color: var(--est-accent); }
