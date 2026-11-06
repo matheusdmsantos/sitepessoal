@@ -1930,7 +1930,8 @@ html, body {
 .est-ed-fora .est-ed-topico:hover, .est-ed-fora .est-ed-topico.ativo { opacity: 0.85; }
 .est-erro.fora { filter: grayscale(1); opacity: 0.7; }
 .est-erro-selo.fora { color: var(--est-accent); border-color: rgba(200, 204, 212, 0.25); background: rgba(200, 204, 212, 0.08); }
-.est-res-assunto.fora { filter: grayscale(1); opacity: 0.65; }
+/* Só o título do assunto fica cinza; o texto do resumo continua legível */
+.est-res-assunto.fora .est-res-assunto-topo { filter: grayscale(1); opacity: 0.55; }
 .est-res-arvore li.fora, .est-res-materia.fora .est-res-materia-btn { opacity: 0.55; }
 
 /* ─── Material de estudo em PDF (js/estudos.materiais.js) ─── */
