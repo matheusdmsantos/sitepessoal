@@ -162,18 +162,19 @@
     iniciar();
     const e = editalAtual();
     const vazio = $('est-edital-empty');
-    const btnExcluir = $('est-btn-delete-edital');
+    // Edital ativo: só desativar. Desativado: reativar ou excluir de vez (estudos.aproveitar.js)
+    const desativado = !!e && e.status === 'desativado';
+    [['est-btn-delete-edital', desativado], ['est-btn-desativar-edital', !!e && !desativado], ['est-btn-reativar-edital', desativado]]
+      .forEach(([id, ver]) => { const b = $(id); if (b) b.style.display = ver ? 'flex' : 'none'; });
     if (!e) {
       lista.innerHTML = '';
       $('est-ed-painel').innerHTML = '';
       $('est-ed-barra').hidden = true;
       if (vazio) vazio.style.display = 'flex';
-      if (btnExcluir) btnExcluir.style.display = 'none';
       fecharFicha();
       return;
     }
     if (vazio) vazio.style.display = 'none';
-    if (btnExcluir) btnExcluir.style.display = 'flex';
     $('est-ed-barra').hidden = false;
 
     renderPainel(e);
@@ -326,7 +327,34 @@
     lista.innerHTML = (filtrando
       ? `<p class="est-ed-contagem">${achados} tópico${achados === 1 ? '' : 's'} encontrado${achados === 1 ? '' : 's'}${achados ? '' : '. <button type="button" class="est-ed-link" onclick="estEdital.limparFiltros()">Limpar filtros</button>'}</p>`
       : '') + html +
-      (filtrando ? '' : `<button type="button" class="est-ed-add disc" onclick="addDisc('${e.id}')">+ Adicionar disciplina</button>`);
+      (filtrando ? '' : `<button type="button" class="est-ed-add disc" onclick="addDisc('${e.id}')">+ Adicionar disciplina</button>`) +
+      htmlFora(filtrando);
+  }
+
+  /* Assuntos de editais desativados que não vieram para o ativo (estudos.aproveitar.js): ficam
+     no fim, em cinza, com os dados guardados; não entram no progresso, nos filtros do painel nem no plano */
+  function htmlFora(filtrando) {
+    const vis = (window.estAproveitar ? window.estAproveitar.foraDoAtivo() : []).filter(x => passaNoFiltro(x.d, x.t));
+    if (!vis.length) return '';
+    const grupos = new Map();
+    vis.forEach(x => {
+      const k = normalizar(x.d.nome.trim());
+      if (!grupos.has(k)) grupos.set(k, { nome: x.d.nome, itens: [] });
+      grupos.get(k).itens.push(x);
+    });
+    const aberto = filtrando || lerLocal('est_edital_fora_aberto', false);
+    return `
+      <details class="est-ed-fora" ${aberto ? 'open' : ''} ${filtrando ? '' : 'ontoggle="estEdital.foraAberto(this.open)"'}>
+        <summary>
+          <span class="est-ed-fora-titulo">Fora do edital ativo</span>
+          <span class="est-ed-fora-sub">${vis.length} assunto${vis.length === 1 ? '' : 's'} de editais desativados, com os dados guardados. Não entram no progresso nem no plano.</span>
+        </summary>
+        ${[...grupos.values()].map(g => `
+        <section class="est-ed-fora-disc">
+          <h4>${esc(g.nome)}</h4>
+          ${g.itens.map(x => linhaTopico(x.e, x.d, x.t, 1)).join('')}
+        </section>`).join('')}
+      </details>`;
   }
 
   /* =============================================
@@ -703,6 +731,6 @@
   window.estEdital = {
     render, alternarDisc, abrirTodas, filtrar, limparFiltros,
     abrirFicha, fecharFicha, editarTec, renomearTopico, renomearDisc, excluirTopico,
-    exportarExcel, exportarPdf
+    exportarExcel, exportarPdf, foraAberto: sim => gravarLocal('est_edital_fora_aberto', sim)
   };
 })();

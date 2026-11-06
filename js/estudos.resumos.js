@@ -93,9 +93,11 @@
 
     // Resumos de assuntos renomeados, apagados ou de outro edital
     const outros = { nome: 'Outros resumos', chave: OUTROS, assuntos: [], outros: true };
+    // Resumos já copiados com o nome novo para o edital ativo (estudos.aproveitar.js) não aparecem de novo
+    const levados = window.estAproveitar ? window.estAproveitar.resumosLevados() : new Set();
     Object.keys(resumosMap).sort().forEach(k => {
       const r = resumosMap[k];
-      if (!r || vazio(r.conteudo) || conhecidos.has(k)) return;
+      if (!r || vazio(r.conteudo) || conhecidos.has(k) || levados.has(k)) return;
       const [dk, tk] = k.split('|||');
       const disc = r.disciplina_nome || dk;
       const topico = r.topico_nome || tk;
@@ -168,7 +170,7 @@
         return;
       }
       html += `
-        <section class="est-res-assunto ${a.temResumo ? '' : 'sem-resumo'}" id="${ancora(a.disc, a.topico)}">
+        <section class="est-res-assunto ${a.temResumo ? '' : 'sem-resumo'} ${a.foraDoEdital ? 'fora' : ''}" id="${ancora(a.disc, a.topico)}">
           <div class="est-res-assunto-topo">
             <h${h}>${esc(a.topico)}</h${h}>
             <span class="est-res-assunto-acoes">
@@ -259,7 +261,7 @@
         <ul class="est-res-arvore">
           ${m.assuntos.map(a => {
             const tem = !!resumoDe(a.disc, a.topico);
-            return `<li class="nivel-${a.nivel} ${tem ? 'tem' : ''}">
+            return `<li class="nivel-${a.nivel} ${tem ? 'tem' : ''} ${a.foraDoEdital ? 'fora' : ''}" ${a.foraDoEdital ? 'title="Fora do edital ativo"' : ''}>
               <button type="button" onclick="estResumos.abrirAlvo(${alvo({ ...a, materia: m.chave })})" title="${tem ? 'Ir para o resumo' : 'Escrever resumo'}">
                 <span class="est-res-ponto" aria-hidden="true"></span>
                 <span class="est-res-arvore-nome">${esc(a.topico)}</span>
@@ -268,7 +270,7 @@
           }).join('')}
         </ul>` : '';
       return `
-        <div class="est-res-materia ${ativa ? 'ativa' : ''}">
+        <div class="est-res-materia ${ativa ? 'ativa' : ''} ${m.outros ? 'fora' : ''}">
           <button type="button" class="est-res-materia-btn" aria-expanded="${ativa}" onclick="estResumos.escolherMateria(${idx})">
             <span class="est-res-materia-nome">${esc(m.nome)}</span>
             <span class="est-res-materia-conta">${m.outros ? feitos : `${feitos}/${total}`}</span>

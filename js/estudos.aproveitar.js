@@ -23,6 +23,82 @@
   const progressoDoEdital = e => e.disciplinas.reduce((s, d) => s + d.topicos.filter(temProgresso).length, 0);
   const curto = (s, max = 70) => (s.length > max ? s.slice(0, max - 1) + '…' : s);
   const aviso = msg => window.estPlano.aviso(msg);
+  const chaveTopico = (d, t) => nomeLimpo(d.nome) + '|' + nomeLimpo(t.nome);
+
+  /* =============================================
+     FORA DO EDITAL ATIVO
+     Tópicos de editais desativados que não foram levados para outro edital: nem são a
+     origem de um tópico (coluna topicos.origem, gravada ao aproveitar) nem têm o mesmo
+     nome de um tópico do edital ativo. Numa sequência 1 → 2 → 3, sobra só a versão
+     mais recente de cada assunto. Aparecem em cinza no Edital Verticalizado, em Meus
+     Resumos e no Caderno de Erros.
+  ============================================= */
+  function indice() {
+    const ativo = editaisData.find(e => e.id === currentEditalId);
+    const origens = new Set(editaisData.flatMap(e => e.disciplinas.flatMap(d => d.topicos.map(t => t.origem).filter(Boolean))));
+    const doAtivo = new Set(ativo ? ativo.disciplinas.flatMap(d => d.topicos.map(t => chaveTopico(d, t))) : []);
+    const fora = [], levados = [];
+    editaisData.filter(e => e.status === 'desativado' && e !== ativo).forEach(e => e.disciplinas.forEach(d => d.topicos.forEach(t => {
+      (origens.has(t.id) || doAtivo.has(chaveTopico(d, t)) ? levados : fora).push({ e, d, t });
+    })));
+    return { fora, levados };
+  }
+
+  const temResumo = (d, t) => { const r = resumosMap[makeResumoKey(d.nome, t.nome)]; return !!(r && r.conteudo); };
+
+  // Para a lista: só os que têm algo guardado (estudo, questões, tempo, resumo ou erro)
+  function foraDoAtivo() {
+    return indice().fora.filter(({ d, t }) => temProgresso(t) || temResumo(d, t) || (window.estErros && window.estErros.temErro(t.id)));
+  }
+
+  function estaFora(tId) {
+    return indice().fora.some(x => x.t.id === tId);
+  }
+
+  /* Resumos dos tópicos levados adiante: a cópia com o nome novo já está no edital ativo,
+     então o de nome antigo não aparece de novo em Meus Resumos */
+  function resumosLevados() {
+    const ativo = editaisData.find(e => e.id === currentEditalId);
+    const doAtivo = new Set(ativo ? ativo.disciplinas.flatMap(d => d.topicos.map(t => makeResumoKey(d.nome, t.nome))) : []);
+    return new Set(indice().levados.map(({ d, t }) => makeResumoKey(d.nome, t.nome)).filter(k => !doAtivo.has(k)));
+  }
+
+  /* =============================================
+     DESATIVAR / REATIVAR EDITAL (status em editais)
+  ============================================= */
+  async function mudarStatus(e, status) {
+    const { error } = await sb.from('editais').update({ status }).eq('id', e.id);
+    if (error) {
+      console.error('Erro ao mudar o status do edital:', error);
+      aviso('Não foi possível salvar no servidor. Confira sua conexão.');
+      return false;
+    }
+    e.status = status;
+    saveEditais();
+    return true;
+  }
+
+  function depoisDeMudar(idAtual) {
+    currentEditalId = idAtual;
+    renderEditalSelect();
+    renderEdital();
+    window.estPlano.editalTrocado();
+  }
+
+  async function desativar(e, semPerguntar) {
+    if (!e || e.status === 'desativado') return;
+    if (!semPerguntar && !(await customConfirm(`Desativar “${e.titulo}”? Ele vai para o grupo “Desativados” da lista. Nada é apagado: os assuntos que não estiverem no edital ativo continuam aparecendo em cinza, com resumos, acertos e erros.`))) return;
+    if (!(await mudarStatus(e, 'desativado'))) return;
+    const proximo = editaisData.find(x => x.status !== 'desativado');
+    depoisDeMudar(currentEditalId === e.id && proximo ? proximo.id : currentEditalId);
+    aviso(`“${e.titulo}” desativado.`);
+  }
+
+  async function reativar(e) {
+    if (!e || !(await mudarStatus(e, 'aberto'))) return;
+    depoisDeMudar(e.id);
+    aviso(`“${e.titulo}” reativado.`);
+  }
 
   /* =============================================
      SUGESTÕES
@@ -79,9 +155,18 @@
       `<option value="${escapeHtml(e.id)}">${escapeHtml(e.titulo)} (${progressoDoEdital(e)} tópicos com progresso)</option>`).join('');
     $('est-aprov-origem').value = antigo.id;
     $('est-aprov-destino').textContent = novo.titulo;
+    mostrarDesativar();
     sugerirTudo();
     render();
     $('est-modal-aproveitar').classList.add('active');
+  }
+
+  // Um edital de cada vez: o de origem já pode ser desativado junto
+  function mostrarDesativar() {
+    const caixa = $('est-aprov-desativar');
+    caixa.hidden = ctx.antigo.status === 'desativado';
+    caixa.querySelector('input').checked = true;
+    caixa.querySelector('span').textContent = `Desativar “${ctx.antigo.titulo}” depois de aproveitar (nada é apagado)`;
   }
 
   function fechar() {
@@ -153,11 +238,15 @@
     const discAntigaDe = Object.fromEntries(antigo.disciplinas.flatMap(d => d.topicos.map(t => [t.id, d])));
     const jaUsado = new Set();   // tópico antigo cujas questões e tempo já foram para um novo
     const alterados = [];
+    const ligados = [];
     const resumos = [];
 
     novo.disciplinas.forEach(d => d.topicos.forEach(t => {
       const o = antigos[ligacoes[t.id]];
-      if (!o || temProgresso(t)) return;   // tópico novo que já tem progresso fica como está
+      if (!o) return;
+      t.origem = o.id;   // o antigo deixa de aparecer como "fora do edital"
+      ligados.push(t);
+      if (temProgresso(t)) return;   // tópico novo que já tem progresso fica como está
       t.estudado = !!o.estudado;
       if (!t.tecLink && o.tecLink) t.tecLink = o.tecLink;
       if (!jaUsado.has(o.id)) {
@@ -171,13 +260,28 @@
       if (resumo && resumo.conteudo && !resumosMap[makeResumoKey(d.nome, t.nome)]) resumos.push([d.nome, t.nome, resumo.conteudo]);
     }));
 
-    let falhas = 0;
-    for (let i = 0; i < alterados.length; i += 20) {
-      const r = await Promise.all(alterados.slice(i, i + 20).map(t => sb.from('topicos').update({
+    // Sem a coluna topicos.origem (SQL ainda não rodado), grava o resto e reconhece pelo nome
+    let semOrigem = false;
+    const salvar = async t => {
+      const dados = alterados.includes(t) ? {
         estudado: t.estudado, questoes_feitas: t.questoesFeitas, questoes_certas: t.questoesCertas,
         tempo_gasto: t.tempoGasto, tec_link: t.tecLink || ''
-      }).eq('id', t.id)));
-      falhas += r.filter(x => x.error).length;
+      } : {};
+      if (!semOrigem) {
+        const r = await sb.from('topicos').update({ ...dados, origem: t.origem }).eq('id', t.id);
+        if (!r.error) return true;
+        if (!/origem/.test(r.error.message || '')) { console.error(r.error); return false; }
+        semOrigem = true;
+      }
+      if (!Object.keys(dados).length) return true;
+      const r = await sb.from('topicos').update(dados).eq('id', t.id);
+      if (r.error) console.error(r.error);
+      return !r.error;
+    };
+    let falhas = 0;
+    for (let i = 0; i < ligados.length; i += 20) {
+      const r = await Promise.all(ligados.slice(i, i + 20).map(salvar));
+      falhas += r.filter(ok => !ok).length;
     }
     for (const [dn, tn, html] of resumos) await salvarResumo(dn, tn, html, true);
     saveEditais();
@@ -186,19 +290,27 @@
     const plano = await window.estPlano.aproveitarDe(novo, antigo, ligAproveitadas, discs);
     const erros = window.estErros ? await window.estErros.copiarPara(novo, ligAproveitadas) : 0;
 
+    const desativarOrigem = !$('est-aprov-desativar').hidden && $('est-aprov-desativar').querySelector('input').checked;
     botao.textContent = 'Aproveitar estudos';
     fechar();
+    if (desativarOrigem && !falhas) await desativar(antigo, true);
     renderEdital();
+    if (semOrigem) console.warn('Coluna topicos.origem ausente; rode o fim do supabase/estudos-plano.sql.');
     if (falhas) console.error(`aproveitar: ${falhas} tópico(s) não foram salvos no Supabase`);
     aviso(falhas ? `Não foi possível salvar ${falhas} tópico(s) no servidor. Confira a conexão e tente de novo.`
-      : `${alterados.length} tópicos aproveitados, ${resumos.length} resumos, ${plano.revisoes} revisões, ${plano.pdfs} PDFs e ${erros} erros copiados.`);
+      : `${alterados.length} tópicos aproveitados, ${resumos.length} resumos, ${plano.revisoes} revisões, ${plano.pdfs} PDFs e ${erros} erros copiados.` +
+        (semOrigem ? ' Rode o fim do supabase/estudos-plano.sql para guardar as ligações.' : ''));
   }
 
   function init() {
     if (!$('est-modal-aproveitar')) return;
+    const atual = () => editaisData.find(e => e.id === currentEditalId);
     $('est-btn-aproveitar').addEventListener('click', () => abrir(currentEditalId));
+    $('est-btn-desativar-edital').addEventListener('click', () => desativar(atual()));
+    $('est-btn-reativar-edital').addEventListener('click', () => reativar(atual()));
     $('est-aprov-origem').addEventListener('change', e => {
       ctx.antigo = editaisData.find(x => x.id === e.target.value);
+      mostrarDesativar();
       sugerirTudo();
       render();
     });
@@ -225,5 +337,5 @@
 
   document.addEventListener('DOMContentLoaded', init);
 
-  window.estAproveitar = { abrir, sugerirTopicos, nomeLimpo };
+  window.estAproveitar = { abrir, sugerirTopicos, nomeLimpo, foraDoAtivo, estaFora, resumosLevados, desativar, reativar };
 })();

@@ -160,11 +160,16 @@
   const nomeDisc = er => (acharDisc(er.disciplina_id) || {}).d?.nome || er.disciplina_nome || 'Sem disciplina';
   const nomeTopico = er => (er.topico_id && (acharTopico(er.topico_id) || {}).t?.nome) || er.topico_nome || '';
 
-  // Erros do edital ativo (os de editais apagados também aparecem)
+  // Assunto de um edital desativado que não veio para o ativo (estudos.aproveitar.js)
+  const fora = er => !!(er.topico_id && window.estAproveitar && window.estAproveitar.estaFora(er.topico_id));
+
+  // Erros do edital ativo (os de editais apagados e os de assuntos fora do edital também aparecem)
   function doEdital() {
     const e = editalAtual();
-    return erros.filter(er => !e || er.edital_id === e.id || !acharDisc(er.disciplina_id));
+    return erros.filter(er => !e || er.edital_id === e.id || !acharDisc(er.disciplina_id) || fora(er));
   }
+
+  const temErro = tId => erros.some(er => er.topico_id === tId);
 
   /* =============================================
      SITUAÇÃO E REVISÃO
@@ -463,7 +468,7 @@
         <div>
           <span class="est-plano-tag">Revisão de erros · ${fila.i + 1} de ${fila.itens.length}</span>
           <h2 class="est-modal-title" id="est-erro-rev-titulo">${esc(nomeTopico(er) || nomeDisc(er))}</h2>
-          <span class="est-plano-sub">${esc(nomeDisc(er))}${er.tec_id ? ` · Questão ${esc(er.tec_id)} do TEC` : ''}</span>
+          <span class="est-plano-sub">${esc(nomeDisc(er))}${er.tec_id ? ` · Questão ${esc(er.tec_id)} do TEC` : ''}${fora(er) ? ' · <span class="est-erro-selo fora">Fora do edital</span>' : ''}</span>
         </div>
         <button type="button" class="est-modal-close" data-acao="fechar-rev" aria-label="Fechar revisão">✕</button>
       </div>
@@ -565,13 +570,14 @@
       : `<span class="est-erro-selo">Revisão ${fmtData(er.proxima)}</span>`;
     const txt = textoDe(er.enunciado);
     return `
-      <article class="est-erro ${aberto ? 'aberto' : ''}">
+      <article class="est-erro ${aberto ? 'aberto' : ''} ${fora(er) ? 'fora' : ''}">
         <header class="est-erro-cab">
           <div class="est-erro-ref">
             <span class="est-plano-tag">${esc(nomeDisc(er))}</span>
             <span class="est-erro-topico">${esc(nomeTopico(er) || 'Sem tópico')}</span>
           </div>
           <div class="est-erro-selos">
+            ${fora(er) ? '<span class="est-erro-selo fora" title="Assunto de um edital desativado que não está no edital ativo">Fora do edital</span>' : ''}
             ${m ? `<span class="est-erro-selo motivo" title="${esc(m.nome)}">${m.icone} ${esc(m.nome)}</span>` : ''}
             ${selo}
           </div>
@@ -831,5 +837,5 @@
 
   document.addEventListener('DOMContentLoaded', init);
 
-  window.estErros = { novo, editar, revisar, revisarTopico, verTopico, blocoFicha, render, copiarPara };
+  window.estErros = { novo, editar, revisar, revisarTopico, verTopico, blocoFicha, render, copiarPara, temErro };
 })();

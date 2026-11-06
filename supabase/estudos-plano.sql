@@ -99,3 +99,7 @@ alter table public.metas add column if not exists paginas_lidas integer;
 
 -- Ordem das disciplinas no Edital Verticalizado (setas ▲▼), igual em todos os aparelhos
 alter table public.disciplinas add column if not exists ordem integer;
+
+-- Aproveitar estudos de outro edital: tópico antigo de onde veio o progresso
+-- (o antigo deixa de aparecer como "fora do edital ativo")
+alter table public.topicos add column if not exists origem text;

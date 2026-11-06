@@ -1003,7 +1003,8 @@ async function loadEditais() {
           return {
             id: t.id, nome: t.nome, estudado: t.estudado,
             questoesFeitas: t.questoes_feitas, questoesCertas: t.questoes_certas,
-            tecLink: t.tec_link, tempoGasto: t.tempo_gasto || 0
+            tecLink: t.tec_link, tempoGasto: t.tempo_gasto || 0,
+            origem: t.origem || null   // tópico do edital anterior de onde o progresso veio (estudos.aproveitar.js)
           };
         });
         edTopicos.sort((a, b) => a.id.localeCompare(b.id));
@@ -1128,10 +1129,10 @@ function initEditalUI() {
 
   if (btnDelete) {
     document.getElementById('est-btn-delete-edital').onclick = async () => {
-      if (await customConfirm('Tem certeza que deseja excluir este edital?')) {
+      if (await customConfirm('Excluir este edital de vez? Os tópicos dele somem; para guardar o histórico, prefira desativar.')) {
         const idToDelete = currentEditalId;
         editaisData = editaisData.filter(e => e.id !== currentEditalId);
-        currentEditalId = editaisData.length > 0 ? editaisData[0].id : null;
+        currentEditalId = (editaisData.find(e => e.status !== 'desativado') || editaisData[0] || {}).id || null;
         saveEditais();
         renderEditalSelect();
         renderEdital();
@@ -1142,7 +1143,7 @@ function initEditalUI() {
 
   // Initial render
   if (editaisData.length > 0) {
-    currentEditalId = editaisData[0].id;
+    currentEditalId = (editaisData.find(e => e.status !== 'desativado') || editaisData[0]).id;
   }
   renderEditalSelect();
   renderEdital();
@@ -1246,13 +1247,17 @@ function renderEditalSelect() {
     return;
   }
   
+  // Editais desativados (estudos.aproveitar.js) ficam num grupo à parte, no fim
+  const grupo = document.createElement('optgroup');
+  grupo.label = 'Desativados';
   editaisData.forEach(ed => {
     const opt = document.createElement('option');
     opt.value = ed.id;
     opt.textContent = ed.titulo;
     if (ed.id === currentEditalId) opt.selected = true;
-    select.appendChild(opt);
+    (ed.status === 'desativado' ? grupo : select).appendChild(opt);
   });
+  if (grupo.children.length) select.appendChild(grupo);
 }
 
 /* A aba é desenhada pelo estudos.edital.js */

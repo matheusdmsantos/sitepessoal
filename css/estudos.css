@@ -1916,6 +1916,22 @@ html, body {
 .est-aprov-conta { font-size: 0.75rem; color: var(--est-accent); white-space: nowrap; }
 .est-aprov-disc .est-inc-assunto { margin-top: 6px; }
 #est-aprov-resumo:empty { display: none; }
+.est-aprov-desativar { display: flex; align-items: center; gap: 8px; margin-top: 10px; font-size: 0.8rem; color: var(--est-silver); cursor: pointer; }
+.est-aprov-desativar[hidden] { display: none; }
+.est-aprov-desativar input { width: 16px; height: 16px; accent-color: var(--est-green); }
+
+/* Assuntos de editais desativados fora do edital ativo: em cinza nas três telas */
+.est-ed-fora { margin-top: 18px; border: 1px dashed rgba(200, 204, 212, 0.18); border-radius: 14px; padding: 12px 14px; }
+.est-ed-fora > summary { display: flex; flex-direction: column; gap: 2px; cursor: pointer; }
+.est-ed-fora-titulo { font-weight: 600; color: var(--est-accent); }
+.est-ed-fora-sub { font-size: 0.75rem; color: var(--est-accent-muted); }
+.est-ed-fora-disc h4 { margin: 14px 0 4px; font-size: 0.82rem; color: var(--est-accent); font-weight: 600; }
+.est-ed-fora .est-ed-topico { filter: grayscale(1); opacity: 0.6; }
+.est-ed-fora .est-ed-topico:hover, .est-ed-fora .est-ed-topico.ativo { opacity: 0.85; }
+.est-erro.fora { filter: grayscale(1); opacity: 0.7; }
+.est-erro-selo.fora { color: var(--est-accent); border-color: rgba(200, 204, 212, 0.25); background: rgba(200, 204, 212, 0.08); }
+.est-res-assunto.fora { filter: grayscale(1); opacity: 0.65; }
+.est-res-arvore li.fora, .est-res-materia.fora .est-res-materia-btn { opacity: 0.55; }
 
 /* ─── Material de estudo em PDF (js/estudos.materiais.js) ─── */
 .est-mat-detalhe { grid-column: 2 / 4; font-size: 0.72rem; color: var(--est-accent); }
