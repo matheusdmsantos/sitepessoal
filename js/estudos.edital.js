@@ -406,21 +406,31 @@
       return txt.length > 260 ? txt.slice(0, 260) + '…' : txt;
     })() : '';
     const rotuloRev = x => x.tipo === 'reforco' ? 'Reforço' : `Revisão ${x.etapa}`;
+    const metasT = plano().metasDoTopico ? plano().metasDoTopico(t.id) : [];
+    const situacaoMeta = { feita: '✓ feita', planejada: 'planejada', prevista: 'prevista', atrasada: '<span class="ruim">atrasada</span>' };
 
     $('est-ed-ficha-conteudo').innerHTML = `
       <header class="est-ed-ficha-topo">
         <div>
           <span class="est-plano-tag">${esc(d.nome)}</span>
           <h2 id="est-ed-ficha-titulo">${esc(t.nome)}</h2>
+          ${seloRevisao(sit)}
         </div>
         <button type="button" class="est-modal-close est-ed-ficha-fechar" onclick="estEdital.fecharFicha()" aria-label="Fechar ficha">✕</button>
       </header>
 
-      <label class="est-ed-ficha-estudado">
-        <input type="checkbox" ${t.estudado ? 'checked' : ''} onchange="toggleTopic('${e.id}', '${d.id}', '${t.id}', this.checked)">
-        <span>${t.estudado ? 'Estudado' : 'Marcar como estudado'}</span>
-        ${seloRevisao(sit)}
-      </label>
+      <section class="est-ed-ficha-bloco">
+        <h3>Metas</h3>
+        ${metasT.length ? `<ul class="est-ed-ficha-lista est-ed-ficha-metas">${metasT.map(m => `
+          <li class="${m.situacao === 'feita' ? '' : 'pendente'}"><span>${fmtData(m.dia)}</span>${m.id && !m.previsto && m.situacao !== 'feita'
+            ? `<button type="button" class="est-ed-link" onclick="estEdital.fecharFicha(); estPlano.abrirEstudo('meta', '${m.id}')" title="Abrir a janela de estudo desta meta">${esc(m.rotulo)}</button>`
+            : `<span>${esc(m.rotulo)}</span>`}<span>${situacaoMeta[m.situacao]}</span></li>`).join('')}</ul>`
+          : `<p class="est-ed-ficha-vazio">${t.estudado ? 'Estudado fora das metas do plano.' : 'Este assunto ainda não está em nenhuma meta.'}</p>`}
+        <label class="est-ed-ficha-estudado">
+          <input type="checkbox" ${t.estudado ? 'checked' : ''} onchange="toggleTopic('${e.id}', '${d.id}', '${t.id}', this.checked)">
+          <span>${t.estudado ? 'Estudado (desmarque para voltar ao plano)' : 'Marcar como estudado agora (antecipar)'}</span>
+        </label>
+      </section>
 
       <div class="est-ed-ficha-numeros">
         <div><span>Acerto</span><strong class="${classeAcerto(p)}">${p === null ? '—' : fmtPct(p)}</strong><small>${t.questoesCertas || 0} de ${t.questoesFeitas || 0}</small></div>

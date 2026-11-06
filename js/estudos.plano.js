@@ -1189,6 +1189,22 @@
     return !item.previsto && !item.concluida && window.estSessao ? window.estSessao.selo(item.id) : '';
   }
 
+  /* Metas do tópico para a ficha do Edital: as gravadas e, no edital ativo, as previstas
+     das próximas semanas. Cada uma com { dia, rotulo, situacao, id?, previsto? }. */
+  function metasDoTopico(topicId) {
+    const ref = acharTopico(topicId);
+    if (!ref) return [];
+    const proj = ref.e.id === currentEditalId ? projetar(ref.e) : null;
+    const futuras = proj ? proj.semanas.flatMap(w => w.metas).filter(m => m.topico_id === topicId) : [];
+    return [...metas.filter(m => m.topico_id === topicId), ...futuras]
+      .sort((a, b) => a.dia.localeCompare(b.dia) || (a.ordem || 0) - (b.ordem || 0))
+      .map(m => ({
+        id: m.id, dia: m.dia, previsto: !!m.previsto,
+        rotulo: (ehQuestoes(m) ? `Questões · ${questoesDaMeta(m)}` : 'Estudo' + (m.partes > 1 ? ` · parte ${m.parte}/${m.partes}` : '')) + ` · ${fmtMin(m.minutos)}`,
+        situacao: m.concluida ? 'feita' : m.previsto ? 'prevista' : m.dia < hoje() ? 'atrasada' : 'planejada'
+      }));
+  }
+
   function itemMeta(m, { compacto = false } = {}) {
     const ref = acharTopico(m.topico_id);
     const disc = ref ? ref.d.nome : 'Disciplina removida';
@@ -1821,7 +1837,7 @@
 
   window.estPlano = {
     init, renderHoje, renderSecao, topicoConcluido, sessaoCriada, sessaoRemovida,
-    abrirConclusao, abrirEstudo, adiarRevisao, removerMeta, regerarSemana, reiniciarPlanejamento, agendarEstudados,
+    abrirConclusao, abrirEstudo, adiarRevisao, removerMeta, regerarSemana, reiniciarPlanejamento, metasDoTopico, agendarEstudados,
     agendarReforco, mudarSemana, irParaSemana, alternarConfig, editalTrocado, projetar,
     incidenciaDaDisciplina, pctIncidencia, salvarIncidencias,
     materiaisDaDisciplina, paginasDoTopico, prioridadeDosTopicos, salvarMateriais,

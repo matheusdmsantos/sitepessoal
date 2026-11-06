@@ -1267,6 +1267,9 @@ html, body {
 .est-ed-ficha-lista li:last-child { border-bottom: none; }
 .est-ed-ficha-lista li > span:last-child { text-align: right; }
 .est-ed-ficha-lista li.pendente { color: var(--est-silver-bright); }
+.est-ed-ficha-metas li { grid-template-columns: 48px minmax(0, 1fr) auto; }
+.est-ed-ficha-metas .est-ed-link { text-align: left; }
+.est-ed-ficha-bloco .est-ed-ficha-estudado { margin-top: 4px; }
 .est-ed-ficha-lista .bom { color: var(--est-green); }
 .est-ed-ficha-lista .medio { color: var(--est-amber); }
 .est-ed-ficha-lista .ruim { color: var(--est-red); }
