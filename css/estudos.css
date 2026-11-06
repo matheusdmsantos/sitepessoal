@@ -1492,6 +1492,8 @@ html, body {
 }
 .est-plano-btn.primario:hover { background: rgba(74, 222, 128, 0.25); }
 .est-plano-btn.sutil { border-color: transparent; background: transparent; color: var(--est-accent); }
+.est-plano-btn.perigo { color: var(--est-red); border-color: rgba(248, 113, 113, 0.35); }
+.est-plano-btn.perigo:hover { background: var(--est-red-dim); }
 .est-btn-cancelar {
   flex: 1;
   padding: 10px 18px;

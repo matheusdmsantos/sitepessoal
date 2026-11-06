@@ -716,6 +716,27 @@
     gravar('metas', novas);
   }
 
+  /* Apaga todas as metas e revisões do edital ativo e gera a semana de novo. A configuração
+     (horas, dias, peso/nível, PDFs, incidência) e o progresso dos tópicos ficam. */
+  async function reiniciarPlanejamento() {
+    const e = editalAtivo();
+    if (!e) return;
+    const ok = await customConfirm('Reiniciar o planejamento do zero? Todas as metas e revisões deste edital, inclusive as já concluídas, serão apagadas e a semana será gerada de novo. A configuração do plano, os PDFs e o progresso dos assuntos continuam. Não dá para desfazer.');
+    if (!ok) return;
+    if (remoto) {
+      const [r1, r2] = await Promise.all(['metas', 'revisoes'].map(t => sb.from(t).delete().eq('edital_id', e.id)));
+      if (r1.error || r2.error) {
+        console.error('Erro ao reiniciar o planejamento:', r1.error || r2.error);
+        aviso('Não foi possível apagar o planejamento no servidor. Nada foi mudado.');
+        return;
+      }
+    }
+    metas = metas.filter(m => m.edital_id !== e.id);
+    revisoes = revisoes.filter(r => r.edital_id !== e.id);
+    if (!remoto) { salvarLocal('metas'); salvarLocal('revisoes'); }
+    await regerarSemana();
+  }
+
   async function regerarSemana() {
     const e = editalAtivo();
     if (!e) return;
@@ -1467,6 +1488,7 @@
           </div>
           ${plano ? `<button class="est-plano-btn" onclick="estPlano.alternarConfig()">⚙️ Plano</button>` : ''}
           ${plano && semanaVista === atual ? `<button class="est-plano-btn" onclick="estPlano.regerarSemana()" title="Refaz as metas não concluídas desta semana">↻ Regerar</button>` : ''}
+          ${plano ? `<button class="est-plano-btn perigo" onclick="estPlano.reiniciarPlanejamento()" title="Apaga todas as metas e revisões deste edital e começa o plano de novo">⟲ Reiniciar do zero</button>` : ''}
         </div>
       </div>
 
@@ -1799,7 +1821,7 @@
 
   window.estPlano = {
     init, renderHoje, renderSecao, topicoConcluido, sessaoCriada, sessaoRemovida,
-    abrirConclusao, abrirEstudo, adiarRevisao, removerMeta, regerarSemana, agendarEstudados,
+    abrirConclusao, abrirEstudo, adiarRevisao, removerMeta, regerarSemana, reiniciarPlanejamento, agendarEstudados,
     agendarReforco, mudarSemana, irParaSemana, alternarConfig, editalTrocado, projetar,
     incidenciaDaDisciplina, pctIncidencia, salvarIncidencias,
     materiaisDaDisciplina, paginasDoTopico, prioridadeDosTopicos, salvarMateriais,
