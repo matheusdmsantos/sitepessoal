@@ -708,6 +708,7 @@
       : '';
     $('est-sessao-crono').style.display = dados.id ? '' : 'none';
     $('est-sessao-concluir').style.display = dados.id && !dados.concluida ? '' : 'none';
+    $('est-sessao-tec').style.display = dados.topicoId && window.estTec ? '' : 'none';
 
     const salvo = (resumosMap[makeResumoKey(dados.disc, dados.topico)] || {}).conteudo || '';
     ultimoSalvo = salvo;
@@ -788,7 +789,7 @@
     irPagina: mostrarPagina, apagarPagina,
     zerarCrono: id => gravarCrono(id, null),
     // Usados pelo Caderno de Erros (estudos.erros.js)
-    contexto: () => ctx && { disc: ctx.disc, topico: ctx.topico },
+    contexto: () => ctx && { disc: ctx.disc, topico: ctx.topico, topicoId: ctx.topicoId },
     limparHtmlColado, reduzirImagem
   };
 })();

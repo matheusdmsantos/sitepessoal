@@ -962,7 +962,7 @@
       : ehQuestoes(item) ? `Questões · ${questoesDaMeta(item)}`
       : 'Estudo' + (item.partes > 1 ? ` · parte ${item.parte}/${item.partes}` : ''));
     window.estSessao.abrir({
-      tipo, id: item.previsto ? undefined : id, disc: ref.d.nome, topico: ref.t.nome, rotulo,
+      tipo, id: item.previsto ? undefined : id, topicoId: ref.t.id, disc: ref.d.nome, topico: ref.t.nome, rotulo,
       minutos: tipo === 'meta' ? item.minutos : item.minutos || MIN_REVISAO,
       concluida: tipo === 'meta' ? !!item.concluida : !!item.concluida_em,
       leitura: roteiroDeLeitura(tipo, item),

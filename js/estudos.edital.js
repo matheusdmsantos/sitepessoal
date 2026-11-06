@@ -447,7 +447,7 @@
         <h3>Caderno do TEC</h3>
         ${t.tecLink
           ? `<div class="est-ed-ficha-linha"><a href="${esc(t.tecLink)}" target="_blank" rel="noopener" class="est-ed-tec-link">Abrir caderno ↗</a><button type="button" class="est-ed-link" onclick="estEdital.editarTec()">Alterar link</button></div>`
-          : `<button type="button" class="est-ed-link" onclick="estEdital.editarTec()">+ Adicionar link do caderno</button>`}
+          : `<div class="est-ed-ficha-linha"><button type="button" class="est-plano-btn" onclick="estTec.criar('${t.id}')" title="Cria o caderno no TEC pelo userscript (Tampermonkey) e traz o link de volta">🤖 Criar no TEC</button><button type="button" class="est-ed-link" onclick="estEdital.editarTec()">+ Colar link do caderno</button></div>`}
       </section>
 
       <section class="est-ed-ficha-bloco">
