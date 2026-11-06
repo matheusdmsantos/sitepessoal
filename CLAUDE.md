@@ -52,6 +52,7 @@ js/
   estudos.resumos.js  Meus Resumos: resumo geral da matéria montado dos resumos dos assuntos; exporta Word/PDF
   estudos.edital.js   Edital Verticalizado: painel, filtros, selos por tópico, ficha lateral, exporta PDF/Excel
   estudos.erros.js    Caderno de Erros: questões erradas do TEC, revisão por cartão (1/7/30/90 dias)
+  estudos.aproveitar.js Aproveitar estudos de outro edital: liga tópicos novos aos antigos e copia o progresso
   estudos.usuario.js  Separa por usuário as chaves est_*/disc_order_* do localStorage (roda antes do v5)
 editais/              PDFs de teste; fora do git (.gitignore) para não serem publicados
 assets/               imagens (inclui a logo do papel timbrado da proposta: logo-mm*.webp)
@@ -203,6 +204,8 @@ A página usa `<body class="auth-pending">` (com `visibility: hidden`) e remove 
 - *Revisão por cartão*: o enunciado aparece sem gabarito; acertou, avança a etapa (`INTERVALOS` = 1, 7, 30, 90 dias); errou, volta para amanhã (etapa 0). Acertar na última etapa marca `dominado_em` e tira a questão da fila. A primeira revisão é no dia seguinte ao registro. O menu mostra quantas estão para hoje.
 - *Tela*: KPIs, "Por que você erra" (barras por motivo; clicar filtra), filtros por disciplina, tópico, motivo, situação e busca. Mostra os erros do edital ativo.
 - Sem a tabela `erros`, tudo fica em `localStorage['est_erros']` (separado por usuário pelo `estudos.usuario.js`) e é enviado quando a tabela aparece. O `.page-estudos button` zera borda e fundo, por isso os botões do caderno usam seletores `.page-estudos .est-erro-*`.
+
+**Aproveitar estudos de outro edital (`js/estudos.aproveitar.js`).** Abre sozinho depois de importar um edital (`estudos.importar.js`, se outro edital tem progresso) e pelo botão ♻ ao lado do seletor de editais. Liga cada disciplina e cada tópico do edital novo ao equivalente do antigo (nome igual sem a numeração, ou semelhança pelo `estIncidencia.montarComparador` com nota ≥ `NOTA_MIN` = 2); o usuário confere numa tela de revisão. Copia para o novo: estudado, link do TEC e resumo (`salvarResumo` com o nome novo) para todos os tópicos ligados ao mesmo antigo; questões, tempo e erros do caderno (`estErros.copiarPara`) só para o primeiro, para não contar em dobro; revisões (com etapa e datas), PDFs (assunto dividido em vários tópicos perde a faixa e divide as páginas) e peso/nível/horas do plano (`estPlano.aproveitarDe`, que regera a semana). Tópico novo que já tem progresso não é sobrescrito, e rodar de novo não duplica nada. Incidência do TEC e metas não são copiadas (dependem da banca e da semana). O edital antigo não muda.
 
 **Gestão de Contratos (antes "Controle de Obras"; id, pasta `apps/controle-obras/` e tabelas mantidos).** Gerenciador de processos no estilo SEI, em `apps/controle-obras/` (abre em página cheia):
 - *Processo* `AAAA.NNNN` (numeração por ano): assunto, serviço (projeto, execução, fiscalização, laudo, consultoria), cliente, contato, local, valores da proposta e do contrato, se o contrato é mensal (`processos.mensal`: os valores viram "R$/mês" e preenchem o honorário do acompanhamento de obra; o app só envia a coluna se ela existir, testada no carregamento) e fase: Prospecção → Proposta enviada → Em negociação → Contratado → Em execução → Entregue → Encerrado, ou Proposta recusada / Cancelado (finais: marcam `concluido_em`).

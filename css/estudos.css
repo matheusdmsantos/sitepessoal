@@ -1905,6 +1905,18 @@ html, body {
 @media (max-width: 768px) {
   .est-inc-grade { grid-template-columns: 1fr; }
 }
+/* ─── Aproveitar estudos de outro edital (js/estudos.aproveitar.js) ─── */
+.est-aprov-de { display: flex; align-items: center; gap: 10px; font-size: 0.8rem; color: var(--est-accent); margin: 8px 0; }
+.est-aprov-de .est-form-select { flex: 1; padding: 6px 32px 6px 10px; font-size: 0.8rem; }
+.est-aprov-origem { margin-top: 12px; }
+.est-aprov-lista { display: flex; flex-direction: column; gap: 8px; max-height: 55vh; overflow-y: auto; padding-right: 4px; }
+.est-aprov-disc { border: 1px solid var(--est-border); border-radius: 12px; padding: 10px 12px; }
+.est-aprov-disc > summary { display: flex; justify-content: space-between; gap: 10px; cursor: pointer; list-style-position: inside; }
+.est-aprov-disc-nome { font-weight: 600; color: var(--est-silver-bright); font-size: 0.88rem; }
+.est-aprov-conta { font-size: 0.75rem; color: var(--est-accent); white-space: nowrap; }
+.est-aprov-disc .est-inc-assunto { margin-top: 6px; }
+#est-aprov-resumo:empty { display: none; }
+
 /* ─── Material de estudo em PDF (js/estudos.materiais.js) ─── */
 .est-mat-detalhe { grid-column: 2 / 4; font-size: 0.72rem; color: var(--est-accent); }
 .est-mat-detalhe.sem { color: var(--est-amber); }

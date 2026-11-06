@@ -1608,6 +1608,73 @@
     renderMetas();
   }
 
+  /* =============================================
+     APROVEITAR ESTUDOS DE OUTRO EDITAL (js/estudos.aproveitar.js)
+     ligacoes: { idTópicoNovo: idTópicoAntigo }; discs: { idDiscNova: idDiscAntiga }.
+     Copia para o edital novo as revisões, os PDFs e o peso/nível das disciplinas;
+     o edital antigo fica como estava. O que o tópico novo já tiver não é duplicado.
+  ============================================= */
+  async function aproveitarDe(novo, antigo, ligacoes, discs) {
+    const discDoNovo = {};
+    novo.disciplinas.forEach(d => d.topicos.forEach(t => { discDoNovo[t.id] = d.id; }));
+    const novosDe = {};   // tópico antigo → tópicos novos ligados a ele
+    Object.entries(ligacoes).forEach(([n, a]) => { (novosDe[a] = novosDe[a] || []).push(n); });
+
+    const revNovas = [];
+    Object.entries(ligacoes).forEach(([n, a]) => {
+      if (revisoes.some(r => r.topico_id === n)) return;
+      revisoes.filter(r => r.topico_id === a).forEach(r => revNovas.push({
+        ...r, id: novoId('rev'), edital_id: novo.id, disciplina_id: discDoNovo[n], topico_id: n
+      }));
+    });
+    revisoes.push(...revNovas);
+    await gravar('revisoes', revNovas.map(({ dono, ...r }) => r));
+
+    // PDFs: um assunto dividido em vários tópicos novos divide as páginas igualmente (sem faixa)
+    let pdfs = 0;
+    for (const [nd, ad] of Object.entries(discs)) {
+      const disc = novo.disciplinas.find(d => d.id === nd);
+      const existentes = materiaisDaDisciplina(nd);
+      const copias = materiaisDaDisciplina(ad).filter(m => !existentes.some(x => x.nome === m.nome)).map(m => ({
+        ...m, id: novoId('mat'), criado_em: null,
+        topicos: (m.topicos || []).flatMap(l => {
+          const alvos = (novosDe[l.topico_id] || []).filter(n => discDoNovo[n] === nd);
+          return alvos.map(n => (alvos.length === 1 ? { ...l, topico_id: n } : { topico_id: n, de: null, ate: null }));
+        })
+      }));
+      if (!disc || !copias.length) continue;
+      pdfs += copias.length;
+      const lista = existentes.concat(copias);
+      const linhas = lista.map(m => ({ ...m, edital_id: novo.id, disciplina_id: nd, criado_em: m.criado_em || new Date().toISOString() }));
+      materiais = materiais.filter(m => m.disciplina_id !== nd).concat(linhas);
+      await gravarDaDisciplina('materiais', 'id', remotoMat, nd, linhas.map(({ dono, ...m }) => m), materiais);
+    }
+    pagPorTopico = contarPaginas(materiais);
+
+    // Plano: horas, dias e peso/nível das disciplinas que vieram do edital antigo
+    const velho = planoDe(antigo.id);
+    let planoMudou = false;
+    if (velho) {
+      const atual = planoDe(novo.id);
+      const config = { ...((atual && atual.disciplinas) || {}) };
+      Object.entries(discs).forEach(([nd, ad]) => {
+        if (!config[nd] && velho.disciplinas && velho.disciplinas[ad]) { config[nd] = { ...velho.disciplinas[ad] }; planoMudou = true; }
+      });
+      if (!atual || planoMudou) {
+        const linha = {
+          edital_id: novo.id, horas_semana: atual ? atual.horas_semana : velho.horas_semana,
+          dias_semana: atual ? atual.dias_semana : velho.dias_semana, disciplinas: config, atualizado_em: new Date().toISOString()
+        };
+        planos = planos.filter(p => p.edital_id !== novo.id).concat(linha);
+        await gravar('plano_estudos', linha);
+        planoMudou = true;
+      }
+    }
+    if (planoMudou && currentEditalId === novo.id) await regerarSemana();
+    else renderTudo();
+    return { revisoes: revNovas.length, pdfs, plano: planoMudou };
+  }
+
   /* O plano acompanha o edital escolhido em "Edital Verticalizado" */
   function editalTrocado() {
     semanaVista = null;
@@ -1624,6 +1691,6 @@
     agendarReforco, mudarSemana, irParaSemana, alternarConfig, editalTrocado, projetar,
     incidenciaDaDisciplina, pctIncidencia, salvarIncidencias,
     materiaisDaDisciplina, paginasDoTopico, prioridadeDosTopicos, salvarMateriais,
-    renderTudo, fmtMin, aviso, revisoesDoTopico, paginasLidas
+    renderTudo, fmtMin, aviso, revisoesDoTopico, paginasLidas, aproveitarDe
   };
 })();

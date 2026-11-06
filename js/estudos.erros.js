@@ -107,6 +107,26 @@
     return true;
   }
 
+  /* Aproveitar estudos (js/estudos.aproveitar.js): cada erro do tópico antigo vai, com a etapa
+     de revisão, só para o primeiro tópico novo ligado a ele, para o cartão não aparecer em dobro */
+  async function copiarPara(novo, ligacoes) {
+    if (!carregado) await carregar();
+    const discDoNovo = {};
+    novo.disciplinas.forEach(d => d.topicos.forEach(t => { discDoNovo[t.id] = d.id; }));
+    const primeiro = {};
+    Object.entries(ligacoes).forEach(([n, a]) => { if (!primeiro[a]) primeiro[a] = n; });
+    const copias = Object.entries(primeiro)
+      .filter(([, n]) => !erros.some(e => e.topico_id === n))
+      .flatMap(([a, n]) => erros.filter(e => e.topico_id === a)
+        .map(({ dono, ...e }) => ({ ...e, id: novoId(), edital_id: novo.id, disciplina_id: discDoNovo[n], topico_id: n })));
+    for (const e of copias) {
+      erros.push(e);
+      if (!(await gravar(e))) break;
+    }
+    renderTudo();
+    return copias.length;
+  }
+
   async function apagar(id) {
     erros = erros.filter(e => e.id !== id);
     if (!remoto) { salvarLocal(); return; }
@@ -811,5 +831,5 @@
 
   document.addEventListener('DOMContentLoaded', init);
 
-  window.estErros = { novo, editar, revisar, revisarTopico, verTopico, blocoFicha, render };
+  window.estErros = { novo, editar, revisar, revisarTopico, verTopico, blocoFicha, render, copiarPara };
 })();

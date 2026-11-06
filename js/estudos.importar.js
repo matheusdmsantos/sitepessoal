@@ -426,6 +426,8 @@
     window.estPlano.editalTrocado();
     botao.disabled = false;
     botao.textContent = 'Criar edital';
+    // Disciplinas que já foram estudadas em outro edital não recomeçam do zero
+    if (window.estAproveitar) window.estAproveitar.abrir(edital.id, true);
   }
 
   function fechar() {
