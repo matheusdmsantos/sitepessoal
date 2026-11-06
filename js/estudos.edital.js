@@ -422,9 +422,7 @@
       <section class="est-ed-ficha-bloco">
         <h3>Metas</h3>
         ${metasT.length ? `<ul class="est-ed-ficha-lista est-ed-ficha-metas">${metasT.map(m => `
-          <li class="${m.situacao === 'feita' ? '' : 'pendente'}"><span>${fmtData(m.dia)}</span>${m.id && !m.previsto && m.situacao !== 'feita'
-            ? `<button type="button" class="est-ed-link" onclick="estEdital.fecharFicha(); estPlano.abrirEstudo('meta', '${m.id}')" title="Abrir a janela de estudo desta meta">${esc(m.rotulo)}</button>`
-            : `<span>${esc(m.rotulo)}</span>`}<span>${situacaoMeta[m.situacao]}</span></li>`).join('')}</ul>`
+          <li class="${m.situacao === 'feita' ? '' : 'pendente'}"><span>${fmtData(m.dia)}</span><button type="button" class="est-ed-link" onclick="estPlano.abrirEstudo('meta', '${m.id}')" title="${m.previsto ? 'Abrir o resumo e o que ler (meta prevista: sem cronômetro)' : 'Abrir a janela de estudo desta meta'}">${esc(m.rotulo)}</button><span>${situacaoMeta[m.situacao]}</span></li>`).join('')}</ul>`
           : `<p class="est-ed-ficha-vazio">${t.estudado ? 'Estudado fora das metas do plano.' : 'Este assunto ainda não está em nenhuma meta.'}</p>`}
         <label class="est-ed-ficha-estudado">
           <input type="checkbox" ${t.estudado ? 'checked' : ''} onchange="toggleTopic('${e.id}', '${d.id}', '${t.id}', this.checked)">

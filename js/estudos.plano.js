@@ -917,6 +917,8 @@
      Meta de estudo em aberto: o trecho desta parte (continua de onde parou, PAGINAS_POR_HORA;
      a última parte vai até o fim). Revisão ou meta concluída: o material inteiro do tópico.
      PDF ligado sem faixa: a posição do trecho no PDF é desconhecida (aprox = páginas contadas). */
+  let previstasDoTopico = [];   // metas previstas da última ficha aberta (não são gravadas)
+
   function roteiroDeLeitura(tipo, item) {
     const tId = item.topico_id;
     const trechos = materiais.map(m => {
@@ -931,7 +933,7 @@
     let ini = 0, fim = total;
     if (tipo === 'meta' && !item.concluida && !ehQuestoes(item)) {
       const ritmo = min => min * PAGINAS_POR_HORA / 60;
-      ini = paginasLidas(tId) + metas
+      ini = paginasLidas(tId) + [...metas, ...previstasDoTopico]
         .filter(m => m.topico_id === tId && !m.concluida && m.id !== item.id && !ehQuestoes(m) &&
           (m.dia < item.dia || (m.dia === item.dia && (m.ordem || 0) < (item.ordem || 0))))
         .reduce((a, m) => a + ritmo(m.minutos), 0);
@@ -951,15 +953,16 @@
 
   /* Janela de estudo (estudos.sessao.js): cronômetro e resumo do tópico */
   function abrirEstudo(tipo, id) {
-    const item = tipo === 'meta' ? metas.find(m => m.id === id) : revisoes.find(r => r.id === id);
+    // Meta prevista (ficha do Edital): abre sem cronômetro nem "Concluir", só resumo e leitura
+    const item = tipo === 'meta' ? metas.find(m => m.id === id) || previstasDoTopico.find(m => m.id === id) : revisoes.find(r => r.id === id);
     if (!item || !window.estSessao) return;
     const ref = acharTopico(item.topico_id);
     if (!ref) { aviso('Este tópico não existe mais no edital.'); return; }
-    const rotulo = tipo !== 'meta' ? rotuloRevisao(item)
+    const rotulo = (item.previsto ? 'Previsto · ' : '') + (tipo !== 'meta' ? rotuloRevisao(item)
       : ehQuestoes(item) ? `Questões · ${questoesDaMeta(item)}`
-      : 'Estudo' + (item.partes > 1 ? ` · parte ${item.parte}/${item.partes}` : '');
+      : 'Estudo' + (item.partes > 1 ? ` · parte ${item.parte}/${item.partes}` : ''));
     window.estSessao.abrir({
-      tipo, id, disc: ref.d.nome, topico: ref.t.nome, rotulo,
+      tipo, id: item.previsto ? undefined : id, disc: ref.d.nome, topico: ref.t.nome, rotulo,
       minutos: tipo === 'meta' ? item.minutos : item.minutos || MIN_REVISAO,
       concluida: tipo === 'meta' ? !!item.concluida : !!item.concluida_em,
       leitura: roteiroDeLeitura(tipo, item),
@@ -1196,6 +1199,7 @@
     if (!ref) return [];
     const proj = ref.e.id === currentEditalId ? projetar(ref.e) : null;
     const futuras = proj ? proj.semanas.flatMap(w => w.metas).filter(m => m.topico_id === topicId) : [];
+    previstasDoTopico = futuras;
     return [...metas.filter(m => m.topico_id === topicId), ...futuras]
       .sort((a, b) => a.dia.localeCompare(b.dia) || (a.ordem || 0) - (b.ordem || 0))
       .map(m => ({
