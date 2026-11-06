@@ -502,18 +502,36 @@
         reservarRevisoes(ctx, plano, m.dia, acertoEsperado(edital.disciplinas.find(d => d.id === m.disciplina_id)), m.topico_id, m.disciplina_id);
       }
     });
-    // Questões que ainda faltam: tópico cujo estudo terminou (ou tem a última parte planejada)
-    // e que ainda não tem meta de questões
-    const comQuestoes = new Set(metas.filter(ehQuestoes).map(m => m.topico_id));
-    const ultimas = {};
+    // Questões que ainda faltam: tópico sem meta de questões cujo estudo já passou da metade
+    // das páginas (com PDF) ou terminou (sem PDF), contando o que está planejado até semanaBase
+    ctx.comQuestoes = new Set(metas.filter(ehQuestoes).map(m => m.topico_id));
+    const porTopico = {};
     metas.filter(m => m.edital_id === edital.id && !ehQuestoes(m) && m.semana >= INICIO_QUESTOES &&
-      m.semana <= semanaBase && !comQuestoes.has(m.topico_id) && (!m.partes || m.parte >= m.partes))
-      .forEach(m => { if (!ultimas[m.topico_id] || m.dia > ultimas[m.topico_id].dia) ultimas[m.topico_id] = m; });
-    Object.values(ultimas).forEach(m => ctx.questoes.push({ topico_id: m.topico_id, disciplina_id: m.disciplina_id, depoisDe: m.dia }));
+      m.semana <= semanaBase && !ctx.comQuestoes.has(m.topico_id))
+      .forEach(m => (porTopico[m.topico_id] = porTopico[m.topico_id] || []).push(m));
+    Object.values(porTopico).forEach(lista => {
+      lista.sort((a, b) => (a.dia < b.dia ? -1 : a.dia > b.dia ? 1 : (a.ordem || 0) - (b.ordem || 0)));
+      const tId = lista[0].topico_id;
+      let lidas = paginasLidas(tId);
+      const gatilho = lista.find(m => {
+        if (!m.concluida) lidas += m.minutos * PAGINAS_POR_HORA / 60;
+        return passouDaMetade(tId, lidas, m);
+      });
+      if (gatilho) {
+        ctx.comQuestoes.add(tId);
+        ctx.questoes.push({ topico_id: tId, disciplina_id: gatilho.disciplina_id, depoisDe: gatilho.dia });
+      }
+    });
     return ctx;
   }
 
   const ehQuestoes = m => m.tipo === 'questoes';
+  /* Hora da meta de questões: com PDF, quando as páginas lidas/planejadas chegam à metade
+     (ou na última parte, se o ritmo real ficou diferente); sem PDF, depois do estudo. */
+  function passouDaMetade(topicId, paginas, meta) {
+    const total = paginasDoTopico(topicId);
+    return (!meta.partes || meta.parte >= meta.partes) || (total > 0 && paginas >= total / 2);
+  }
   const questoesDaMeta = m => Math.round(m.minutos / MIN_POR_QUESTAO);
 
   /* Número de questões do tópico pela relevância (ver QUESTOES_POR_RELEVANCIA) */
@@ -633,7 +651,10 @@
         tipo: 'estudo', minutos: p.minutos, concluida: false, ordem: novas.length,
         ...(p.partes > 1 || p.parte > 1 ? { parte: p.parte, partes: p.partes } : {})
       });
-      if (ultima) {
+      const total = paginasDoTopico(t.id);
+      const metade = total > 0 && paginasLidas(t.id) + (ctx.planejado[t.id] || 0) * PAGINAS_POR_HORA / 60 >= total / 2;
+      if (!ctx.comQuestoes.has(t.id) && (ultima || metade)) {
+        ctx.comQuestoes.add(t.id);
         const q = { topico_id: t.id, disciplina_id: x.d.id, depoisDe: dia };
         if (!colocarQuestoes(q)) ctx.questoes.push(q);
       }
