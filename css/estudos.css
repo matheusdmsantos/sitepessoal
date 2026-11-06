@@ -1542,6 +1542,7 @@ html, body {
 .est-plano-item.tipo-estudo  { border-left-color: var(--est-blue); }
 .est-plano-item.tipo-revisao { border-left-color: var(--est-purple); }
 .est-plano-item.tipo-reforco { border-left-color: var(--est-orange); }
+.est-plano-item.tipo-questoes { border-left-color: var(--est-cyan); }
 .est-plano-item.feito { opacity: 0.55; border-left-color: var(--est-green); }
 .est-plano-item-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .est-plano-tag {
@@ -1553,6 +1554,7 @@ html, body {
 }
 .est-plano-item.tipo-reforco .est-plano-tag { color: var(--est-orange); }
 .est-plano-item.tipo-revisao .est-plano-tag { color: var(--est-purple); }
+.est-plano-item.tipo-questoes .est-plano-tag { color: var(--est-cyan); }
 .est-plano-item-disc { font-size: 0.75rem; color: var(--est-accent); }
 .est-plano-item-top { font-size: 0.86rem; color: var(--est-silver-bright); line-height: 1.35; }
 .est-plano-item-acoes { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
