@@ -2003,6 +2003,8 @@ html, body {
 }
 .est-sessao-titulo { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1 1 260px; }
 .est-sessao-disc { font-size: 0.78rem; color: var(--est-accent); }
+.est-sessao-leitura { margin: 4px 0 0; font-size: 0.82rem; color: var(--est-silver-bright); line-height: 1.4; }
+.est-sessao-leitura strong { color: var(--est-accent); font-weight: 600; }
 .est-sessao-topico {
   font-family: var(--est-font-display);
   font-size: 1.3rem;

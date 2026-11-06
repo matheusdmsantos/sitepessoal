@@ -825,6 +825,42 @@
   /* =============================================
      MODAL: CONCLUIR META OU REVISÃO
   ============================================= */
+  /* O que ler na janela de estudo: [{ nome, de, ate, aprox }] com páginas reais do PDF.
+     Meta de estudo em aberto: o trecho desta parte (continua de onde parou, PAGINAS_POR_HORA;
+     a última parte vai até o fim). Revisão ou meta concluída: o material inteiro do tópico.
+     PDF ligado sem faixa: a posição do trecho no PDF é desconhecida (aprox = páginas contadas). */
+  function roteiroDeLeitura(tipo, item) {
+    const tId = item.topico_id;
+    const trechos = materiais.map(m => {
+      const l = (m.topicos || []).find(x => x.topico_id === tId);
+      if (!l) return null;
+      const faixa = l.de > 0 && l.ate >= l.de;
+      const pags = Math.round(faixa ? Math.min(l.ate, m.paginas || l.ate) - l.de + 1 : contarPaginas([m])[tId] || 0);
+      return pags > 0 ? { nome: m.nome, inicio: faixa ? l.de : 1, pags, aprox: !faixa && (m.topicos || []).length > 1 } : null;
+    }).filter(Boolean);
+    if (!trechos.length) return [];
+    const total = trechos.reduce((a, x) => a + x.pags, 0);
+    let ini = 0, fim = total;
+    if (tipo === 'meta' && !item.concluida) {
+      const ritmo = min => min * PAGINAS_POR_HORA / 60;
+      ini = paginasLidas(tId) + metas
+        .filter(m => m.topico_id === tId && !m.concluida && m.id !== item.id &&
+          (m.dia < item.dia || (m.dia === item.dia && (m.ordem || 0) < (item.ordem || 0))))
+        .reduce((a, m) => a + ritmo(m.minutos), 0);
+      ini = Math.min(Math.round(ini), total - 1);
+      fim = item.partes > 1 && item.parte < item.partes ? Math.min(total, ini + Math.round(ritmo(item.minutos))) : total;
+    }
+    // Recorta [ini, fim) do assunto nos PDFs, na ordem em que estão cadastrados
+    const r = [];
+    let pos = 0;
+    trechos.forEach(x => {
+      const a = Math.max(ini, pos), b = Math.min(fim, pos + x.pags);
+      if (b > a) r.push({ nome: x.nome, de: x.inicio + a - pos, ate: x.inicio + b - pos - 1, aprox: x.aprox });
+      pos += x.pags;
+    });
+    return r;
+  }
+
   /* Janela de estudo (estudos.sessao.js): cronômetro e resumo do tópico */
   function abrirEstudo(tipo, id) {
     const item = tipo === 'meta' ? metas.find(m => m.id === id) : revisoes.find(r => r.id === id);
@@ -837,7 +873,9 @@
     window.estSessao.abrir({
       tipo, id, disc: ref.d.nome, topico: ref.t.nome, rotulo,
       minutos: tipo === 'meta' ? item.minutos : item.minutos || MIN_REVISAO,
-      concluida: tipo === 'meta' ? !!item.concluida : !!item.concluida_em
+      concluida: tipo === 'meta' ? !!item.concluida : !!item.concluida_em,
+      leitura: roteiroDeLeitura(tipo, item),
+      leituraParcial: tipo === 'meta' && !item.concluida && item.partes > 1
     });
   }
 

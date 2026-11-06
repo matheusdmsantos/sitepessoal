@@ -699,6 +699,13 @@
     $('est-sessao-rotulo').textContent = dados.rotulo;
     $('est-sessao-disc').textContent = dados.disc;
     $('est-sessao-topico').textContent = dados.topico;
+    const leitura = dados.leitura || [];
+    $('est-sessao-leitura').hidden = !leitura.length;
+    $('est-sessao-leitura').innerHTML = leitura.length
+      ? `<strong>📄 ${dados.leituraParcial ? 'Ler agora' : 'Material'}:</strong> ` + leitura.map(x =>
+          `<span>${escapeHtml(x.nome)}, ${x.aprox ? `${x.ate - x.de + 1} p. (sem faixa cadastrada)` : x.de === x.ate ? `p. ${x.de}` : `p. ${x.de}–${x.ate}`}</span>`
+        ).join('; ')
+      : '';
     $('est-sessao-crono').style.display = dados.id ? '' : 'none';
     $('est-sessao-concluir').style.display = dados.id && !dados.concluida ? '' : 'none';
 
