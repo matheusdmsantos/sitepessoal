@@ -2597,3 +2597,16 @@ html, body {
   .est-erro-filtros input { grid-column: auto; }
   .page-estudos .est-erro-op.grande { flex: 1; min-width: 0; }
 }
+
+/* Escolha dos assuntos do caderno do TEC (js/estudos.tec.js): por cima da janela de estudo */
+.est-tec-escolha { z-index: 1050; }
+.est-tec-escolha .est-modal { max-width: 620px; display: flex; flex-direction: column; gap: 10px; max-height: 90vh; }
+.est-tec-lista { list-style: none; margin: 0; padding: 4px 0; overflow-y: auto; max-height: 52vh; border: 1px solid var(--est-border); border-radius: var(--est-r-sm); }
+.est-tec-lista li label { display: flex; align-items: center; gap: 8px; padding: 5px 10px; cursor: pointer; font-size: 0.84rem; color: var(--est-silver-bright); }
+.est-tec-lista li label:hover { background: rgba(200, 204, 212, 0.06); }
+.est-tec-lista li input { accent-color: var(--est-green); flex-shrink: 0; }
+.est-tec-lista li span { flex: 1; }
+.est-tec-lista li small { color: var(--est-accent); font-variant-numeric: tabular-nums; }
+.est-tec-lista li.coberto label { opacity: 0.55; cursor: default; }
+.est-tec-acoes { display: flex; align-items: center; gap: 8px; justify-content: flex-end; }
+.est-tec-acoes [data-conta] { margin-right: auto; }

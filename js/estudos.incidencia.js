@@ -240,7 +240,7 @@
     const porTopico = {};
     ctx.assuntos.forEach(a => { if (a.topicoId) porTopico[a.topicoId] = (porTopico[a.topicoId] || 0) + a.questoes; });
     salvarMemoria(ctx.disc.id);
-    if (window.estTec) window.estTec.guardarAssuntos(ctx.assuntos);
+    if (window.estTec) window.estTec.guardarAssuntos(ctx.assuntos, ctx.disc.id);
     $('est-inc-salvar').disabled = true;
     const disc = ctx.disc;
     await window.estPlano.salvarIncidencias(ctx.edital, disc, porTopico);
