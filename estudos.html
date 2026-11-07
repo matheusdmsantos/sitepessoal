@@ -390,9 +390,10 @@
         <!-- Só para tópico com PDF ligado (estudos.plano.js) -->
         <div id="est-concluir-pdf" class="est-concluir-pdf" style="display:none;">
           <div class="est-form-group">
-            <label class="est-form-label" for="est-concluir-pag">Páginas lidas deste assunto, até agora</label>
+            <label class="est-form-label" for="est-concluir-pag">Parei na página</label>
+            <select id="est-concluir-pdf-sel" class="est-form-select" aria-label="PDF" style="display:none; margin-bottom:8px;"></select>
             <div class="est-concluir-pag">
-              <input type="number" id="est-concluir-pag" class="est-form-input" min="0" placeholder="0" />
+              <input type="number" id="est-concluir-pag" class="est-form-input" min="1" placeholder="Página" />
               <span id="est-concluir-pag-total"></span>
             </div>
           </div>
@@ -913,7 +914,7 @@
     };
   </script>
   <script src="js/estudos.v5.js?v=10"></script>
-  <script src="js/estudos.plano.js?v=18"></script>
+  <script src="js/estudos.plano.js?v=19"></script>
   <script src="js/estudos.sessao.js?v=10"></script>
   <script src="js/estudos.resumos.js?v=5"></script>
   <script src="js/estudos.edital.js?v=7"></script>

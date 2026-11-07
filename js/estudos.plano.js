@@ -919,15 +919,57 @@
      PDF ligado sem faixa: a posição do trecho no PDF é desconhecida (aprox = páginas contadas). */
   let previstasDoTopico = [];   // metas previstas da última ficha aberta (não são gravadas)
 
-  function roteiroDeLeitura(tipo, item) {
-    const tId = item.topico_id;
-    const trechos = materiais.map(m => {
+  /* Trechos do assunto nos PDFs, na ordem cadastrada: { m, l, nome, inicio, pags, aprox } */
+  function trechosDoTopico(tId) {
+    return materiais.map(m => {
       const l = (m.topicos || []).find(x => x.topico_id === tId);
       if (!l) return null;
       const faixa = l.de > 0 && l.ate >= l.de;
       const pags = Math.round(faixa ? Math.min(l.ate, m.paginas || l.ate) - l.de + 1 : contarPaginas([m])[tId] || 0);
-      return pags > 0 ? { nome: m.nome, inicio: faixa ? l.de : 1, pags, aprox: !faixa && (m.topicos || []).length > 1 } : null;
+      return pags > 0 ? { m, l, nome: m.nome, inicio: faixa ? l.de : 1, pags, aprox: !faixa && (m.topicos || []).length > 1 } : null;
     }).filter(Boolean);
+  }
+
+  /* Página do PDF ↔ páginas lidas do assunto (contadas em sequência pelos trechos) */
+  function lidasAtePagina(trechos, idx, pag) {
+    const antes = trechos.slice(0, idx).reduce((a, x) => a + x.pags, 0);
+    return antes + Math.max(0, Math.min(trechos[idx].pags, pag - trechos[idx].inicio + 1));
+  }
+  function paginaDasLidas(trechos, lidas) {
+    let pos = 0;
+    for (let i = 0; i < trechos.length; i++) {
+      if (lidas <= pos + trechos[i].pags || i === trechos.length - 1) {
+        return { idx: i, pag: trechos[i].inicio + Math.max(0, Math.min(trechos[i].pags, lidas - pos) - 1) };
+      }
+      pos += trechos[i].pags;
+    }
+    return { idx: 0, pag: 0 };
+  }
+
+  /* "Terminei" na página P de um PDF dividido em faixas: o assunto passa a acabar em P e o
+     seguinte do mesmo PDF começa em P + 1 (a divisão sugerida raramente bate com o fim real). */
+  async function ajustarFaixas(trecho, pag) {
+    const { m, l } = trecho;
+    pag = Math.min(pag, m.paginas || pag);
+    if (!(l.de > 0 && l.ate >= l.de) || pag < l.de || pag === l.ate) return;
+    const fimAntigo = l.ate;
+    l.ate = pag;
+    m.topicos.forEach(o => {
+      if (o === l || !(o.de > 0) || o.de <= l.de) return;
+      if (o.de <= pag || o.de === fimAntigo + 1) { o.de = pag + 1; if (!(o.ate >= o.de)) o.ate = o.de; }
+    });
+    pagPorTopico = contarPaginas(materiais);
+    if (!remotoMat) {
+      try { localStorage.setItem('est_plano_materiais', JSON.stringify(materiais)); } catch (e) { console.warn(e); }
+      return;
+    }
+    const { error } = await sb.from('materiais').update({ topicos: m.topicos }).eq('id', m.id);
+    if (error) { console.error('Erro ao ajustar as páginas do PDF:', error); aviso('Não foi possível salvar a nova divisão de páginas do PDF.'); }
+  }
+
+  function roteiroDeLeitura(tipo, item) {
+    const tId = item.topico_id;
+    const trechos = trechosDoTopico(tId);
     if (!trechos.length) return [];
     const total = trechos.reduce((a, x) => a + x.pags, 0);
     let ini = 0, fim = total;
@@ -988,18 +1030,25 @@
     const lidas = totalPags ? paginasLidas(item.topico_id) : 0;
     const alvo = Math.min(totalPags, lidas + Math.round(item.minutos / 60 * PAGINAS_POR_HORA));
     contextoConclusao.totalPags = totalPags;
-    document.getElementById('est-concluir-pdf').style.display = totalPags ? '' : 'none';
-    if (totalPags) {
-      document.getElementById('est-concluir-pag').max = totalPags;
-      document.getElementById('est-concluir-pag').value = alvo;
-      document.getElementById('est-concluir-pag-total').textContent = `de ${totalPags} páginas`;
+    const trechos = totalPags ? trechosDoTopico(item.topico_id) : [];
+    contextoConclusao.trechos = trechos;
+    document.getElementById('est-concluir-pdf').style.display = trechos.length ? '' : 'none';
+    const alvoPdf = paginaDasLidas(trechos, alvo);
+    const parou = lidas ? paginaDasLidas(trechos, lidas) : null;
+    if (trechos.length) {
+      const sel = document.getElementById('est-concluir-pdf-sel');
+      sel.innerHTML = trechos.map((x, i) => `<option value="${i}">${escapeHtml(x.nome)} (págs. ${x.inicio}–${x.inicio + x.pags - 1})</option>`).join('');
+      sel.value = String(alvoPdf.idx);
+      sel.style.display = trechos.length > 1 ? '' : 'none';
+      document.getElementById('est-concluir-pag').value = alvoPdf.pag;
+      mostrarFaixaConclusao();
       document.getElementById('est-concluir-terminei').checked = alvo >= totalPags;
     }
     const parte = item.partes > 1 ? `Parte ${item.parte} de ${item.partes}. ` : '';
     document.getElementById('est-concluir-dica').textContent = questoesMeta
       ? `Resolva ${questoesDaMeta(item)} questões do assunto (do PDF ou do TEC) e informe quantas acertou.`
-      : totalPags
-      ? `${parte}Leia até a página ${alvo} (${lidas ? `você parou na ${lidas}` : 'começando do início'}). Ao terminar o assunto, marque "Terminei este PDF": só então a primeira revisão é agendada, conforme o seu acerto.`
+      : trechos.length
+      ? `${parte}Leia até a página ${alvoPdf.pag} (${parou ? `você parou na ${parou.pag}` : 'começando do início'}). Se o assunto acabou em outra página, informe a página real: o próximo trecho começa na seguinte. Ao terminar o assunto, marque "Terminei este PDF": só então a primeira revisão é agendada, conforme o seu acerto.`
       : tipo === 'meta'
       ? 'Teoria e caderno de questões do tópico. Ao concluir, a primeira revisão é agendada conforme o seu acerto.'
       : `Refaça o caderno do TEC deste tópico. Quanto maior o acerto, mais longe fica a próxima revisão; abaixo de ${ACERTO_REFORCO}% entra um reforço.`;
@@ -1012,6 +1061,14 @@
     document.getElementById('est-concluir-c').value = '';
     document.getElementById('est-concluir-tec').value = ref.t.tecLink || '';
     document.getElementById('est-modal-concluir').classList.add('active');
+  }
+
+  function mostrarFaixaConclusao() {
+    const x = contextoConclusao.trechos[parseInt(document.getElementById('est-concluir-pdf-sel').value, 10) || 0];
+    if (!x) return;
+    document.getElementById('est-concluir-pag').max = x.m.paginas || '';
+    document.getElementById('est-concluir-pag-total').textContent =
+      `do PDF (o assunto: págs. ${x.inicio}–${x.inicio + x.pags - 1}${x.aprox ? ', aprox.' : ''})`;
   }
 
   function fecharConclusao() {
@@ -1045,10 +1102,15 @@
     };
     // Tópico com PDF: guarda até onde leu; sem "Terminei este PDF", ele continua no plano
     const questoesMeta = ctx.tipo === 'meta' && ehQuestoes(item);
-    const comPdf = ctx.tipo === 'meta' && ctx.totalPags > 0;
+    const comPdf = ctx.tipo === 'meta' && ctx.totalPags > 0 && ctx.trechos.length > 0;
     const terminou = !comPdf || document.getElementById('est-concluir-terminei').checked;
     const parcial = !terminou;
-    if (comPdf) item.paginas_lidas = terminou ? ctx.totalPags : Math.min(ctx.totalPags, val('est-concluir-pag'));
+    if (comPdf) {
+      const idx = parseInt(document.getElementById('est-concluir-pdf-sel').value, 10) || 0;
+      const pag = val('est-concluir-pag');
+      item.paginas_lidas = terminou ? ctx.totalPags : Math.min(ctx.totalPags, lidasAtePagina(ctx.trechos, idx, pag));
+      if (terminou && pag) await ajustarFaixas(ctx.trechos[idx], pag);
+    }
     if (ctx.tipo === 'meta' && !parcial && !questoesMeta) { t.estudado = true; atualizacao.estudado = true; }
     saveEditais();
     fecharConclusao();
@@ -1108,18 +1170,23 @@
     if (!overlay) return;
     document.getElementById('est-modal-concluir-close').addEventListener('click', fecharConclusao);
     overlay.addEventListener('click', ev => { if (ev.target === overlay) fecharConclusao(); });
-    // "Páginas lidas" e "Terminei este PDF" andam juntos
+    // Chegar à última página do assunto marca "Terminei este PDF" (dá para desmarcar)
     const pag = document.getElementById('est-concluir-pag');
     const terminei = document.getElementById('est-concluir-terminei');
+    const fimDoAssunto = () => {
+      const tr = contextoConclusao && contextoConclusao.trechos;
+      const x = tr && tr[tr.length - 1];
+      return x ? x.inicio + x.pags - 1 : 0;
+    };
     pag.addEventListener('input', () => {
-      const total = contextoConclusao && contextoConclusao.totalPags;
-      if (total) terminei.checked = (parseInt(pag.value, 10) || 0) >= total;
+      const fim = fimDoAssunto();
+      const ultimo = document.getElementById('est-concluir-pdf-sel').value === String(contextoConclusao.trechos.length - 1);
+      if (fim && ultimo) terminei.checked = (parseInt(pag.value, 10) || 0) >= fim;
     });
     terminei.addEventListener('change', () => {
-      const total = contextoConclusao && contextoConclusao.totalPags;
-      if (total && terminei.checked) pag.value = total;
-      else if (total && (parseInt(pag.value, 10) || 0) >= total) pag.value = Math.max(0, total - 1);
+      if (terminei.checked && !pag.value) pag.value = fimDoAssunto();
     });
+    document.getElementById('est-concluir-pdf-sel').addEventListener('change', mostrarFaixaConclusao);
     document.getElementById('est-concluir-form').addEventListener('submit', ev => {
       ev.preventDefault();
       salvarConclusao();
