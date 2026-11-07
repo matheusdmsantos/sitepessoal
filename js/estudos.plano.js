@@ -370,6 +370,36 @@
     return discId in ordemPdfPendente ? ordemPdfPendente[discId] : !!configDisc(planoDe(editalId), discId).ordemPdf;
   }
 
+  /* Subtópicos agrupados no Edital Verticalizado: a incidência e os PDFs deles passam para o
+     tópico principal (faixas de páginas unidas) e a semana é refeita sem as metas abertas
+     que apontavam para eles. */
+  async function juntarTopicos(edital, disc, deIds, paraId) {
+    const de = new Set(deIds);
+    const novoId = id => (de.has(id) ? paraId : id);
+    const incs = incidencias.filter(r => r.disciplina_id === disc.id);
+    if (incs.some(r => de.has(r.topico_id))) {
+      const porTopico = {};
+      incs.forEach(r => { porTopico[novoId(r.topico_id)] = (porTopico[novoId(r.topico_id)] || 0) + r.questoes; });
+      await salvarIncidencias(edital, disc, porTopico);
+    }
+    const lista = materiaisDaDisciplina(disc.id);
+    if (lista.some(m => (m.topicos || []).some(l => de.has(l.topico_id)))) {
+      const nova = lista.map(m => {
+        const links = [];
+        (m.topicos || []).forEach(l => {
+          const igual = links.find(x => x.topico_id === novoId(l.topico_id));
+          if (!igual) links.push({ ...l, topico_id: novoId(l.topico_id) });
+          else if (igual.de > 0 && l.de > 0) { igual.de = Math.min(igual.de, l.de); igual.ate = Math.max(igual.ate || 0, l.ate || 0) || null; }
+          else { igual.de = null; igual.ate = null; }
+        });
+        return { ...m, topicos: links };
+      });
+      await salvarMateriais(edital, disc, nova);
+    }
+    const ativo = editalAtivo();
+    if (planoDe(edital.id) && ativo && ativo.id === edital.id) await regerarSemana();
+  }
+
   async function salvarMateriais(edital, disc, lista, ordemPdf) {
     const plano = planoDe(edital.id);
     if (ordemPdf !== undefined && ordemPdf !== ordemPdfDe(edital.id, disc.id)) {
@@ -1937,7 +1967,7 @@
     abrirConclusao, abrirEstudo, adiarRevisao, removerMeta, regerarSemana, reiniciarPlanejamento, metasDoTopico, agendarEstudados,
     agendarReforco, mudarSemana, irParaSemana, alternarConfig, editalTrocado, projetar,
     incidenciaDaDisciplina, pctIncidencia, salvarIncidencias,
-    materiaisDaDisciplina, paginasDoTopico, prioridadeDosTopicos, salvarMateriais, ordemPdfDe,
+    materiaisDaDisciplina, paginasDoTopico, prioridadeDosTopicos, salvarMateriais, ordemPdfDe, juntarTopicos,
     renderTudo, fmtMin, aviso, revisoesDoTopico, paginasLidas, aproveitarDe
   };
 })();

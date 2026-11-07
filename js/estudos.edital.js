@@ -105,6 +105,27 @@
     return m ? m[1] : null;
   }
 
+  /* Subtópicos de t: os tópicos logo abaixo cuja numeração começa com a dele ("1" → "1.1", "1.2.3") */
+  function filhosDe(d, t) {
+    const n = numeracao(t.nome);
+    const r = [];
+    if (!n) return r;
+    for (let k = d.topicos.indexOf(t) + 1; k < d.topicos.length; k++) {
+      const m = numeracao(d.topicos[k].nome);
+      if (!m || !m.startsWith(n + '.')) break;
+      r.push(d.topicos[k]);
+    }
+    return r;
+  }
+
+  /* Tópico com subitens agrupados, como o importador grava: "1 Assunto: sub; sub; sub" */
+  function partesAgrupadas(t) {
+    const m = /^\s*(\d+(?:\.\d+)*)[.)]?\s+(.+?):\s+(.+)$/.exec(t.nome || '');
+    if (!m) return null;
+    const subs = m[3].split(/;\s*/).map(x => x.trim().replace(/\.$/, '')).filter(Boolean);
+    return subs.length ? { num: m[1], base: m[2].trim(), subs } : null;
+  }
+
   // Nível de cada tópico pela numeração ("1" = 1, "1.1" = 2...), com base no menor nível da disciplina
   function niveis(d) {
     const brutos = d.topicos.map(t => { const n = numeracao(t.nome); return n ? n.split('.').length : 1; });
@@ -483,6 +504,20 @@
           : '<p class="est-ed-ficha-vazio">Nenhuma sessão registrada.</p>'}
       </section>
 
+      ${(() => {
+        const filhos = filhosDe(d, t);
+        const grupo = !filhos.length && partesAgrupadas(t);
+        if (!filhos.length && !grupo) return '';
+        return `<section class="est-ed-ficha-bloco">
+        <h3>Subtópicos</h3>
+        ${filhos.length
+          ? `<p class="est-ed-ficha-vazio">${filhos.length} subtópico${filhos.length > 1 ? 's' : ''} separado${filhos.length > 1 ? 's' : ''} no edital.</p>
+             <button type="button" class="est-plano-btn" onclick="estEdital.agruparSubtopicos()">⊟ Agrupar neste tópico</button>`
+          : `<p class="est-ed-ficha-vazio">${grupo.subs.length} subite${grupo.subs.length > 1 ? 'ns agrupados' : 'm agrupado'} no nome do tópico.</p>
+             <button type="button" class="est-plano-btn" onclick="estEdital.separarSubtopicos()">⊞ Separar em ${grupo.subs.length} subtópico${grupo.subs.length > 1 ? 's' : ''}</button>`}
+      </section>`;
+      })()}
+
       <footer class="est-ed-ficha-rodape">
         <button type="button" class="est-ed-link" onclick="estEdital.renomearTopico()">Renomear tópico</button>
         <button type="button" class="est-ed-link ruim" onclick="estEdital.excluirTopico()">Excluir tópico</button>
@@ -545,6 +580,74 @@
     await updateDiscName(e.id, d.id, novo);
     for (const t of d.topicos) await moverResumo(antes, t.nome, d.nome, t.nome);
     render();
+  }
+
+  /* Junta os subtópicos no tópico principal: o nome fica "1 Assunto: sub; sub", questões,
+     tempo e link do TEC passam para ele; incidência, PDFs e metas, pelo estPlano.juntarTopicos. */
+  async function agruparSubtopicos() {
+    const ref = ficha && acharTopico(ficha.eId, ficha.dId, ficha.tId);
+    if (!ref) return;
+    const { e, d, t } = ref;
+    const filhos = filhosDe(d, t);
+    if (!filhos.length) return;
+    const comEstudo = filhos.some(f => f.estudado || f.questoesFeitas || f.tempoGasto);
+    if (!(await window.customConfirm(`Agrupar ${filhos.length} subtópicos em "${t.nome}"? ` +
+      (comEstudo ? 'Questões e tempo deles passam para este tópico. ' : '') +
+      'A incidência e os PDFs também, e as metas abertas desta semana são refeitas. Dá para separar de novo depois.'))) return;
+    const semNumero = x => x.replace(/^\s*\d+(?:\.\d+)*[.)]?\s+/, '').trim().replace(/[.;]$/, '');
+    const antes = t.nome;
+    t.nome = `${t.nome.trim().replace(/[.:]$/, '')}: ${filhos.map(f => semNumero(f.nome)).join('; ')}`;
+    t.questoesFeitas = filhos.reduce((a, f) => a + (f.questoesFeitas || 0), t.questoesFeitas || 0);
+    t.questoesCertas = filhos.reduce((a, f) => a + (f.questoesCertas || 0), t.questoesCertas || 0);
+    t.tempoGasto = filhos.reduce((a, f) => a + (f.tempoGasto || 0), t.tempoGasto || 0);
+    t.tecLink = t.tecLink || (filhos.find(f => f.tecLink) || {}).tecLink || '';
+    t.estudado = filhos.every(f => f.estudado);
+    const ids = filhos.map(f => f.id);
+    d.topicos = d.topicos.filter(x => !ids.includes(x.id));
+    saveEditais();
+    const sb = window.supabaseClient;
+    const r1 = await sb.from('topicos').update({
+      nome: t.nome, questoes_feitas: t.questoesFeitas, questoes_certas: t.questoesCertas,
+      tempo_gasto: t.tempoGasto, tec_link: t.tecLink, estudado: t.estudado
+    }).eq('id', t.id);
+    const r2 = await sb.from('topicos').delete().in('id', ids);
+    if (r1.error || r2.error) { console.error('Erro ao agrupar subtópicos:', r1.error || r2.error); alert('Não foi possível salvar no servidor.'); }
+    await moverResumo(d.nome, antes, d.nome, t.nome);
+    if (plano().juntarTopicos) await plano().juntarTopicos(e, d, ids, t.id);
+    render();
+    renderFicha();
+  }
+
+  /* Desfaz o agrupamento: "1 Assunto: a; b" vira "1 Assunto", "1.1 a" e "1.2 b". O tópico
+     principal fica com o progresso, a incidência e os PDFs (reimporte/religue para dividir). */
+  async function separarSubtopicos() {
+    const ref = ficha && acharTopico(ficha.eId, ficha.dId, ficha.tId);
+    if (!ref) return;
+    const { d, t } = ref;
+    const g = partesAgrupadas(t);
+    if (!g) return;
+    if (!(await window.customConfirm(`Separar "${g.num} ${g.base}" em ${g.subs.length} subtópicos? ` +
+      'O progresso, a incidência e os PDFs ficam no tópico principal: para dividi-los, importe a incidência de novo e religue os PDFs.'))) return;
+    const antes = t.nome;
+    t.nome = `${g.num} ${g.base}`;
+    // ids logo depois do principal: a lista é ordenada pelo id ao carregar
+    const novos = g.subs.map((x, k) => ({
+      id: `${t.id}_${String(k + 1).padStart(2, '0')}`, nome: `${g.num}.${k + 1} ${x}`,
+      estudado: !!t.estudado, questoesFeitas: 0, questoesCertas: 0, tecLink: '', tempoGasto: 0
+    }));
+    d.topicos.splice(d.topicos.indexOf(t) + 1, 0, ...novos);
+    saveEditais();
+    const sb = window.supabaseClient;
+    const r1 = await sb.from('topicos').update({ nome: t.nome }).eq('id', t.id);
+    const r2 = await sb.from('topicos').insert(novos.map(n => ({
+      id: n.id, disciplina_id: d.id, nome: n.nome, estudado: n.estudado,
+      questoes_feitas: 0, questoes_certas: 0, tec_link: '', tempo_gasto: 0
+    })));
+    if (r1.error || r2.error) { console.error('Erro ao separar subtópicos:', r1.error || r2.error); alert('Não foi possível salvar no servidor.'); }
+    await moverResumo(d.nome, antes, d.nome, t.nome);
+    render();
+    renderFicha();
+    if (plano().renderTudo) plano().renderTudo();
   }
 
   async function excluirTopico() {
@@ -737,7 +840,7 @@
 
   window.estEdital = {
     render, alternarDisc, abrirTodas, filtrar, limparFiltros,
-    abrirFicha, fecharFicha, editarTec, renomearTopico, renomearDisc, excluirTopico,
+    abrirFicha, fecharFicha, editarTec, renomearTopico, renomearDisc, excluirTopico, agruparSubtopicos, separarSubtopicos,
     exportarExcel, exportarPdf, foraAberto: sim => gravarLocal('est_edital_fora_aberto', sim)
   };
 })();
