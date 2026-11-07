@@ -337,8 +337,10 @@
   /* Ordem de estudo dos tópicos de uma disciplina. Com incidência do TEC, vem primeiro o
      que rende mais questões por página: muito cobrado e pouco material. Tópico sem PDF
      conta com a mediana de páginas da disciplina. Sem incidência, fica a ordem do edital.
-     "lista" permite simular materiais ainda não salvos (tela de materiais). */
-  function prioridadeDosTopicos(d, lista) {
+     "lista" permite simular materiais ainda não salvos (tela de materiais).
+     "ordemPdf": segue a ordem dos PDFs cadastrados (e das páginas dentro de cada um);
+     tópicos sem PDF vão para o fim, na ordem do edital. */
+  function prioridadeDosTopicos(d, lista, ordemPdf) {
     const pags = lista ? contarPaginas(lista) : pagPorTopico;
     const inc = incidenciaDaDisciplina(d);
     const conhecidas = d.topicos.map(t => pags[t.id]).filter(p => p > 0).sort((a, b) => a - b);
@@ -349,11 +351,33 @@
       const efetivas = paginas || mediana || 1;
       return { t, i, questoes, paginas, estimado: !paginas && mediana > 0, porPagina: questoes / efetivas, efetivas };
     });
-    if (inc) itens.sort((a, b) => b.porPagina - a.porPagina || a.efetivas - b.efetivas || a.i - b.i);
+    if (ordemPdf) {
+      const pos = {};
+      (lista || materiaisDaDisciplina(d.id)).forEach((m, mi) => (m.topicos || []).forEach((l, j) => {
+        const k = mi * 1e6 + (Number(l.de) || j);
+        if (l.topico_id && !(pos[l.topico_id] <= k)) pos[l.topico_id] = k;
+      }));
+      const chave = x => (x.t.id in pos ? pos[x.t.id] : Infinity);
+      itens.sort((a, b) => chave(a) - chave(b) || a.i - b.i);
+    } else if (inc) itens.sort((a, b) => b.porPagina - a.porPagina || a.efetivas - b.efetivas || a.i - b.i);
     return { itens, comIncidencia: !!inc, comPaginas: conhecidas.length > 0, mediana };
   }
 
-  async function salvarMateriais(edital, disc, lista) {
+  /* "Seguir a ordem dos PDFs" (tela de materiais): fica na configuração da disciplina no plano;
+     sem plano ainda, espera em "ordemPdfPendente" até a configuração ser salva. */
+  const ordemPdfPendente = {};
+  function ordemPdfDe(editalId, discId) {
+    return discId in ordemPdfPendente ? ordemPdfPendente[discId] : !!configDisc(planoDe(editalId), discId).ordemPdf;
+  }
+
+  async function salvarMateriais(edital, disc, lista, ordemPdf) {
+    const plano = planoDe(edital.id);
+    if (ordemPdf !== undefined && ordemPdf !== ordemPdfDe(edital.id, disc.id)) {
+      if (plano) {
+        plano.disciplinas = { ...plano.disciplinas, [disc.id]: { ...configDisc(plano, disc.id), ordemPdf } };
+        await gravar('plano_estudos', plano);
+      } else ordemPdfPendente[disc.id] = ordemPdf;
+    }
     const linhas = lista.map(m => ({
       id: m.id, edital_id: edital.id, disciplina_id: disc.id, nome: m.nome, paginas: m.paginas || 0,
       topicos: (m.topicos || []).filter(l => l.topico_id)
@@ -577,7 +601,8 @@
     const cfg = configDisc(plano, d.id);
     const inc = incidenciaDaDisciplina(d);
     // Com incidência do TEC, primeiro o que mais cai por página de material
-    const ordem = inc ? prioridadeDosTopicos(d).itens.map(x => x.t) : d.topicos;
+    // ou, se a disciplina pede, a ordem dos PDFs
+    const ordem = inc || cfg.ordemPdf ? prioridadeDosTopicos(d, null, cfg.ordemPdf).itens.map(x => x.t) : d.topicos;
     return { d, cfg, inc, prioridade: cfg.peso * (4 - cfg.nivel), base: BLOCO_MIN[cfg.nivel] || 90, acerto: acertoEsperado(d), ordem };
   }
 
@@ -1444,6 +1469,7 @@
     const disciplinas = {};
     form.querySelectorAll('tr[data-disc]').forEach(tr => {
       disciplinas[tr.dataset.disc] = {
+        ordemPdf: ordemPdfDe(e.id, tr.dataset.disc) || undefined,
         peso: Number(tr.querySelector('[name="peso"]').value),
         nivel: Number(tr.querySelector('[name="nivel"]').value),
         ativa: tr.querySelector('[name="ativa"]').checked
@@ -1911,7 +1937,7 @@
     abrirConclusao, abrirEstudo, adiarRevisao, removerMeta, regerarSemana, reiniciarPlanejamento, metasDoTopico, agendarEstudados,
     agendarReforco, mudarSemana, irParaSemana, alternarConfig, editalTrocado, projetar,
     incidenciaDaDisciplina, pctIncidencia, salvarIncidencias,
-    materiaisDaDisciplina, paginasDoTopico, prioridadeDosTopicos, salvarMateriais,
+    materiaisDaDisciplina, paginasDoTopico, prioridadeDosTopicos, salvarMateriais, ordemPdfDe,
     renderTudo, fmtMin, aviso, revisoesDoTopico, paginasLidas, aproveitarDe
   };
 })();

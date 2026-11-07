@@ -194,9 +194,11 @@
     ctx = {
       edital, disc,
       lista: JSON.parse(JSON.stringify(window.estPlano.materiaisDaDisciplina(discId))),
+      ordemPdf: window.estPlano.ordemPdfDe(editalId, discId),
       comparar: window.estIncidencia.montarComparador(disc.topicos)
     };
     $('est-mat-titulo').textContent = `Material de estudo — ${disc.nome}`;
+    $('est-mat-ordem-pdf').checked = ctx.ordemPdf;
     $('est-mat-arquivo').value = '';
     $('est-mat-manual').reset();
     $('est-mat-manual-topico').innerHTML = '<option value="">Tópico (sugerido pelo nome)</option>' +
@@ -221,9 +223,13 @@
   }
 
   function renderRanking() {
-    const pr = window.estPlano.prioridadeDosTopicos(ctx.disc, ctx.lista);
+    const pr = window.estPlano.prioridadeDosTopicos(ctx.disc, ctx.lista, ctx.ordemPdf);
     const max = Math.max(1e-9, ...pr.itens.map(x => x.porPagina));
-    const aviso = !pr.comIncidencia
+    const numerar = pr.comIncidencia || ctx.ordemPdf;
+    $('est-mat-ranking-titulo').textContent = ctx.ordemPdf ? 'Ordem de estudo: a dos PDFs' : 'Prioridade de estudo: mais questões por página';
+    const aviso = ctx.ordemPdf
+      ? '<p class="est-plano-sub est-mat-aviso">Os tópicos seguem a ordem dos PDFs da lista ao lado e das páginas de cada um. Tópicos sem PDF ficam por último.</p>'
+      : !pr.comIncidencia
       ? '<p class="est-plano-sub est-mat-aviso">Importe a incidência do TEC desta disciplina (botão 📊 na configuração do plano) para ver a prioridade. Sem ela, o plano segue a ordem do edital.</p>'
       : !pr.comPaginas
         ? '<p class="est-plano-sub est-mat-aviso">Ligue os PDFs aos tópicos para a prioridade considerar as páginas. Por enquanto vale só a incidência.</p>'
@@ -233,7 +239,7 @@
       const detalhe = pr.comIncidencia ? `${x.questoes} q · ${pags}` : pags;
       return `
       <div class="est-inc-rank ${pr.comIncidencia && !x.questoes ? 'zero' : ''}">
-        <span class="est-inc-pos">${pr.comIncidencia ? i + 1 + 'º' : ''}</span>
+        <span class="est-inc-pos">${numerar ? i + 1 + 'º' : ''}</span>
         <span class="est-inc-nome" title="${escapeHtml(x.t.nome)}">${escapeHtml(nomeCurto(x.t, 90))}</span>
         <span class="est-inc-num">${pr.comIncidencia ? fmtNum(x.porPagina) + ' <small>q/pág.</small>' : ''}</span>
         <span class="est-mat-detalhe ${x.paginas ? '' : 'sem'}">${detalhe}</span>
@@ -278,13 +284,19 @@
   async function salvar() {
     if (!ctx) return;
     $('est-mat-salvar').disabled = true;
-    await window.estPlano.salvarMateriais(ctx.edital, ctx.disc, ctx.lista);
+    await window.estPlano.salvarMateriais(ctx.edital, ctx.disc, ctx.lista, ctx.ordemPdf);
     fechar();
   }
 
   function init() {
     if (!$('est-modal-materiais')) return;
     $('est-mat-arquivo').addEventListener('change', e => lerArquivos([...e.target.files]));
+    $('est-mat-ordem-pdf').addEventListener('change', e => {
+      if (!ctx) return;
+      ctx.ordemPdf = e.target.checked;
+      $('est-mat-salvar').disabled = false;
+      renderRanking();
+    });
     const lista = $('est-mat-lista');
     lista.addEventListener('click', e => {
       const b = e.target.closest('button[data-acao]');

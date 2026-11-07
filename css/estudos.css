@@ -1980,6 +1980,8 @@ html, body {
   .est-mat-manual-campos { grid-template-columns: 1fr 90px; }
   .est-mat-manual-campos .est-form-select { grid-column: 1 / 3; }
 }
+.est-mat-ordem { display: flex; align-items: center; gap: 8px; margin: 4px 0 10px; font-size: 0.85rem; font-weight: 600; cursor: pointer; }
+.est-mat-ordem input { width: 16px; height: 16px; accent-color: var(--est-accent); }
 /* Concluir meta de tópico com PDF */
 .est-concluir-pdf { margin-bottom: 14px; padding: 12px; border: 1px solid var(--est-border); border-radius: 10px; background: var(--est-bg-glass); }
 .est-concluir-pdf .est-form-group { margin-bottom: 10px; }
