@@ -240,15 +240,11 @@
     const porTopico = {};
     ctx.assuntos.forEach(a => { if (a.topicoId) porTopico[a.topicoId] = (porTopico[a.topicoId] || 0) + a.questoes; });
     salvarMemoria(ctx.disc.id);
-    const ids = window.estTec ? window.estTec.guardarAssuntos(ctx.assuntos) : [];
+    if (window.estTec) window.estTec.guardarAssuntos(ctx.assuntos);
     $('est-inc-salvar').disabled = true;
     const disc = ctx.disc;
     await window.estPlano.salvarIncidencias(ctx.edital, disc, porTopico);
     fechar();
-    const semCaderno = ids.filter(id => !(disc.topicos.find(t => t.id === id) || {}).tecLink);
-    if (semCaderno.length && await window.customConfirm(`Criar agora no TEC os ${semCaderno.length} cadernos dos tópicos de ${disc.nome}, um por tópico, com os assuntos ligados a ele? É preciso ter o userscript "TEC – Criar cadernos em fila" no Tampermonkey.`)) {
-      window.estTec.criarVarios(semCaderno);
-    }
   }
 
   function init() {

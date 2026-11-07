@@ -2,7 +2,7 @@
  *
  * Funciona junto com o userscript "TEC – Criar cadernos em fila" (Tampermonkey), instalado
  * no navegador do usuário: o site abre o TEC com #tecauto=[cadernos], o userscript carrega o
- * filtro salvo, adiciona os assuntos, gera cada caderno e devolve por postMessage
+ * filtro salvo, adiciona os assuntos, gera o caderno e devolve por postMessage
  * { tipo: 'tec-caderno', status: 'ok' | 'erro', url, ref, erro }. ref = id do tópico, e a
  * url volta para o tópico como link do caderno (topicos.tec_link).
  * Sem o userscript, a aba do TEC abre normalmente e nada é criado.
@@ -59,9 +59,8 @@
   // Sem noopener: o userscript precisa do window.opener para devolver o link
   function abrirTec(cadernos) {
     const aba = window.open(`${TEC}/questoes/filtrar#tecauto=${encodeURIComponent(JSON.stringify(cadernos))}`, 'tec-cadernos');
-    aviso(!aba ? 'O navegador bloqueou a aba do TEC. Libere pop-ups para este site e tente de novo.'
-      : cadernos.length > 1 ? `Criando ${cadernos.length} cadernos no TEC… cada link volta para o seu tópico quando ficar pronto. Deixe a aba do TEC aberta.`
-      : 'Criando o caderno no TEC… o link volta para o assunto quando ele ficar pronto.');
+    aviso(aba ? 'Gerando o caderno no TEC… o link volta para o assunto quando ele ficar pronto.'
+      : 'O navegador bloqueou a aba do TEC. Libere pop-ups para este site e tente de novo.');
   }
 
   async function criar(topicId) {
@@ -78,15 +77,6 @@
     const assuntos = nomes.map(nome => guardados.find(a => a.nome === nome) || { nome });
     gravarAssuntos(topicId, assuntos);
     abrirTec([caderno(ref, assuntos)]);
-  }
-
-  /* Vários tópicos numa fila só (o userscript cria um de cada vez) */
-  function criarVarios(topicIds) {
-    const cadernos = topicIds.map(acharTopico).filter(Boolean)
-      .sort((a, b) => a.d.topicos.indexOf(a.t) - b.d.topicos.indexOf(b.t))   // na ordem do edital
-      .map(ref => { const assuntos = lerAssuntos(ref.t.id); return assuntos.length ? caderno(ref, assuntos) : null; })
-      .filter(Boolean);
-    if (cadernos.length) abrirTec(cadernos);
   }
 
   // Botão da janela de estudo: abre o caderno do tópico ou, se ainda não houver, cria
@@ -117,5 +107,8 @@
     aviso(`Caderno do TEC criado${ev.data.questoes ? ` (${ev.data.questoes} questões)` : ''}: o link foi salvo em "${ref.t.nome}".`);
   });
 
-  window.estTec = { criar, criarVarios, daJanela, guardarAssuntos };
+  // Texto do botão da janela de estudo
+  const rotulo = topicId => { const ref = acharTopico(topicId); return ref && ref.t.tecLink ? 'TEC ↗' : '📝 Gerar caderno'; };
+
+  window.estTec = { criar, daJanela, guardarAssuntos, rotulo };
 })();

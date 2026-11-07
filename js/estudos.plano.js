@@ -1227,7 +1227,7 @@
         ${m.concluida || m.previsto ? '' : `
         <div class="est-plano-item-acoes">
           ${compacto ? '' : `<button class="est-plano-btn sutil" onclick="estPlano.removerMeta('${m.id}')" title="Remover meta" aria-label="Remover meta">✕</button>`}
-          ${botaoTec(ref && ref.t)}
+          ${q && ref && !ref.t.tecLink && window.estTec ? `<button class="est-plano-btn" onclick="estTec.criar('${ref.t.id}')" title="Gera no TEC o caderno deste assunto (userscript no Tampermonkey)">📝 Gerar caderno</button>` : botaoTec(ref && ref.t)}
           <button class="est-plano-btn primario" onclick="estPlano.abrirConclusao('meta', '${m.id}')">Concluir</button>
         </div>`}
       </div>`;

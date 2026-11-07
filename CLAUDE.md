@@ -53,7 +53,7 @@ js/
   estudos.edital.js   Edital Verticalizado: painel, filtros, selos por tópico, ficha lateral, exporta PDF/Excel
   estudos.erros.js    Caderno de Erros: questões erradas do TEC, revisão por cartão (1/7/30/90 dias)
   estudos.aproveitar.js Aproveitar estudos de outro edital: liga tópicos novos aos antigos e copia o progresso
-  estudos.tec.js      Cria o caderno do TEC de um tópico pelo userscript "TEC – Criar cadernos em fila" (Tampermonkey, fora do repo): abre o TEC com #tecauto=[caderno] e recebe o link por postMessage (origem conferida) em topicos.tec_link ; ao salvar a incidência, guarda os assuntos exatos do TEC (com a matéria, sem subassunto de pai já incluído) por tópico em localStorage `est_tec_assuntos_<tópico>` e oferece criar todos os cadernos da disciplina numa fila
+  estudos.tec.js      Cria o caderno do TEC de um tópico pelo userscript "TEC – Criar cadernos em fila" (Tampermonkey, fora do repo): abre o TEC com #tecauto=[caderno] e recebe o link por postMessage (origem conferida) em topicos.tec_link ; ao salvar a incidência, guarda os assuntos exatos do TEC (com a matéria, sem subassunto de pai já incluído) por tópico em localStorage `est_tec_assuntos_<tópico>` (usados pelo botão "📝 Gerar caderno" da meta de questões e da janela de estudo)
   estudos.usuario.js  Separa por usuário as chaves est_*/disc_order_* do localStorage (roda antes do v5)
 editais/              PDFs de teste; fora do git (.gitignore) para não serem publicados
 assets/               imagens (inclui a logo do papel timbrado da proposta: logo-mm*.webp)

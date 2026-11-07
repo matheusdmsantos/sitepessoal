@@ -709,6 +709,7 @@
     $('est-sessao-crono').style.display = dados.id ? '' : 'none';
     $('est-sessao-concluir').style.display = dados.id && !dados.concluida ? '' : 'none';
     $('est-sessao-tec').style.display = dados.topicoId && window.estTec ? '' : 'none';
+    if (dados.topicoId && window.estTec) $('est-sessao-tec').textContent = window.estTec.rotulo(dados.topicoId);
 
     const salvo = (resumosMap[makeResumoKey(dados.disc, dados.topico)] || {}).conteudo || '';
     ultimoSalvo = salvo;
