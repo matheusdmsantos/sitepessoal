@@ -678,6 +678,8 @@ html, body {
   visibility: hidden;
   transition: opacity 0.3s ease, visibility 0.3s ease;
 }
+/* Perguntas e confirmações abrem por cima de qualquer janela (ex.: a de estudo) */
+#est-modal-prompt, #est-modal-confirm { z-index: 1050; }
 .est-modal-overlay.active {
   opacity: 1;
   visibility: visible;
