@@ -65,14 +65,19 @@
     }
 
     const porNome = new Map();
+    let materia = '';   // 1ª linha sem código de hierarquia: o nome da matéria no TEC (total)
     linhas.slice(ini + 1).forEach(l => {
       let assunto = colA >= 0 ? String(l[colA] || '').trim() : '';
+      const hier = colH >= 0 && colA >= 0 ? String(l[colH] || '').trim() : '';
       if (!assunto && colH >= 0) assunto = String(l[colH] || '').split(/[>»/]/).pop().trim();
       const q = parseFloat(String(l[colQ]).replace(',', '.'));
       if (!assunto || !(q > 0)) return;
-      porNome.set(assunto, (porNome.get(assunto) || 0) + q);
+      if (colH >= 0 && colA >= 0 && !hier && !materia && !porNome.size) { materia = assunto; return; }
+      const atual = porNome.get(assunto);
+      porNome.set(assunto, { questoes: (atual ? atual.questoes : 0) + q, hier: atual ? atual.hier : hier });
     });
-    return [...porNome].map(([assunto, questoes]) => ({ assunto, questoes })).sort((a, b) => b.questoes - a.questoes);
+    return [...porNome].map(([assunto, x]) => ({ assunto, questoes: x.questoes, hier: x.hier, materia }))
+      .sort((a, b) => b.questoes - a.questoes);
   }
 
   /* =============================================
@@ -235,9 +240,15 @@
     const porTopico = {};
     ctx.assuntos.forEach(a => { if (a.topicoId) porTopico[a.topicoId] = (porTopico[a.topicoId] || 0) + a.questoes; });
     salvarMemoria(ctx.disc.id);
+    const ids = window.estTec ? window.estTec.guardarAssuntos(ctx.assuntos) : [];
     $('est-inc-salvar').disabled = true;
-    await window.estPlano.salvarIncidencias(ctx.edital, ctx.disc, porTopico);
+    const disc = ctx.disc;
+    await window.estPlano.salvarIncidencias(ctx.edital, disc, porTopico);
     fechar();
+    const semCaderno = ids.filter(id => !(disc.topicos.find(t => t.id === id) || {}).tecLink);
+    if (semCaderno.length && await window.customConfirm(`Criar agora no TEC os ${semCaderno.length} cadernos dos tópicos de ${disc.nome}, um por tópico, com os assuntos ligados a ele? É preciso ter o userscript "TEC – Criar cadernos em fila" no Tampermonkey.`)) {
+      window.estTec.criarVarios(semCaderno);
+    }
   }
 
   function init() {
