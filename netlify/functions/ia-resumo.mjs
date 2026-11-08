@@ -18,7 +18,7 @@ const SUPABASE_URL = 'https://smbvlquqqhtgmvgddjlq.supabase.co';
 // Chave anon: pública por design (a mesma de js/supabase-client.js); só serve para conferir o token
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNtYnZscXVxcWh0Z212Z2RkamxxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM2MDI0NjAsImV4cCI6MjA5OTE3ODQ2MH0.Asz3z7D-fGHN4R9PTE7et_IkzodrQcw_py267jZkfiw';
 
-const MODELO = 'claude-opus-5-5';
+const MODELO = 'claude-haiku-5-5';   // o mais barato (US$ 0,10 / 0,50 por milhão de tokens); não tem a nova tentativa automática (fallbacks)
 const MAX_HTML = 40000;      // caracteres de HTML recebidos (o editor limita o texto a 6.000)
 const PRAZO_MS = 50000;      // a função do Netlify tem 60 s
 
@@ -83,15 +83,12 @@ export default async (req) => {
       headers: {
         'Content-Type': 'application/json',
         'x-api-key': chaveApi,
-        'anthropic-version': '2026-10-21',
-        // Se um filtro de segurança recusar por engano, a própria API tenta de novo noutro modelo
-        'anthropic-beta': 'server-side-fallback-2026-07-01'
+        'anthropic-version': '2026-10-21'
       },
       body: JSON.stringify({
         model: MODELO,
-        max_tokens: 16000,
-        fallbacks: 'default',
-        output_config: { effort: 'low' },   // reorganizar texto não pede raciocínio longo; responde mais rápido
+        max_tokens: 16000,                    // o raciocínio (thinking) também conta aqui
+        output_config: { effort: 'medium' },  // padrão do Haiku 5.5 (low é mais rápido; high, mais cuidadoso e mais lento)
         system: INSTRUCOES,
         messages: [{ role: 'user', content: `${contexto ? `<contexto>\n${contexto}\n</contexto>\n\n` : ''}<trecho>\n${html}\n</trecho>` }]
       })
