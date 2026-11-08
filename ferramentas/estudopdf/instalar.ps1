@@ -5,17 +5,22 @@ Add-Type -AssemblyName System.Windows.Forms
 $destino = Join-Path $env:LOCALAPPDATA 'EstudoPDF'
 New-Item -ItemType Directory -Force $destino | Out-Null
 Copy-Item (Join-Path $PSScriptRoot 'abrir.ps1') $destino -Force
-Copy-Item (Join-Path $PSScriptRoot 'abrir.vbs') $destino -Force
+Remove-Item (Join-Path $destino 'abrir.vbs') -ErrorAction SilentlyContinue   # versão antiga
 
-# Pastas onde ficam os PDFs (subpastas entram na busca)
+# Pastas onde ficam os PDFs (subpastas entram na busca); reinstalando, dá para manter as de antes
 $pastas = @()
-do {
+$cfgAntiga = Join-Path $destino 'config.json'
+if (Test-Path $cfgAntiga) {
+  $antigas = @((Get-Content $cfgAntiga -Raw -Encoding UTF8 | ConvertFrom-Json).pastas)
+  if ($antigas.Count -and [System.Windows.Forms.MessageBox]::Show("Manter as pastas já escolhidas?`n`n$($antigas -join "`n")", 'Estudo PDF', 'YesNo') -eq 'Yes') { $pastas = $antigas }
+}
+if (-not $pastas.Count) { do {
   $dlg = New-Object System.Windows.Forms.FolderBrowserDialog
   $dlg.Description = 'Escolha a pasta onde ficam os PDFs de estudo (as subpastas também entram)'
   if ($dlg.ShowDialog() -ne 'OK') { break }
   $pastas += $dlg.SelectedPath
   $mais = [System.Windows.Forms.MessageBox]::Show("Pasta adicionada:`n$($dlg.SelectedPath)`n`nAdicionar outra pasta?", 'Estudo PDF', 'YesNo')
-} while ($mais -eq 'Yes')
+} while ($mais -eq 'Yes') }
 if (-not $pastas.Count) { Write-Host 'Nenhuma pasta escolhida. Nada foi instalado.'; exit 1 }
 
 # Foxit: pelo registro (App Paths) ou nas pastas de instalação comuns
@@ -40,7 +45,9 @@ New-Item -Force $chave | Out-Null
 Set-ItemProperty $chave '(default)' 'URL:Estudo PDF'
 Set-ItemProperty $chave 'URL Protocol' ''
 New-Item -Force "$chave\shell\open\command" | Out-Null
-Set-ItemProperty "$chave\shell\open\command" '(default)' ('wscript.exe "' + (Join-Path $destino 'abrir.vbs') + '" "%1"')
+# conhost --headless: roda o PowerShell sem abrir janela (o VBS que fazia isso é barrado por
+# política de segurança em máquinas de empresa: "Permissão negada" no WScript.Shell.Run)
+Set-ItemProperty "$chave\shell\open\command" '(default)' ('conhost.exe --headless powershell.exe -NoProfile -ExecutionPolicy Bypass -File "' + (Join-Path $destino 'abrir.ps1') + '" "%1"')
 
 Write-Host ''
 Write-Host 'Instalado em' $destino
