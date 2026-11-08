@@ -837,16 +837,20 @@
     if (!x) return;
     const arq = await arquivoDoPdf(x, trocar);
     if (!arq) return;
-    // shortcut: o blob não é liberado (a aba do PDF usa); some quando o painel é fechado
-    const url = URL.createObjectURL(arq.type ? arq : new Blob([arq], { type: 'application/pdf' })) + (x.aprox ? '' : '#page=' + x.de);
-    const janela = window.open(url, '_blank');
+    // O leitor (leitor.html, pdf.js) pega o arquivo desta aba por window.opener: abrir o blob
+    // direto faz o Chrome/Edge baixar o PDF quando a opção "Baixar PDFs" está ligada
+    pdfPendente = { arquivo: arq, nome: x.nome, de: x.aprox ? 1 : x.de, ate: x.aprox ? null : x.ate };
+    const janela = window.open('/leitor.html', '_blank');
     if (!janela) {
       // O navegador barrou a aba (o clique "venceu" enquanto o arquivo era escolhido): vira um link
       const b = $('est-sessao-leitura').querySelector(`.est-sessao-ler[data-i="${i}"]`);
-      if (b) b.outerHTML = `<a class="est-sessao-ler" href="${url}" target="_blank" rel="noopener">Abrir ${escapeHtml(x.nome)} ↗</a>`;
+      if (b) b.outerHTML = `<a class="est-sessao-ler" href="/leitor.html" target="_blank" rel="opener">Abrir ${escapeHtml(x.nome)} ↗</a>`;
+      return;
     }
     mostrarLeitura();
   }
+
+  let pdfPendente = null;
 
   function aviso(msg) {
     if (window.estPlano && window.estPlano.aviso) window.estPlano.aviso(msg); else alert(msg);
@@ -884,6 +888,7 @@
     zerarCrono: id => gravarCrono(id, null),
     // Usados pelo Caderno de Erros (estudos.erros.js)
     contexto: () => ctx && { disc: ctx.disc, topico: ctx.topico, topicoId: ctx.topicoId },
-    limparHtmlColado, reduzirImagem
+    limparHtmlColado, reduzirImagem,
+    pdfAberto: () => pdfPendente   // lido pelo leitor.html
   };
 })();
