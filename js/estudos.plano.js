@@ -1702,25 +1702,326 @@
   /* =============================================
      SEÇÃO: DESEMPENHO
   ============================================= */
-  function graficoSemanas(semanas, metaMin) {
-    const W = 560, H = 200, base = 170, topo = 20;
-    const max = Math.max(metaMin, ...semanas.map(s => s.min), 60);
-    const larg = W / semanas.length;
-    const y = v => base - (v / max) * (base - topo);
-    const barras = semanas.map((s, i) => {
-      const x = i * larg + larg * 0.2;
-      const w = larg * 0.6;
-      const cor = metaMin && s.min >= metaMin ? '#4ade80' : '#60a5fa';
-      return `
-        <rect x="${x}" y="${y(s.min)}" width="${w}" height="${base - y(s.min)}" rx="4" fill="${cor}" opacity="0.85"><title>${fmtMin(s.min)}</title></rect>
-        <text x="${x + w / 2}" y="${y(s.min) - 5}" text-anchor="middle" fill="#c8ccd4" font-size="11">${s.min ? String(Math.round(s.min / 6) / 10).replace('.', ',') + 'h' : ''}</text>
-        <text x="${x + w / 2}" y="${base + 18}" text-anchor="middle" fill="#8892a4" font-size="11">${fmtData(s.inicio)}</text>`;
+  /* Gráficos em SVG/HTML próprios. Uma série: o azul do painel (--est-blue). Grandeza ordenada
+     (mapa de calor, cobertura, maturidade): rampa azul de um tom só, do escuro (menos) ao claro
+     (mais), validada no fundo dos cartões (#222640) pela skill de dataviz; SEM_DADO é o trilho.
+     Linha de meta/limite em âmbar. O valor de cada marca aparece no balão (data-v/data-l), que só
+     complementa: os números também estão nos rótulos, nas legendas e na tabela por disciplina. */
+  const RAMPA = ['#256abf', '#3987e5', '#6da7ec', '#9ec5f4', '#cde2fb'];
+  const SEM_DADO = '#3a4055';
+  const TEXTO_SOBRE = { '#256abf': '#fff', '#3987e5': '#fff', '#3a4055': '#fff' };   // nos claros, texto escuro
+  const NOMES_MES = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+  const fmtPct1 = v => String(Math.round(v * 10) / 10).replace('.', ',');
+  const fmtHoras = min => String(Math.round(min / 6) / 10).replace('.', ',') + 'h';
+  // escapeHtml (v5) não troca aspas: dentro de atributo, o nome de um tópico com " quebraria o HTML
+  const attr = s => escapeHtml(String(s)).replace(/"/g, '&quot;');
+  const balao = (v, l) => `data-v="${attr(v)}" data-l="${attr(l)}"`;
+
+  /* Balão único da seção: segue o ponteiro sobre qualquer marca com data-v e aparece também
+     no foco do teclado (barras e colunas do gráfico de acerto têm tabindex) */
+  function ligarBalao(el) {
+    if (el.dataset.balao) return;
+    el.dataset.balao = '1';
+    const b = document.createElement('div');
+    b.className = 'est-viz-balao';
+    b.setAttribute('role', 'tooltip');
+    b.hidden = true;
+    b.append(document.createElement('strong'), document.createElement('span'));
+    document.body.appendChild(b);
+    const mostrar = (alvo, x, y) => {
+      b.firstChild.textContent = alvo.dataset.v;
+      b.lastChild.textContent = alvo.dataset.l || '';
+      b.hidden = false;
+      const r = b.getBoundingClientRect();
+      b.style.left = Math.max(8, Math.min(innerWidth - r.width - 8, x - r.width / 2)) + 'px';
+      b.style.top = (y - r.height - 12 < 8 ? y + 18 : y - r.height - 12) + 'px';
+    };
+    const esconder = () => { b.hidden = true; };
+    el.addEventListener('pointermove', ev => {
+      const alvo = ev.target.closest('[data-v]');
+      if (alvo && el.contains(alvo)) mostrar(alvo, ev.clientX, ev.clientY); else esconder();
+    });
+    el.addEventListener('pointerleave', esconder);
+    el.addEventListener('focusin', ev => {
+      const alvo = ev.target.closest('[data-v]');
+      if (!alvo) return;
+      const r = alvo.getBoundingClientRect();
+      mostrar(alvo, r.left + r.width / 2, r.top);
+    });
+    el.addEventListener('focusout', esconder);
+    window.addEventListener('scroll', esconder, true);
+  }
+
+  /* Barra segmentada alta: um todo dividido em partes { nome, valor, cor, rotulo?, texto? }.
+     O rótulo vai dentro do bloco só se couber (ajustarRotulos mede depois de desenhar). */
+  function barraSegmentada(partes, rotuloAria) {
+    const total = partes.reduce((a, p) => a + p.valor, 0) || 1;
+    const blocos = partes.filter(p => p.valor > 0).map(p => {
+      const pct = p.valor / total * 100;
+      return `<div class="est-viz-seg" style="flex:${p.valor} 1 0;background:${p.cor};color:${TEXTO_SOBRE[p.cor] || '#141624'}"
+        ${balao(p.texto || fmtPct1(pct) + '%', p.nome)}><span>${p.rotulo || Math.round(pct) + '%'}</span></div>`;
     }).join('');
-    const linha = metaMin ? `
-      <line x1="0" x2="${W}" y1="${y(metaMin)}" y2="${y(metaMin)}" stroke="#fbbf24" stroke-dasharray="5 4" stroke-width="1.5"/>
-      <text x="${W - 4}" y="${y(metaMin) - 6}" text-anchor="end" fill="#fbbf24" font-size="11">meta ${fmtMin(metaMin)}</text>` : '';
-    return `<svg class="est-plano-grafico" viewBox="0 0 ${W} ${H}" role="img" aria-label="Horas estudadas por semana">
-      <line x1="0" x2="${W}" y1="${base}" y2="${base}" stroke="rgba(200,204,212,0.15)"/>${barras}${linha}</svg>`;
+    const legenda = partes.map(p => `<span><i style="background:${p.cor}"></i>${escapeHtml(p.nome)}</span>`).join('');
+    return `<div class="est-viz-segbar" role="img" aria-label="${attr(rotuloAria)}">${blocos}</div>
+      <div class="est-viz-legenda">${legenda}</div>`;
+  }
+
+  function ajustarRotulos(el) {
+    el.querySelectorAll('.est-viz-seg span').forEach(s => {
+      s.hidden = false;
+      s.hidden = s.offsetWidth + 12 > s.parentElement.clientWidth;
+    });
+  }
+
+  /* Escala do eixo em horas: passo "redondo" e topo múltiplo do passo */
+  function escalaHoras(maxMin) {
+    const h = maxMin / 60;
+    const passo = h <= 4 ? 1 : h <= 10 ? 2 : h <= 25 ? 5 : h <= 50 ? 10 : 20;
+    return { passo: passo * 60, topo: Math.ceil(h / passo) * passo * 60 };
+  }
+
+  /* Coluna com canto de cima arredondado (4px) e base reta */
+  function colunaArredondada(x, y, w, base) {
+    const r = Math.min(4, w / 2, base - y);
+    return `M${x},${base}V${y + r}Q${x},${y} ${x + r},${y}H${x + w - r}Q${x + w},${y} ${x + w},${y + r}V${base}Z`;
+  }
+
+  function graficoSemanas(semanas, metaMin) {
+    const W = 420, H = 200, base = 172, topo = 18, esq = 34;
+    const { passo, topo: maxMin } = escalaHoras(Math.max(metaMin, ...semanas.map(s => s.min), 60));
+    const y = v => base - (v / maxMin) * (base - topo);
+    const banda = (W - esq) / semanas.length;
+    const larg = Math.min(24, banda * 0.6);
+    let grade = '';
+    for (let v = 0; v <= maxMin; v += passo) {
+      grade += `<line class="est-viz-grade-linha" x1="${esq}" x2="${W}" y1="${y(v)}" y2="${y(v)}"/>
+        <text class="est-viz-eixo" x="${esq - 6}" y="${y(v) + 4}" text-anchor="end">${v / 60}h</text>`;
+    }
+    const barras = semanas.map((s, i) => {
+      const x = esq + banda * i + (banda - larg) / 2;
+      const atual = i === semanas.length - 1;
+      const bateu = metaMin && s.min >= metaMin ? ' · meta batida' : '';
+      return `${s.min ? `<path class="est-viz-barra" d="${colunaArredondada(x, y(s.min), larg, base)}" tabindex="0"
+          ${balao(fmtMin(s.min) + bateu, (atual ? 'esta semana' : 'semana de ' + fmtData(s.inicio)))}/>` : ''}
+        ${atual && s.min ? `<text class="est-viz-rotulo" x="${x + larg / 2}" y="${y(s.min) - 6}" text-anchor="middle">${fmtHoras(s.min)}</text>` : ''}
+        <text class="est-viz-eixo" x="${x + larg / 2}" y="${base + 18}" text-anchor="middle">${fmtData(s.inicio)}</text>`;
+    }).join('');
+    // A meta é explicada no subtítulo do cartão: um rótulo na ponta da linha colide com a barra da semana
+    const meta = metaMin ? `<line class="est-viz-meta" x1="${esq}" x2="${W}" y1="${y(metaMin)}" y2="${y(metaMin)}"/>` : '';
+    return `<svg class="est-plano-grafico" viewBox="0 0 ${W} ${H}" role="img"
+      aria-label="Horas estudadas por semana, nas últimas ${semanas.length} semanas; esta semana: ${fmtMin(semanas[semanas.length - 1].min)}">
+      ${grade}${meta}${barras}</svg>`;
+  }
+
+  /* Acerto por semana (linha). Semana sem questões interrompe a linha. Cada semana tem uma
+     coluna invisível (alvo do ponteiro e do teclado) com a linha-guia vertical. */
+  function graficoAcerto(semanas) {
+    const W = 420, H = 200, base = 172, topo = 14, esq = 34;
+    const y = v => base - (v / 100) * (base - topo);
+    const banda = (W - esq) / semanas.length;
+    const cx = i => esq + banda * (i + 0.5);
+    const pct = s => (s.q ? Math.round((s.c / s.q) * 100) : null);
+    let grade = '';
+    [0, 50, 100].forEach(v => {
+      grade += `<line class="est-viz-grade-linha" x1="${esq}" x2="${W}" y1="${y(v)}" y2="${y(v)}"/>
+        <text class="est-viz-eixo" x="${esq - 6}" y="${y(v) + 4}" text-anchor="end">${v}%</text>`;
+    });
+    // Limite do reforço: valor no eixo; a explicação fica no subtítulo do cartão
+    const limite = `<line class="est-viz-meta" x1="${esq}" x2="${W}" y1="${y(ACERTO_REFORCO)}" y2="${y(ACERTO_REFORCO)}"/>
+      <text class="est-viz-eixo" x="${esq - 6}" y="${y(ACERTO_REFORCO) + 4}" text-anchor="end">${ACERTO_REFORCO}%</text>`;
+    let d = '', solto = true;
+    semanas.forEach((s, i) => {
+      const p = pct(s);
+      if (p === null) { solto = true; return; }
+      d += `${solto ? 'M' : 'L'}${cx(i)},${y(p)}`;
+      solto = false;
+    });
+    const ultimo = semanas.map((s, i) => ({ p: pct(s), i })).filter(x => x.p !== null).pop();
+    const colunas = semanas.map((s, i) => {
+      const p = pct(s);
+      const quando = i === semanas.length - 1 ? 'esta semana' : 'semana de ' + fmtData(s.inicio);
+      return `<g class="est-viz-col" tabindex="0" ${balao(p === null ? 'sem questões' : `${p}% de acerto`,
+        p === null ? quando : `${quando} · ${s.c} de ${s.q} questões`)}>
+        <rect class="est-viz-hit" x="${esq + banda * i}" y="${topo}" width="${banda}" height="${base - topo}"/>
+        <line class="est-viz-cruz" x1="${cx(i)}" x2="${cx(i)}" y1="${topo}" y2="${base}"/>
+        ${p !== null ? `<circle class="est-viz-ponto" cx="${cx(i)}" cy="${y(p)}" r="4"/>` : ''}
+      </g>`;
+    }).join('');
+    const eixoX = semanas.map((s, i) => (i % 2 === semanas.length % 2 ? '' :
+      `<text class="est-viz-eixo" x="${cx(i)}" y="${base + 18}" text-anchor="middle">${fmtData(s.inicio)}</text>`)).join('');
+    return `<svg class="est-plano-grafico" viewBox="0 0 ${W} ${H}" role="img"
+      aria-label="Acerto nas questões por semana${ultimo ? `; última semana com questões: ${ultimo.p}%` : ''}">
+      ${grade}${limite}<path class="est-viz-linha-serie" d="${d}"/>${colunas}
+      ${ultimo ? `<text class="est-viz-rotulo" x="${cx(ultimo.i)}" y="${y(ultimo.p) - 10}" text-anchor="middle">${ultimo.p}%</text>` : ''}
+      ${eixoX}</svg>`;
+  }
+
+  /* Mapa de calor dos últimos meses: uma coluna por semana (seg → dom), cor pelos minutos do dia */
+  function mapaDeCalor(semanas) {
+    const h = hoje();
+    const inicio = somarDias(segundaDe(h), -7 * (semanas - 1));
+    const porDia = {};
+    studyData.forEach(s => { if (s.date >= inicio && s.timeMinutes > 0) porDia[s.date] = (porDia[s.date] || 0) + s.timeMinutes; });
+    const FAIXAS = [{ ate: 30, nome: 'até 30min' }, { ate: 60, nome: '30min a 1h' }, { ate: 120, nome: '1h a 2h' }, { ate: Infinity, nome: '2h ou mais' }];
+    const nivel = m => FAIXAS.findIndex(f => m < f.ate);
+    const C = 14, G = 3, X0 = 30, Y0 = 20;
+    let celulas = '', meses = '';
+    for (let w = 0; w < semanas; w++) {
+      const seg = somarDias(inicio, 7 * w);
+      const dia1 = Number(seg.slice(8, 10));
+      // Nome do mês na 1ª semana cuja segunda-feira já é dele (na 1ª coluna, só se o nome
+      // do mês seguinte não for colar nele)
+      if ((w > 0 && dia1 <= 7) || (w === 0 && dia1 <= 17)) {
+        meses += `<text class="est-viz-eixo" x="${X0 + w * (C + G)}" y="12">${NOMES_MES[Number(seg.slice(5, 7)) - 1]}</text>`;
+      }
+      for (let i = 0; i < 7; i++) {
+        const dia = somarDias(seg, i);
+        if (dia > h) continue;
+        const m = porDia[dia] || 0;
+        celulas += `<rect x="${X0 + w * (C + G)}" y="${Y0 + i * (C + G)}" width="${C}" height="${C}" rx="3"
+          fill="${m ? RAMPA[nivel(m)] : SEM_DADO}" ${balao(m ? fmtMin(m) : 'sem estudo', `${DIAS_CURTOS[diaDaSemana(dia)]} ${fmtData(dia)}`)}/>`;
+      }
+    }
+    const dias = ['Seg', 'Qua', 'Sex'].map((nome, k) =>
+      `<text class="est-viz-eixo" x="${X0 - 6}" y="${Y0 + k * 2 * (C + G) + C - 3}" text-anchor="end">${nome}</text>`).join('');
+    const W = X0 + semanas * (C + G), H = Y0 + 7 * (C + G);
+    const legenda = [{ cor: SEM_DADO, nome: 'sem estudo' }, ...FAIXAS.map((f, i) => ({ cor: RAMPA[i], nome: f.nome }))]
+      .map(x => `<span><i style="background:${x.cor}"></i>${x.nome}</span>`).join('');
+    return `<div class="est-viz-mapa-wrap">
+      <svg class="est-viz-mapa" viewBox="0 0 ${W} ${H}" role="img"
+        aria-label="Minutos estudados por dia nas últimas ${semanas} semanas (detalhes de cada dia no Histórico)">${meses}${dias}${celulas}</svg>
+      <div class="est-viz-legenda">${legenda}</div></div>`;
+  }
+
+  /* Dias seguidos com estudo até hoje (hoje ainda sem estudo não quebra a sequência) e a maior */
+  function sequencias() {
+    const dias = new Set(studyData.filter(s => s.timeMinutes > 0).map(s => s.date));
+    let atual = 0, d = hoje();
+    if (!dias.has(d)) d = somarDias(d, -1);
+    while (dias.has(d)) { atual++; d = somarDias(d, -1); }
+    let maior = 0, run = 0, ant = null;
+    [...dias].sort().forEach(x => { run = ant && diasEntre(ant, x) === 1 ? run + 1 : 1; maior = Math.max(maior, run); ant = x; });
+    return { atual, maior };
+  }
+
+  /* Cobertura da prova: quanto do que costuma cair já foi estudado. Dentro da disciplina, cada
+     tópico pesa pela incidência do TEC (sem planilha, todos pesam igual); entre disciplinas, pelo
+     "Peso na prova" da configuração do plano. Tópico estudado conta inteiro; tópico com PDF em
+     leitura conta a fração das páginas lidas. Ganhos: os tópicos que mais somariam se estudados. */
+  function cobertura(e, plano) {
+    const discs = e.disciplinas.filter(d => d.topicos.length).map(d => {
+      const inc = incidenciaDaDisciplina(d);
+      const topicos = d.topicos.map(t => {
+        const pags = paginasDoTopico(t.id);
+        return {
+          t, w: inc ? (incPorTopico[t.id] || 0) / inc.soma : 1 / d.topicos.length,
+          feito: t.estudado ? 1 : 0, parcial: !t.estudado && pags ? Math.min(1, paginasLidas(t.id) / pags) : 0
+        };
+      });
+      const soma = k => topicos.reduce((a, x) => a + x.w * x[k], 0);
+      return { d, inc: !!inc, peso: configDisc(plano, d.id).peso, topicos, estudado: soma('feito'), andamento: soma('parcial') };
+    });
+    const somaPeso = discs.reduce((a, x) => a + x.peso, 0) || 1;
+    discs.forEach(x => { x.fatia = x.peso / somaPeso; });
+    const total = k => discs.reduce((a, x) => a + x.fatia * x[k], 0);
+    const ganhos = discs.flatMap(x => x.topicos.filter(y => !y.t.estudado && y.w > 0)
+      .map(y => ({ d: x.d, t: y.t, ganho: x.fatia * y.w * (1 - y.parcial) })))
+      .sort((a, b) => b.ganho - a.ganho).slice(0, 5);
+    return { discs, estudado: total('estudado'), andamento: total('andamento'), comInc: discs.filter(x => x.inc).length, ganhos };
+  }
+
+  /* Etapa de cada tópico do edital, do estudo ao domínio (revisões do plano) */
+  const ETAPAS_MATURIDADE = ['Não estudado', 'Estudado', '1 revisão', '2 revisões', '3+ revisões', 'Dominado'];
+  function maturidade(e) {
+    const n = ETAPAS_MATURIDADE.map(() => 0);
+    const porTopico = {};
+    revisoes.forEach(r => { (porTopico[r.topico_id] = porTopico[r.topico_id] || []).push(r); });
+    e.disciplinas.forEach(d => d.topicos.forEach(t => {
+      if (!t.estudado) { n[0]++; return; }
+      const revs = porTopico[t.id] || [];
+      const feitas = revs.filter(r => r.concluida_em && r.tipo !== 'reforco').length;
+      if (feitas && !revs.some(r => !r.concluida_em)) n[5]++;
+      else n[1 + Math.min(3, feitas)]++;
+    }));
+    return n;
+  }
+
+  function htmlCobertura(cob) {
+    const estudado = cob.estudado * 100, andamento = cob.andamento * 100;
+    const falta = Math.max(0, 100 - estudado - andamento);
+    const linhas = [...cob.discs].sort((a, b) => b.fatia - a.fatia).map(x => {
+      const pE = x.estudado * 100, pA = x.andamento * 100;
+      return `<div class="est-viz-linha" ${balao(fmtPct1(pE + pA) + '% coberto',
+        `${x.d.nome} · estudado ${fmtPct1(pE)}%${pA >= 0.05 ? ` · em leitura ${fmtPct1(pA)}%` : ''} · ${fmtPct1(x.fatia * 100)}% da prova`)}>
+        <span class="est-viz-linha-nome">${escapeHtml(x.d.nome)}<small>peso ${NOMES_PESO[x.peso].toLowerCase()} · ${x.inc ? 'pela incidência' : 'por tópicos'}</small></span>
+        <span class="est-viz-fina">${pE > 0 ? `<i style="width:${pE}%;background:${RAMPA[2]}"></i>` : ''}${pA > 0 ? `<i style="width:${pA}%;background:${RAMPA[0]}"></i>` : ''}</span>
+        <strong>${Math.round(pE + pA)}%</strong>
+      </div>`;
+    }).join('');
+    const ganhos = cob.ganhos.map(g => `<li>${escapeHtml(g.t.nome)}<small>${escapeHtml(g.d.nome)}</small>
+      <strong>+${fmtPct1(g.ganho * 100)} ${Math.round(g.ganho * 1000) === 10 ? 'ponto' : 'pontos'}</strong></li>`).join('');
+    return `
+      <div class="est-plano-card">
+        <h3 class="est-plano-card-title">🎯 Cobertura da prova</h3>
+        <div class="est-viz-heroi">
+          <strong>${fmtPct1(estudado + andamento)}%</strong>
+          <span>do que costuma cair na prova já foi estudado${andamento >= 0.05
+            ? ` (${fmtPct1(estudado)}% concluído e ${fmtPct1(andamento)}% em PDFs que você está lendo)` : ''}.</span>
+        </div>
+        ${barraSegmentada([
+          { nome: 'Estudado', valor: estudado, cor: RAMPA[2] },
+          { nome: 'Em leitura', valor: andamento, cor: RAMPA[0] },
+          { nome: 'Falta estudar', valor: falta, cor: SEM_DADO }
+        ], `Cobertura da prova: ${fmtPct1(estudado)}% estudado, ${fmtPct1(andamento)}% em leitura, ${fmtPct1(falta)}% falta estudar`)}
+        <p class="est-plano-sub est-viz-nota">Como é calculado: dentro de cada disciplina, cada tópico pesa pelas questões dele na planilha
+          de incidência do TEC (${cob.comInc} de ${cob.discs.length} disciplina${cob.discs.length === 1 ? '' : 's'} com planilha; nas outras,
+          todos os tópicos pesam igual). Entre as disciplinas, vale o “Peso na prova” da configuração do plano. Tópico com PDF em leitura
+          conta pela fração das páginas lidas.</p>
+        <div class="est-viz-grade">
+          <div>
+            <h4 class="est-viz-sub">Por disciplina</h4>
+            ${linhas}
+          </div>
+          <div>
+            <h4 class="est-viz-sub">Maior ganho de cobertura</h4>
+            ${ganhos ? `<p class="est-plano-sub">Os tópicos ainda não estudados que mais aumentam a cobertura:</p><ol class="est-viz-ganhos">${ganhos}</ol>`
+              : '<p class="est-plano-vazio">Todos os tópicos que costumam cair já foram estudados.</p>'}
+          </div>
+        </div>
+      </div>`;
+  }
+
+  function htmlMaturidade(e) {
+    const n = maturidade(e);
+    const total = n.reduce((a, x) => a + x, 0);
+    const cores = [SEM_DADO, ...RAMPA];
+    return `
+      <div class="est-plano-card">
+        <h3 class="est-plano-card-title">🌱 Maturidade do edital <span class="est-plano-sub">(${total} tópicos)</span></h3>
+        ${barraSegmentada(ETAPAS_MATURIDADE.map((nome, i) => ({
+          nome, valor: n[i], cor: cores[i], rotulo: String(n[i]), texto: `${n[i]} tópico${n[i] === 1 ? '' : 's'}`
+        })), 'Tópicos por etapa: ' + ETAPAS_MATURIDADE.map((nome, i) => `${nome}: ${n[i]}`).join(', '))}
+        <p class="est-plano-sub est-viz-nota">Cada revisão feita leva o tópico uma etapa adiante. Dominado é o tópico que saiu da fila de revisões
+          (o próximo intervalo passaria de ${INTERVALO_MAX} dias).</p>
+      </div>`;
+  }
+
+  function htmlConstancia() {
+    const h = hoje();
+    const seq = sequencias();
+    const dias30 = new Set(studyData.filter(s => s.timeMinutes > 0 && s.date > somarDias(h, -30) && s.date <= h).map(s => s.date)).size;
+    return `
+      <div class="est-plano-card">
+        <h3 class="est-plano-card-title">🔥 Constância <span class="est-plano-sub">(últimos 6 meses)</span></h3>
+        <div class="est-viz-constancia">
+          ${mapaDeCalor(26)}
+          <div class="est-viz-numeros">
+            <div><strong>${seq.atual}</strong><span>${seq.atual === 1 ? 'dia seguido' : 'dias seguidos'} com estudo</span></div>
+            <div><strong>${seq.maior}</strong><span>maior sequência</span></div>
+            <div><strong>${dias30}</strong><span>de 30 dias com estudo</span></div>
+          </div>
+        </div>
+      </div>`;
   }
 
   function previsao(e, plano) {
@@ -1755,23 +2056,34 @@
   function renderDesempenho() {
     const el = document.getElementById('est-plano-desempenho');
     if (!el) return;
+    ligarBalao(el);
     const e = editalAtivo();
     const plano = e ? planoDe(e.id) : null;
     const metaMin = plano ? Number(plano.horas_semana) * 60 : 0;
     const h = hoje();
     const atual = segundaDe(h);
 
+    // Últimas 12 semanas: minutos e questões (o gráfico de horas mostra as 8 últimas)
     const semanas = [];
-    for (let i = 7; i >= 0; i--) {
-      const inicio = somarDias(atual, -7 * i);
-      semanas.push({ inicio, min: minutosEstudados(inicio, somarDias(inicio, 6)) });
+    for (let i = 11; i >= 0; i--) {
+      const inicio = somarDias(atual, -7 * i), fim = somarDias(inicio, 6);
+      const doPeriodo = studyData.filter(s => s.date >= inicio && s.date <= fim);
+      semanas.push({
+        inicio,
+        min: doPeriodo.reduce((a, s) => a + (s.timeMinutes || 0), 0),
+        q: doPeriodo.reduce((a, s) => a + (s.questionsTotal || 0), 0),
+        c: doPeriodo.reduce((a, s) => a + (s.questionsCorrect || 0), 0)
+      });
     }
+    const estaSemana = semanas[semanas.length - 1];
     const ult7 = minutosEstudados(somarDias(h, -6), h);
     const diasComEstudo = new Set(studyData.filter(s => s.date >= somarDias(h, -6) && s.timeMinutes > 0).map(s => s.date)).size;
     const atrasadas = revisoes.filter(r => !r.concluida_em && r.data_prevista < h).length;
     const feitas = revisoes.filter(r => r.concluida_em);
     const revAcerto = feitas.filter(r => r.acerto !== null && r.acerto !== undefined);
     const mediaRev = revAcerto.length ? Math.round(revAcerto.reduce((a, r) => a + r.acerto, 0) / revAcerto.length) : null;
+    const cob = e ? cobertura(e, plano) : null;
+    const comQuestoes = semanas.some(s => s.q > 0);
 
     let linhasDisc = '';
     let fracos = [];
@@ -1783,9 +2095,11 @@
         const q = d.topicos.reduce((a, t) => a + (t.questoesFeitas || 0), 0);
         const c = d.topicos.reduce((a, t) => a + (t.questoesCertas || 0), 0);
         const pct = q ? Math.round((c / q) * 100) : null;
+        const cd = cob.discs.find(x => x.d.id === d.id);
         return `<tr>
           <td>${escapeHtml(d.nome)}</td>
           <td><div class="est-plano-celula-barra"><span>${done}/${total}</span>${barra(total ? done / total * 100 : 0)}</div></td>
+          <td>${cd ? Math.round((cd.estudado + cd.andamento) * 100) + '%' : '—'}</td>
           <td>${min ? fmtMin(min) : '—'}</td>
           <td>${q || '—'}</td>
           <td>${pct !== null ? `<span class="est-plano-acerto ${classeAcerto(pct)}">${pct}%</span>` : '—'}</td>
@@ -1807,26 +2121,39 @@
         </div>
       </div>
 
+      ${cob && cob.discs.length ? htmlCobertura(cob) : ''}
+
       <div class="est-plano-kpis">
-        <div class="est-plano-kpi"><span>Esta semana</span><strong>${fmtMin(semanas[7].min)}${metaMin ? ` <small>/ ${fmtMin(metaMin)}</small>` : ''}</strong>${metaMin ? barra(semanas[7].min / metaMin * 100, 'blue') : ''}</div>
+        <div class="est-plano-kpi"><span>Esta semana</span><strong>${fmtMin(estaSemana.min)}${metaMin ? ` <small>/ ${fmtMin(metaMin)}</small>` : ''}</strong>${metaMin ? barra(estaSemana.min / metaMin * 100, 'blue') : ''}</div>
         <div class="est-plano-kpi"><span>Média diária (7 dias)</span><strong>${fmtMin(ult7 / 7)}</strong><small>${diasComEstudo} de 7 dias com estudo</small></div>
         <div class="est-plano-kpi"><span>Acerto nas revisões</span><strong>${mediaRev !== null ? mediaRev + '%' : '—'}</strong><small>${feitas.length} revisões feitas</small></div>
         <div class="est-plano-kpi ${atrasadas ? 'alerta' : ''}"><span>Revisões atrasadas</span><strong>${atrasadas}</strong></div>
       </div>
 
-      ${e ? `<div class="est-plano-card"><h3 class="est-plano-card-title">🔮 Previsão</h3><p class="est-plano-texto">${previsao(e, plano)}</p></div>` : ''}
+      ${htmlConstancia()}
 
-      <div class="est-plano-card">
-        <h3 class="est-plano-card-title">Horas por semana</h3>
-        ${graficoSemanas(semanas, metaMin)}
+      <div class="est-viz-duas">
+        <div class="est-plano-card">
+          <h3 class="est-plano-card-title">⏱ Horas por semana ${metaMin ? `<span class="est-plano-sub">(tracejado: meta de ${fmtMin(metaMin)})</span>` : ''}</h3>
+          ${graficoSemanas(semanas.slice(-8), metaMin)}
+        </div>
+        <div class="est-plano-card">
+          <h3 class="est-plano-card-title">✅ Acerto nas questões por semana <span class="est-plano-sub">(tracejado: ${ACERTO_REFORCO}%; abaixo disso entra reforço)</span></h3>
+          ${comQuestoes ? graficoAcerto(semanas)
+            : '<p class="est-plano-vazio">Registre questões (ao concluir metas e revisões) para ver a evolução do acerto.</p>'}
+        </div>
       </div>
+
+      ${e ? htmlMaturidade(e) : ''}
+
+      ${e ? `<div class="est-plano-card"><h3 class="est-plano-card-title">🔮 Previsão</h3><p class="est-plano-texto">${previsao(e, plano)}</p></div>` : ''}
 
       ${e ? `
       <div class="est-plano-card">
         <h3 class="est-plano-card-title">Por disciplina</h3>
         <div class="est-plano-tabela-wrap">
           <table class="est-plano-tabela">
-            <thead><tr><th>Disciplina</th><th>Tópicos</th><th>Tempo</th><th>Questões</th><th>Acerto</th></tr></thead>
+            <thead><tr><th>Disciplina</th><th>Tópicos</th><th>Cobertura</th><th>Tempo</th><th>Questões</th><th>Acerto</th></tr></thead>
             <tbody>${linhasDisc}</tbody>
           </table>
         </div>
@@ -1851,6 +2178,7 @@
         </div>
       </div>` : ''}
     `;
+    ajustarRotulos(el);
   }
 
   /* =============================================

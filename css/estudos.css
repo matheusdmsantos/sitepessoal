@@ -1990,6 +1990,57 @@ html, body {
 .est-concluir-terminei { display: flex; gap: 10px; align-items: flex-start; cursor: pointer; font-size: 0.85rem; font-weight: 600; color: var(--est-green); }
 .est-concluir-terminei input { margin-top: 3px; width: 18px; height: 18px; accent-color: var(--est-green); }
 .est-concluir-terminei small { display: block; font-weight: 400; font-size: 0.72rem; color: var(--est-accent); margin-top: 2px; }
+/* ─── DESEMPENHO: infográficos (js/estudos.plano.js, renderDesempenho) ─── */
+.est-viz-heroi { display: flex; align-items: baseline; flex-wrap: wrap; gap: 6px 16px; margin: 2px 0 14px; }
+.est-viz-heroi strong { font-family: var(--est-font-body); font-size: 3.4rem; font-weight: 600; line-height: 1; color: var(--est-silver-bright); }
+.est-viz-heroi span { max-width: 560px; font-size: 0.92rem; line-height: 1.45; color: var(--est-silver); }
+.est-viz-segbar { display: flex; gap: 2px; height: 28px; }
+.est-viz-seg { min-width: 0; display: flex; align-items: center; padding: 0 8px; border-radius: 4px; font-size: 0.75rem; font-weight: 700; white-space: nowrap; }
+.est-viz-legenda { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 10px; font-size: 0.76rem; color: var(--est-silver); }
+.est-viz-legenda i { display: inline-block; width: 10px; height: 10px; margin-right: 6px; border-radius: 3px; vertical-align: -1px; }
+.est-viz-nota { margin: 12px 0 0; line-height: 1.5; }
+.est-viz-grade { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 18px 32px; margin-top: 20px; }
+.est-viz-sub { margin: 0 0 8px; font-size: 0.72rem; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--est-accent); }
+.est-viz-linha { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(70px, 1fr) 40px; align-items: center; gap: 12px; padding: 6px 0; border-top: 1px solid var(--est-border); }
+.est-viz-linha:first-of-type { border-top: 0; }
+.est-viz-linha-nome { min-width: 0; font-size: 0.84rem; line-height: 1.3; color: var(--est-silver-bright); overflow-wrap: anywhere; }
+.est-viz-linha-nome small { display: block; font-size: 0.7rem; color: var(--est-accent); }
+.est-viz-fina { display: flex; gap: 2px; height: 8px; border-radius: 999px; overflow: hidden; background: #3a4055; }
+.est-viz-fina i { display: block; height: 100%; flex-shrink: 0; }
+.est-viz-linha strong { text-align: right; font-size: 0.86rem; font-weight: 600; color: var(--est-silver-bright); font-variant-numeric: tabular-nums; }
+.page-estudos .est-viz-ganhos { display: flex; flex-direction: column; gap: 10px; margin: 8px 0 0; padding-left: 22px; list-style: decimal; }
+.est-viz-ganhos li::marker { color: var(--est-accent); font-size: 0.78rem; }
+.est-viz-ganhos li { font-size: 0.84rem; line-height: 1.35; color: var(--est-silver-bright); }
+.est-viz-ganhos li small { display: block; font-size: 0.72rem; color: var(--est-accent); }
+.est-viz-ganhos li strong { display: block; font-size: 0.78rem; font-weight: 600; color: var(--est-silver); }
+.est-viz-duas { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 20px; }
+.est-viz-constancia { display: flex; flex-wrap: wrap; align-items: center; gap: 20px 40px; }
+.est-viz-mapa-wrap { flex: 1 1 380px; max-width: 560px; }
+.est-viz-mapa { display: block; width: 100%; height: auto; font-family: var(--est-font-body); }
+.est-viz-mapa rect:hover { stroke: var(--est-silver-bright); stroke-width: 1.5; }
+.est-viz-numeros { display: flex; flex-direction: column; gap: 14px; }
+.est-viz-numeros div { display: flex; align-items: baseline; gap: 10px; }
+.est-viz-numeros strong { min-width: 44px; font-size: 1.9rem; font-weight: 600; line-height: 1; color: var(--est-silver-bright); text-align: right; }
+.est-viz-numeros span { font-size: 0.82rem; color: var(--est-accent); }
+.est-viz-eixo { fill: var(--est-accent); font-size: 11px; }
+.est-viz-rotulo { fill: var(--est-silver-bright); font-size: 12px; font-weight: 600; }
+.est-viz-grade-linha { stroke: rgba(200, 204, 212, 0.12); stroke-width: 1; }
+.est-viz-meta { stroke: var(--est-amber); stroke-width: 1.5; stroke-dasharray: 5 4; }
+.est-viz-barra { fill: var(--est-blue); cursor: default; }
+.est-viz-barra:hover, .est-viz-barra:focus { fill: #93c5fd; outline: none; }
+.est-viz-linha-serie { fill: none; stroke: var(--est-blue); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.est-viz-ponto { fill: var(--est-blue); stroke: var(--est-bg-card); stroke-width: 2; }
+.est-viz-hit { fill: transparent; }
+.est-viz-cruz { stroke: rgba(200, 204, 212, 0.35); stroke-width: 1; opacity: 0; }
+.est-viz-col:hover .est-viz-cruz, .est-viz-col:focus .est-viz-cruz { opacity: 1; }
+.est-viz-col:focus { outline: none; }
+.est-viz-balao { position: fixed; z-index: 2000; display: flex; flex-direction: column; gap: 1px; max-width: 300px; padding: 7px 11px;
+  border: 1px solid var(--est-border-silver); border-radius: 8px; background: #0f1220; box-shadow: 0 8px 20px rgba(0, 0, 0, 0.45);
+  font-family: var(--est-font-body); pointer-events: none; }
+.est-viz-balao[hidden] { display: none; }
+.est-viz-balao strong { font-size: 0.9rem; font-weight: 600; color: #fff; }
+.est-viz-balao span { font-size: 0.74rem; line-height: 1.35; color: var(--est-silver); }
+@media (prefers-reduced-motion: no-preference) { .est-viz-cruz { transition: opacity 0.12s; } }
 /* ─── JANELA DE ESTUDO (js/estudos.sessao.js) ─── */
 .est-plano-item-info[role="button"] { cursor: pointer; border-radius: 6px; }
 .est-plano-item-info[role="button"]:hover .est-plano-item-top { color: #fff; text-decoration: underline; text-decoration-color: var(--est-accent-faint); }
