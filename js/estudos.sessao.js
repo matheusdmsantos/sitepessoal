@@ -699,13 +699,7 @@
     $('est-sessao-rotulo').textContent = dados.rotulo;
     $('est-sessao-disc').textContent = dados.disc;
     $('est-sessao-topico').textContent = dados.topico;
-    const leitura = dados.leitura || [];
-    $('est-sessao-leitura').hidden = !leitura.length;
-    $('est-sessao-leitura').innerHTML = leitura.length
-      ? `<strong>📄 ${dados.leituraParcial ? 'Ler agora' : 'Material'}:</strong> ` + leitura.map(x =>
-          `<span>${escapeHtml(x.nome)}, ${x.aprox ? `${x.ate - x.de + 1} p. (sem faixa cadastrada)` : x.de === x.ate ? `p. ${x.de}` : `p. ${x.de}–${x.ate}`}</span>`
-        ).join('; ')
-      : '';
+    mostrarLeitura();
     $('est-sessao-crono').style.display = dados.id ? '' : 'none';
     $('est-sessao-concluir').style.display = dados.id && !dados.concluida ? '' : 'none';
     $('est-sessao-tec').style.display = dados.topicoId && window.estTec ? '' : 'none';
@@ -763,8 +757,107 @@
     window.estPlano.abrirConclusao(tipo, id, Math.round(c.acum / 60000));
   }
 
+  /* =============================================
+     ABRIR O PDF DA META ("Ler agora")
+     O arquivo é escolhido no computador uma vez; o atalho (FileSystemFileHandle) fica no
+     IndexedDB "est-pdfs", pelo nome do material, e as próximas metas abrem direto na página.
+     Sem a File System Access API (Firefox), o arquivo é escolhido a cada vez.
+  ============================================= */
+  function pdfsDb(modo, fn) {
+    return new Promise((ok, falha) => {
+      const req = indexedDB.open('est-pdfs', 1);
+      req.onupgradeneeded = () => req.result.createObjectStore('kv');
+      req.onerror = () => falha(req.error);
+      req.onsuccess = () => {
+        const db = req.result;
+        const tx = db.transaction('kv', modo);
+        const r = fn(tx.objectStore('kv'));
+        tx.oncomplete = () => { db.close(); ok(r && r.result); };
+        tx.onerror = () => { db.close(); falha(tx.error); };
+      };
+    });
+  }
+  const lerAtalho = nome => pdfsDb('readonly', st => st.get('pdf:' + nome)).catch(() => null);
+  const gravarAtalho = (nome, h) => pdfsDb('readwrite', st => st.put(h, 'pdf:' + nome)).catch(() => {});
+
+  function textoPaginas(x) {
+    return x.aprox ? `${x.ate - x.de + 1} p. (sem faixa cadastrada)` : x.de === x.ate ? `p. ${x.de}` : `p. ${x.de}–${x.ate}`;
+  }
+
+  async function mostrarLeitura() {
+    const el = $('est-sessao-leitura');
+    const leitura = (ctx && ctx.leitura) || [];
+    el.hidden = !leitura.length;
+    el.innerHTML = leitura.length
+      ? `<strong>📄 ${ctx.leituraParcial ? 'Ler agora' : 'Material'}:</strong> ` + leitura.map((x, i) =>
+          `<span class="est-sessao-pdf"><button type="button" class="est-sessao-ler" data-i="${i}" title="Abrir o PDF${x.aprox ? '' : ' na página ' + x.de}">${escapeHtml(x.nome)}, ${textoPaginas(x)} ↗</button>` +
+          `<button type="button" class="est-sessao-trocar" data-i="${i}" hidden>alterar PDF</button></span>`
+        ).join('; ')
+      : '';
+    if (!window.showOpenFilePicker) return;
+    const atual = ctx;
+    for (const [i, x] of leitura.entries()) {
+      if (!(await lerAtalho(x.nome)) || ctx !== atual) continue;
+      const b = el.querySelector(`.est-sessao-trocar[data-i="${i}"]`);
+      if (b) b.hidden = false;
+    }
+  }
+
+  function escolherNoInput() {
+    return new Promise(ok => {
+      const inp = document.createElement('input');
+      inp.type = 'file';
+      inp.accept = 'application/pdf,.pdf';
+      inp.onchange = () => ok(inp.files[0] || null);
+      inp.click();
+    });
+  }
+
+  async function arquivoDoPdf(x, trocar) {
+    if (!window.showOpenFilePicker) return escolherNoInput();
+    let h = trocar ? null : await lerAtalho(x.nome);
+    if (h) {
+      const modo = { mode: 'read' };
+      if ((await h.queryPermission(modo)) !== 'granted' && (await h.requestPermission(modo)) !== 'granted') h = null;
+    }
+    if (!h) {
+      try {
+        [h] = await window.showOpenFilePicker({ id: 'pdfs-estudo', types: [{ description: 'PDF', accept: { 'application/pdf': ['.pdf'] } }] });
+      } catch (e) { return null; }   // cancelou
+      await gravarAtalho(x.nome, h);
+    }
+    try { return await h.getFile(); } catch (e) {
+      aviso('Não achei o arquivo (foi movido ou apagado?). Escolha o PDF de novo.');
+      return arquivoDoPdf(x, true);
+    }
+  }
+
+  async function abrirPdf(i, trocar) {
+    const x = ctx && ctx.leitura && ctx.leitura[i];
+    if (!x) return;
+    const arq = await arquivoDoPdf(x, trocar);
+    if (!arq) return;
+    // shortcut: o blob não é liberado (a aba do PDF usa); some quando o painel é fechado
+    const url = URL.createObjectURL(arq.type ? arq : new Blob([arq], { type: 'application/pdf' })) + (x.aprox ? '' : '#page=' + x.de);
+    const janela = window.open(url, '_blank');
+    if (!janela) {
+      // O navegador barrou a aba (o clique "venceu" enquanto o arquivo era escolhido): vira um link
+      const b = $('est-sessao-leitura').querySelector(`.est-sessao-ler[data-i="${i}"]`);
+      if (b) b.outerHTML = `<a class="est-sessao-ler" href="${url}" target="_blank" rel="noopener">Abrir ${escapeHtml(x.nome)} ↗</a>`;
+    }
+    mostrarLeitura();
+  }
+
+  function aviso(msg) {
+    if (window.estPlano && window.estPlano.aviso) window.estPlano.aviso(msg); else alert(msg);
+  }
+
   function init() {
     if (!$('est-modal-sessao')) return;
+    $('est-sessao-leitura').addEventListener('click', ev => {
+      const b = ev.target.closest('button[data-i]');
+      if (b) abrirPdf(Number(b.dataset.i), b.classList.contains('est-sessao-trocar'));
+    });
     $('est-sessao-fechar').addEventListener('click', fechar);
     $('est-sessao-concluir').addEventListener('click', concluir);
     $('est-sessao-play').addEventListener('click', alternarPlay);
