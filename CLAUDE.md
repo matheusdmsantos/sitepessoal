@@ -163,7 +163,7 @@ A página usa `<body class="auth-pending">` (com `visibility: hidden`) e remove 
 **Pendente com o usuário. Pergunte o status antes de assumir:**
 - [x] Usuário criado em Supabase → Authentication → Users (login funcionando). Conferir se o cadastro público está desativado.
 - [x] `supabase/estudos-plano.sql` e `supabase/rls.sql` executados no SQL Editor (23/10/2026): 10 tabelas com RLS e `dono_acesso_total`.
-- [ ] Variável `ANTHROPIC_API_KEY` criada no Netlify (Site configuration > Environment variables, escopo Functions) e um novo deploy feito depois dela: sem isso o botão "✨ IA" do resumo avisa que falta a chave.
+- [x] Variável `ANTHROPIC_API_KEY` criada no Netlify (secreta, valor de produção; 08/11/2026) e publicada no deploy seguinte: a função respondeu 401 sem login, ou seja, achou a chave. Se a chave vencer ou for trocada, é preciso um novo deploy.
 - [ ] Senha antiga trocada nos outros serviços onde era usada (ela ficou exposta no site antigo).
 - [ ] Repositório do GitHub passado para privado.
 - [ ] `supabase/erros.sql` executado (Caderno de Erros).
