@@ -2022,6 +2022,7 @@ html, body {
 .page-estudos .est-sessao-ler { padding: 0; font: inherit; color: var(--est-silver-bright); text-decoration: underline; text-decoration-color: var(--est-accent-faint); text-underline-offset: 3px; cursor: pointer; text-align: left; }
 .page-estudos .est-sessao-ler:hover { color: #fff; }
 .page-estudos .est-sessao-trocar { margin-left: 8px; padding: 1px 8px; border: 1px solid var(--est-border); border-radius: 999px; font-size: 0.72rem; color: var(--est-accent); cursor: pointer; }
+#est-modal-confirm-msg { white-space: pre-line; }
 .page-estudos .est-sessao-trocar:hover { color: #fff; border-color: var(--est-accent); }
 .est-sessao-topico {
   font-family: var(--est-font-display);

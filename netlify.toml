@@ -43,6 +43,12 @@
 
 # Documentação e SQL ficam na pasta, mas não são servidos no site.
 [[redirects]]
+  from = "/ferramentas/*"
+  to = "/index.html"
+  status = 404
+  force = true
+
+[[redirects]]
   from = "/supabase/*"
   to = "/index.html"
   status = 404

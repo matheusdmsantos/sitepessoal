@@ -791,8 +791,9 @@
     el.innerHTML = leitura.length
       ? `<strong>📄 ${ctx.leituraParcial ? 'Ler agora' : 'Material'}:</strong> ` + leitura.map((x, i) =>
           `<span class="est-sessao-pdf"><button type="button" class="est-sessao-ler" data-i="${i}" title="Abrir o PDF${x.aprox ? '' : ' na página ' + x.de}">${escapeHtml(x.nome)}, ${textoPaginas(x)} ↗</button>` +
-          `<button type="button" class="est-sessao-trocar" data-i="${i}" hidden>alterar PDF</button></span>`
-        ).join('; ')
+          `<button type="button" class="est-sessao-trocar" data-i="${i}" ${noApp() ? '' : 'hidden'}>alterar PDF</button></span>`
+        ).join('; ') +
+        ` <button type="button" class="est-sessao-trocar est-sessao-modo" title="Onde o PDF abre neste computador">${noApp() ? 'abre no Foxit' : 'abre no navegador'} ⇄</button>`
       : '';
     if (!window.showOpenFilePicker) return;
     const atual = ctx;
@@ -832,9 +833,39 @@
     }
   }
 
+  /* Abrir no Foxit: link estudopdf: tratado pelo ferramentas/estudopdf (instalado uma vez no
+     Windows), que acha o arquivo pelo nome nas pastas escolhidas e abre na página. A escolha
+     vale para este computador (localStorage), porque a instalação é por computador. */
+  const noApp = () => { try { return localStorage.getItem('est_pdf_modo') === 'app'; } catch (e) { return false; } };
+
+  async function trocarModo() {
+    if (!noApp()) {
+      const ok = await window.customConfirm('Abrir os PDFs no Foxit neste computador?\n\n' +
+        'Precisa instalar uma vez: na pasta do site, dê dois cliques em ferramentas\\estudopdf\\instalar.cmd e escolha a pasta onde ficam os PDFs. ' +
+        'Na primeira abertura, o navegador pergunta se pode abrir o "estudopdf": marque para sempre permitir.\n\n' +
+        'O arquivo é achado pelo nome (o que você escolheu no "Ler agora" ou o nome do material + .pdf).');
+      if (!ok) return;
+    }
+    try { localStorage.setItem('est_pdf_modo', noApp() ? 'navegador' : 'app'); } catch (e) { /* sem armazenamento */ }
+    mostrarLeitura();
+  }
+
+  async function abrirNoApp(x) {
+    const h = window.showOpenFilePicker ? await lerAtalho(x.nome) : null;
+    const arquivo = h ? h.name : x.nome + '.pdf';
+    location.href = 'estudopdf:abrir?arquivo=' + encodeURIComponent(arquivo) + '&pagina=' + (x.aprox ? 1 : x.de);
+  }
+
   async function abrirPdf(i, trocar) {
     const x = ctx && ctx.leitura && ctx.leitura[i];
     if (!x) return;
+    if (noApp()) {
+      // "alterar PDF" no modo Foxit: só escolhe o arquivo certo (o nome dele vai no link)
+      if (trocar && !(await arquivoDoPdf(x, true))) return;
+      abrirNoApp(x);
+      mostrarLeitura();
+      return;
+    }
     const arq = await arquivoDoPdf(x, trocar);
     if (!arq) return;
     // O leitor (leitor.html, pdf.js) pega o arquivo desta aba por window.opener: abrir o blob
@@ -859,6 +890,7 @@
   function init() {
     if (!$('est-modal-sessao')) return;
     $('est-sessao-leitura').addEventListener('click', ev => {
+      if (ev.target.closest('.est-sessao-modo')) { trocarModo(); return; }
       const b = ev.target.closest('button[data-i]');
       if (b) abrirPdf(Number(b.dataset.i), b.classList.contains('est-sessao-trocar'));
     });
