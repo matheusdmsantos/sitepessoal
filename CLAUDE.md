@@ -66,6 +66,7 @@ apps/
   usuarios/           Usuários (só o dono): cria contas, escolhe os apps de cada uma, troca senha e exclui, via a função abaixo
 netlify/functions/usuarios.mjs  Netlify Function com a chave service_role (variável de ambiente)
 netlify/functions/agenda.mjs    agenda iCal da Gestão de Contratos em /agenda/<token>.ics (Google Agenda)
+netlify/functions/ia-resumo.mjs "✨ IA" do editor de resumo: chama a API do Claude com a chave ANTHROPIC_API_KEY (variável de ambiente; só o dono)
 supabase/rls.sql      Row Level Security: por usuário nas tabelas com coluna dono; só o dono nas demais
 supabase/multiusuario.sql  coluna dono nas tabelas do Painel de Estudos e papel 'dono' no app_metadata
 supabase/estudos-plano.sql  tabelas do Painel de Estudos (sessoes, metas, revisoes, plano_estudos…)
@@ -162,6 +163,7 @@ A página usa `<body class="auth-pending">` (com `visibility: hidden`) e remove 
 **Pendente com o usuário. Pergunte o status antes de assumir:**
 - [x] Usuário criado em Supabase → Authentication → Users (login funcionando). Conferir se o cadastro público está desativado.
 - [x] `supabase/estudos-plano.sql` e `supabase/rls.sql` executados no SQL Editor (23/10/2026): 10 tabelas com RLS e `dono_acesso_total`.
+- [ ] Variável `ANTHROPIC_API_KEY` criada no Netlify (Site configuration > Environment variables, escopo Functions) e um novo deploy feito depois dela: sem isso o botão "✨ IA" do resumo avisa que falta a chave.
 - [ ] Senha antiga trocada nos outros serviços onde era usada (ela ficou exposta no site antigo).
 - [ ] Repositório do GitHub passado para privado.
 - [ ] `supabase/erros.sql` executado (Caderno de Erros).
@@ -190,6 +192,8 @@ A página usa `<body class="auth-pending">` (com `visibility: hidden`) e remove 
 - *Imagens*: ao colar, arrastar ou inserir, a foto é reduzida para no máximo 1600 px (JPEG 85%; PNG pequeno sem redução fica PNG). Clicar na imagem mostra alças nos cantos e os botões 25/50/75/100%; a largura vai no atributo `width` (o Image do Quill 1.3.6 preserva). Na exportação para Word, as imagens ganham `width`/`height` limitados a 640 px (`imagensParaWord`).
 - *Colar de sites* (comentários do TEC): `limparHtmlColado` mantém negrito, itálico, sublinhado, tachado, realce em trechos (`<mark>` vira amarelo; realce escuro é clareado) e texto colorido legível; descarta fundo de cartão/página, texto cinza/branco, fontes e classes do site (as `ql-*` ficam). Ctrl+Shift+V cola sem formatação.
 - *Fontes*: lista `FONTES` no topo do `estudos.sessao.js` (11 de texto, 9 manuscritas do Google Fonts, carregadas por um `<link>` no `estudos.html` e baixadas só quando usadas). O formato `font` é um `Attributor.Style` próprio: o valor é o id, o HTML guarda o `font-family` completo. `serif`/`monospace` (classe `ql-font-*`) continuam valendo. No PDF, as fontes usadas são carregadas antes da captura; no Word, só aparecem se estiverem instaladas no PC.
+- *✨ IA* (só o dono; botão na barra do editor, `melhorarComIA`): o trecho selecionado (até `MAX_TRECHO_IA` = 6.000 caracteres) vai em HTML para `netlify/functions/ia-resumo.mjs` (token do Supabase conferido; só `papel = 'dono'`), que chama a Messages API por `fetch` (sem SDK, como as outras funções): `claude-opus-5-5`, `output_config.effort: 'low'`, `fallbacks: 'default'` (beta `server-side-fallback-2026-07-01`), `anthropic-version: 2026-10-21`, prazo de 50 s (a função tem 60 s). As instruções pedem o mesmo conteúdo, sem fatos novos, organizado com títulos, listas, negrito, `<mark>` (vira realce `#fff59d`), tabelas e emojis. Fotos não vão para a IA (viram `<img data-ref="N">` e voltam no lugar; nenhuma some). A resposta passa por `sanitizarHtml` e troca a seleção numa só etapa do histórico. Bug do Quill 1.3.6: com tabela (bloco, vale também para o vídeo nativo) e texto depois dela, a etapa gravada desfaz errado; por isso ela é trocada pela troca do documento inteiro (`history.stack.undo`). O editor fica travado durante a chamada. Não roda no servidor local (404).
+- *Tabelas* (blot `tabela`, `BlockEmbed` com `tagName` TABLE, registrado no topo do `estudos.sessao.js`): o Quill 1.3.6 não tem tabela; ela vira um bloco fechado (`contenteditable=false`, não se edita célula a célula; selecionar e Delete apaga) com o HTML limpo por `limparTabela`. Vem da IA e de tabelas coladas de sites. CSS em `.ql-editor table.est-tabela` (editor e Meus Resumos) e em `ESTILO_EXPORT` (Word/PDF).
 - *É o único editor de resumo*: `promptResumo`/`promptResumoByName` do v5 abrem a mesma janela, sem cronômetro (`estSessao.abrirResumo`). O modal antigo, o formulário "Salvar no Word" e tudo o que chamava o `app.py` (`localhost:5000`) foram removidos.
 
 **Meus Resumos (`js/estudos.resumos.js`, mesma branch).** O resumo geral da matéria **não é gravado**: é montado na hora, na ordem do edital ativo, a partir dos resumos de cada assunto. Por isso, salvar um assunto já atualiza a matéria.

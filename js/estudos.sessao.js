@@ -81,6 +81,23 @@
     }
     Quill.register(new FonteEstilo('font', 'font-family', { scope: Parchment.Scope.INLINE }), true);
 
+    // Tabela: o Quill 1.3.6 não tem. Vira um bloco fechado (não editável célula a célula) com o
+    // HTML da tabela já limpo; a IA cria, colar de um site também. Apagar: selecionar e Delete.
+    const BlockEmbed = Quill.import('blots/block/embed');
+    class Tabela extends BlockEmbed {
+      static create(html) {
+        const node = super.create();
+        node.setAttribute('contenteditable', 'false');
+        node.innerHTML = limparTabela(html);
+        return node;
+      }
+      static value(node) { return node.innerHTML; }
+    }
+    Tabela.blotName = 'tabela';
+    Tabela.tagName = 'TABLE';
+    Tabela.className = 'est-tabela';
+    Quill.register(Tabela, true);
+
     // Nome de cada fonte no seletor: na lista, escrito com ela; na caixa fechada, em fonte normal
     const primeiraMao = FONTES.find(f => f.mao).id;
     const css = `
@@ -665,6 +682,150 @@
   }
 
   /* =============================================
+     MELHORAR COM IA (só o dono)
+     O trecho selecionado vai, em HTML, para netlify/functions/ia-resumo.mjs, que chama a API
+     do Claude e devolve o mesmo conteúdo organizado. Fotos não vão para a IA: viram
+     <img data-ref="N"> e voltam no lugar. A resposta é limpa (sanitizarHtml) antes de entrar
+     no editor e troca a seleção numa só alteração: Ctrl+Z desfaz.
+  ============================================= */
+  const COR_GRIFO = '#fff59d';            // <mark> da IA vira este realce amarelo
+  const MAX_TRECHO_IA = 6000;             // caracteres de texto por vez (a função tem 60 s)
+  const TAGS_HTML_OK = new Set(['P', 'BR', 'H3', 'H4', 'STRONG', 'B', 'EM', 'I', 'U', 'S', 'MARK', 'SPAN',
+    'UL', 'OL', 'LI', 'BLOCKQUOTE', 'CODE', 'TABLE', 'THEAD', 'TBODY', 'TR', 'TH', 'TD', 'IMG']);
+  let quillAux = null;
+  let iaRodando = false;
+
+  /* Só tags de texto, listas e tabelas; atributos fora, salvo realce/cor em <span>, colspan e
+     rowspan, e o data-ref das fotos. Usada na resposta da IA e no conteúdo de toda tabela. */
+  function sanitizarHtml(html) {
+    const doc = new DOMParser().parseFromString(String(html || ''), 'text/html');
+    doc.body.querySelectorAll('script, style, iframe, object, embed, svg, math, template, noscript, link, meta').forEach(n => n.remove());
+    doc.body.querySelectorAll('*').forEach(el => {
+      if (!el.isConnected) return;
+      if (!TAGS_HTML_OK.has(el.tagName)) { el.replaceWith(...el.childNodes); return; }
+      const fundo = el.style.backgroundColor, cor = el.style.color;
+      [...el.attributes].forEach(a => {
+        const ok = (a.name === 'data-ref' && el.tagName === 'IMG' && /^\d{1,3}$/.test(a.value)) ||
+          ((a.name === 'colspan' || a.name === 'rowspan') && /^\d{1,2}$/.test(a.value));
+        if (!ok) el.removeAttribute(a.name);
+      });
+      if (el.tagName === 'SPAN') { if (fundo) el.style.backgroundColor = fundo; if (cor) el.style.color = cor; }
+      if (el.tagName === 'MARK') {
+        const span = doc.createElement('span');
+        span.style.backgroundColor = COR_GRIFO;
+        span.append(...el.childNodes);
+        el.replaceWith(span);
+      }
+      if (el.tagName === 'IMG') {
+        if (!el.hasAttribute('data-ref')) el.remove();
+        else if (el.closest('table')) el.closest('table').after(el);   // foto dentro de tabela se perderia
+      }
+    });
+    // Espaços soltos entre as tags da tabela aparecem no editor (white-space: pre-wrap)
+    doc.body.querySelectorAll('table, thead, tbody, tr').forEach(el =>
+      [...el.childNodes].forEach(n => { if (n.nodeType === 3 && !n.textContent.trim()) n.remove(); }));
+    // Texto, foto ou negrito soltos fora de parágrafo ganham um <p>: no Quill 1.3.6, uma linha
+    // sem quebra logo antes de uma tabela faz a tabela sumir ou sair do lugar
+    let solto = null;
+    [...doc.body.childNodes].forEach(n => {
+      if (n.nodeType === 1 && /^(P|H3|H4|UL|OL|BLOCKQUOTE|TABLE)$/.test(n.tagName)) { solto = null; return; }
+      if (n.nodeType === 3 && !n.textContent.trim() && !solto) { n.remove(); return; }
+      if (!solto) { solto = doc.createElement('p'); n.before(solto); }
+      solto.appendChild(n);
+    });
+    return doc.body.innerHTML;
+  }
+
+  function limparTabela(html) {
+    const tpl = document.createElement('template');
+    tpl.innerHTML = sanitizarHtml(`<table>${html || ''}</table>`);
+    const tabela = tpl.content.querySelector('table');
+    if (!tabela) return '';
+    tabela.querySelectorAll('img').forEach(i => i.remove());
+    return tabela.innerHTML;
+  }
+
+  // HTML de um trecho do editor: monta num Quill fora da tela, com os mesmos formatos
+  function htmlDoTrecho(indice, tamanho) {
+    if (!quillAux) quillAux = new Quill(document.createElement('div'));
+    quillAux.setContents(quill.getContents(indice, tamanho));
+    return quillAux.root.innerHTML;
+  }
+
+  async function melhorarComIA() {
+    if (iaRodando || !ctx) return;
+    const sel = quill.getSelection(true);
+    const texto = sel && sel.length ? quill.getText(sel.index, sel.length).trim() : '';
+    if (texto.length < 15) { aviso('Selecione o trecho do resumo que a IA deve melhorar.'); return; }
+    if (texto.length > MAX_TRECHO_IA) {
+      aviso(`O trecho tem ${texto.length.toLocaleString('pt-BR')} caracteres. Selecione até ${MAX_TRECHO_IA.toLocaleString('pt-BR')} e melhore em partes.`);
+      return;
+    }
+    const fotos = [];
+    const html = htmlDoTrecho(sel.index, sel.length).replace(/<img\b[^>]*>/gi, tag => `<img data-ref="${fotos.push(tag) - 1}">`);
+    const ctxAntes = ctx, paginaAntes = atual, statusAntes = $('est-sessao-status').textContent;
+    const botao = quill.getModule('toolbar').container.querySelector('.ql-ia');
+    iaRodando = true;
+    quill.enable(false);   // texto parado: a resposta entra exatamente no lugar da seleção
+    if (botao) { botao.disabled = true; botao.textContent = '✨ Melhorando…'; }
+    status('✨ A IA está melhorando o trecho… (até 1 minuto)');
+    try {
+      const { data } = await window.supabaseClient.auth.getSession();
+      const r = await fetch('/.netlify/functions/ia-resumo', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${data && data.session ? data.session.access_token : ''}` },
+        body: JSON.stringify({ html, disciplina: ctx.disc, assunto: ctx.topico })
+      });
+      const corpo = await r.json().catch(() => ({}));
+      if (!r.ok || !corpo.html) {
+        throw new Error(corpo.erro || (r.status === 404
+          ? 'A função da IA não existe aqui: ela só roda no site publicado (Netlify).'
+          : `Erro ${r.status} ao chamar a IA.`));
+      }
+      if (ctx !== ctxAntes || atual !== paginaAntes) { aviso('Você trocou de resumo ou de página; a melhoria da IA foi descartada.'); return; }
+      const usadas = new Set();
+      const novo = sanitizarHtml(corpo.html).replace(/<img data-ref="(\d+)">/g, (m, i) => { usadas.add(Number(i)); return fotos[i] || ''; }) +
+        fotos.filter((f, i) => !usadas.has(i)).join('');   // nenhuma foto some, mesmo se a IA esquecer
+      const Delta = Quill.import('delta');
+      quill.enable(true);
+      // Seleção começando ou terminando no meio de uma linha: quebra ali, para a resposta entrar em linhas próprias
+      const op = i => quill.getContents(i, 1).ops[0];
+      const antesQuebra = sel.index === 0 || (o => o && (o.insert === '\n' || (o.insert && o.insert.tabela !== undefined)))(op(sel.index - 1));
+      let inserido = quill.clipboard.convert(novo);
+      if (!antesQuebra) inserido = new Delta().insert('\n').concat(inserido);
+      const ultimo = inserido.ops[inserido.ops.length - 1];
+      const terminaEmTabela = ultimo && ultimo.insert && ultimo.insert.tabela !== undefined;
+      if (!terminaEmTabela && (op(sel.index + sel.length) || {}).insert !== '\n') inserido = inserido.concat(new Delta().insert('\n'));
+      // Etapa própria no histórico: Ctrl+Z desfaz só a IA, não o que foi digitado logo antes
+      const antes = quill.getContents();
+      quill.history.cutoff();
+      quill.updateContents(new Delta().retain(sel.index).delete(sel.length).concat(inserido), 'user');
+      // Quill 1.3.6: com tabela (bloco) e texto depois dela, a etapa que o histórico grava desfaz
+      // errado (sobram letras; acontece também com o vídeo nativo). Vira a troca do documento inteiro.
+      const depois = quill.getContents();
+      const pilha = quill.history.stack.undo;
+      if (pilha.length) {
+        pilha[pilha.length - 1] = {
+          undo: new Delta().delete(depois.length()).concat(antes),
+          redo: new Delta().delete(antes.length()).concat(depois)
+        };
+      }
+      quill.history.cutoff();
+      quill.setSelection(sel.index + inserido.length(), 0, 'silent');
+      aviso('✨ Trecho melhorado pela IA. Não gostou? Ctrl+Z desfaz.');
+    } catch (e) {
+      console.error('IA do resumo:', e);
+      aviso(e.message || 'Não foi possível melhorar o trecho agora.');
+    } finally {
+      iaRodando = false;
+      quill.enable(true);
+      // Sem alteração no texto (erro ou descarte), o status volta ao que era; com ela, o salvamento já o trocou
+      if ($('est-sessao-status').textContent.startsWith('✨')) status(statusAntes);
+      if (botao) { botao.disabled = false; botao.textContent = '✨ IA'; }
+    }
+  }
+
+  /* =============================================
      JANELA
   ============================================= */
   function criarEditor() {
@@ -673,18 +834,28 @@
       theme: 'snow',
       placeholder: 'Escreva aqui enquanto estuda… Cole ou arraste fotos; clique numa foto para mudar o tamanho.',
       modules: {
-        toolbar: [
-          [{ 'font': [false, ...FONTES.filter(f => !f.antiga).map(f => f.id)] }, { 'size': TAMANHOS.map(t => t === '12pt' ? false : t) }],   // false = padrão (12pt), aparece como "Normal"
-          [{ 'header': [2, 3, 4, false] }],
-          ['bold', 'italic', 'underline', 'strike'],
-          [{ 'color': [] }, { 'background': [] }],
-          [{ 'list': 'ordered' }, { 'list': 'bullet' }, { 'indent': '-1' }, { 'indent': '+1' }],
-          [{ 'align': [] }],
-          ['blockquote', 'code-block', 'link', 'image'],
-          ['clean']
-        ]
+        toolbar: {
+          container: [
+            [{ 'font': [false, ...FONTES.filter(f => !f.antiga).map(f => f.id)] }, { 'size': TAMANHOS.map(t => t === '12pt' ? false : t) }],   // false = padrão (12pt), aparece como "Normal"
+            [{ 'header': [2, 3, 4, false] }],
+            ['bold', 'italic', 'underline', 'strike'],
+            [{ 'color': [] }, { 'background': [] }],
+            [{ 'list': 'ordered' }, { 'list': 'bullet' }, { 'indent': '-1' }, { 'indent': '+1' }],
+            [{ 'align': [] }],
+            ['blockquote', 'code-block', 'link', 'image'],
+            ['clean'],
+            ...(window.isOwner && window.isOwner() ? [['ia']] : [])
+          ],
+          handlers: { ia: melhorarComIA }
+        }
       }
     });
+    const botaoIa = quill.getModule('toolbar').container.querySelector('.ql-ia');
+    if (botaoIa) {
+      botaoIa.textContent = '✨ IA';
+      botaoIa.title = 'Melhorar com IA o trecho selecionado: organiza, grifa, cria tabelas e emojis (Ctrl+Z desfaz)';
+      botaoIa.setAttribute('aria-label', 'Melhorar com IA o trecho selecionado');
+    }
     quill.on('text-change', (delta, old, fonte) => { if (fonte === 'user') agendarSalvar(); });
     iniciarImagens();
   }

@@ -2194,6 +2194,16 @@ html, body {
 .est-sessao-folha .ql-container.ql-snow { border: none; flex: 1; min-height: 0; overflow-y: auto; color: #000; font-size: 12pt; }
 .est-sessao-folha .ql-editor { min-height: 100%; padding: 18px 24px; }
 
+/* Tabelas do resumo (blot "tabela", js/estudos.sessao.js): editor, Meus Resumos e PDF */
+.ql-editor table.est-tabela { width: 100%; margin: 8px 0 14px; border-collapse: collapse; table-layout: auto; white-space: normal; }
+.ql-editor table.est-tabela th, .ql-editor table.est-tabela td { padding: 6px 9px; border: 1px solid #cbd5e1; vertical-align: top; text-align: left; }
+.ql-editor table.est-tabela th { background: #eef2ff; font-weight: 700; }
+.ql-editor table.est-tabela p { margin: 0; }
+/* Botão "✨ IA" da barra do editor (só o dono) */
+.est-sessao-folha .ql-snow.ql-toolbar button.ql-ia { width: auto; padding: 2px 10px; border-radius: 6px; background: #ede9fe; color: #5b21b6; font-weight: 700; font-size: 0.82rem; line-height: 1.2; }
+.est-sessao-folha .ql-snow.ql-toolbar button.ql-ia:hover { background: #ddd6fe; color: #4c1d95; }
+.est-sessao-folha .ql-snow.ql-toolbar button.ql-ia:disabled { opacity: 0.7; cursor: progress; }
+
 /* Imagens do resumo: clicar mostra a alça (js/estudos.sessao.js, IMAGENS) */
 .est-sessao-folha .ql-editor img { max-width: 100%; height: auto; cursor: pointer; }
 .est-img-alca {

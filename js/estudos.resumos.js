@@ -501,7 +501,10 @@
     h4 { font-size: 12pt; color: #1f3864; }
     h5, h6 { font-size: 11pt; color: #1f3864; }
     blockquote { border-left: 3px solid #ccc; margin-left: 0; padding-left: 12px; color: #444; }
-    pre { background: #f3f4f6; padding: 8px; font-family: Consolas, monospace; font-size: 10pt; }`;
+    pre { background: #f3f4f6; padding: 8px; font-family: Consolas, monospace; font-size: 10pt; }
+    body table { border-collapse: collapse; width: 100%; margin: 6pt 0; }
+    body th, body td { border: 1px solid #999; padding: 4pt 6pt; vertical-align: top; text-align: left; }
+    body th { background: #e8eefc; font-weight: bold; }`;
 
   function nomeArquivo(nome, ext) {
     return nome.replace(/[\\/:*?"<>|]+/g, '-').replace(/\s+/g, ' ').trim() + '.' + ext;
