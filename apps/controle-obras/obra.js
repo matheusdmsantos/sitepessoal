@@ -988,7 +988,7 @@ window.OB_OBRA = function (n) {
         <div class="ob-mat-itens inteiro">
           <div class="ob-mat-item ob-mat-cab"><span>Material</span><span>Especificação</span><span>Qtd.</span><span>Un.</span><span>Foto</span><span></span></div>
           ${(salvo ? salvo.itens : [{}, {}, {}]).map(linhaItem).join('')}
-          <div class="ob-prop-rodape"><button type="button" class="ob-btn sutil" data-mat="mais">+ Item</button><small class="ob-sub">Enter passa para o próximo item</small></div>
+          <div class="ob-prop-rodape"><button type="button" class="ob-btn sutil" data-mat="mais">+ Item</button><small class="ob-sub">Enter passa para o próximo item · Ctrl+V cola a foto na linha do cursor</small></div>
         </div>
         <datalist id="ob-mat-sugestoes">${sugestoes.map(s => `<option value="${esc(s)}"></option>`).join('')}</datalist>
         <datalist id="ob-mat-unidades">${UNIDADES.map(u => `<option value="${esc(u)}"></option>`).join('')}</datalist>
@@ -1019,8 +1019,18 @@ window.OB_OBRA = function (n) {
         if (!linhas().length) novaLinha();
       }
     });
-    arquivo.addEventListener('change', async () => {
-      const f = arquivo.files[0], alvo = celulaAlvo;
+    arquivo.addEventListener('change', () => anexar(arquivo.files[0], celulaAlvo));
+    // Ctrl+V com uma imagem (ex.: recorte do Win+Shift+S) vira a foto da linha do cursor;
+    // fora de uma linha, da última linha com material
+    form.addEventListener('paste', ev => {
+      const img = [...((ev.clipboardData && ev.clipboardData.items) || [])].find(i => i.kind === 'file' && i.type.startsWith('image/'));
+      if (!img) return;
+      ev.preventDefault();
+      const linha = (document.activeElement && document.activeElement.closest('.ob-mat-item:not(.ob-mat-cab)'))
+        || linhas().filter(l => l.querySelector('[name=material]').value.trim()).pop() || linhas().pop();
+      anexar(img.getAsFile(), linha.querySelector('.ob-mat-foto'));
+    });
+    async function anexar(f, alvo) {
       if (!f || !alvo) return;
       enviando++;
       botaoSalvar(form, false);
@@ -1031,7 +1041,7 @@ window.OB_OBRA = function (n) {
       if (!caminho || !alvo.isConnected) return;
       alvo.outerHTML = celulaFoto(caminho);
       preencherFotos(form);
-    });
+    }
     // Enter numa linha de item vai para o próximo (ou cria um), em vez de enviar o formulário
     form.addEventListener('keydown', ev => {
       const linha = ev.key === 'Enter' && ev.target.closest('.ob-mat-item');
