@@ -32,7 +32,7 @@
     laudo: 'Laudo / vistoria', consultoria: 'Consultoria', outro: 'Outro'
   };
   const TIPOS_DOC = ['Proposta', 'Contrato', 'Aditivo', 'ART / RRT', 'Projeto', 'Memorial descritivo', 'Orçamento',
-    'Cronograma', 'Medição', 'Nota fiscal', 'Recibo', 'Ofício', 'E-mail', 'Ata de reunião', 'Relatório', 'Laudo',
+    'Cronograma', 'Medição', 'Nota fiscal', 'Recibo', 'Ofício', 'E-mail', 'Ata de reunião', 'Relatório', 'Solicitação de materiais', 'Laudo',
     'Foto', 'Despacho', 'Anotação', 'Outro'];
   // Incluir um destes documentos sugere avançar a fase (só para a frente)
   const AVANCA_FASE = { 'Proposta': 'proposta', 'Contrato': 'contratado' };
@@ -827,7 +827,7 @@
   }
 
   function htmlDocumento(p, d) {
-    if (obra && obra.ehRelatorio(d)) return obra.htmlDocumento(p, d);
+    if (obra && obra.ehDocObra(d)) return obra.htmlDocumento(p, d);
     const externo = d.origem !== 'interno';
     return `
       <div class="ob-card ob-doc">
@@ -1762,14 +1762,14 @@
     else if (acao.startsWith('obra-') && obra) obra.aoClicar(acao, el, p);
     else if (acao.startsWith('fin-') && fin) fin.aoClicar(acao, el, p);
     else if (acao === 'editar-doc' && p && d) {
-      if (obra && obra.ehRelatorio(d)) obra.formRelatorio(p, d);
+      if (obra && obra.ehDocObra(d)) obra.editarDoc(p, d);
       else (lerProposta(d) ? formProposta : d.origem === 'interno' ? formInterno : formExterno)(p, d);
     }
     else if (acao === 'excluir-doc' && p && d) excluirDoc(p, d);
     else if (acao === 'imprimir-doc' && p && d) {
       const prop = lerProposta(d);
       if (prop) imprimirProposta(p, d, prop);
-      else if (obra && obra.ehRelatorio(d)) obra.imprimirRelatorio(p, d);
+      else if (obra && obra.ehDocObra(d)) obra.imprimirDoc(p, d);
       else imprimirDoc(p, d);
     }
     else if ((acao === 'abrir-arquivo' || acao === 'baixar-arquivo') && d) {

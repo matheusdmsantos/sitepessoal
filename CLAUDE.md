@@ -167,8 +167,8 @@ A página usa `<body class="auth-pending">` (com `visibility: hidden`) e remove 
 - [ ] Senha antiga trocada nos outros serviços onde era usada (ela ficou exposta no site antigo).
 - [ ] Repositório do GitHub passado para privado.
 - [ ] `supabase/erros.sql` executado (Caderno de Erros).
-- [ ] `supabase/acompanhamento.sql` executado (Acompanhamento de Obra).
-- [ ] `supabase/financeiro.sql` executado (Financeiro), depois do acompanhamento.sql.
+- [x] `supabase/acompanhamento.sql` executado (Acompanhamento de Obra): tabelas `obras` e `obra_etapas` conferidas em 08/11/2026.
+- [x] `supabase/financeiro.sql` executado (Financeiro): tabela `recebimentos` conferida em 08/11/2026.
 - [ ] `supabase/agenda.sql` executado (Google Agenda).
 - [ ] Colunas `prazos.mensagem`, `prazos.para_nome` e `prazos.para_telefone` criadas (3 `alter table` no fim do `obras.sql`).
 - [ ] Coluna `topicos.origem` criada (`alter table public.topicos add column if not exists origem text;`, no fim do `estudos-plano.sql`).
@@ -233,6 +233,7 @@ A página usa `<body class="auth-pending">` (com `visibility: hidden`) e remove 
   - *Fotos*: reduzidas a 1600 px JPEG 85% (`reduzirFoto`) e enviadas para `obras-docs/<processo>/obra/`; links assinados de 1 h (`linksFotos`). Excluir visita/pendência/processo apaga as fotos.
   - *Honorários*: aba "Financeiro" da obra = card do `financeiro.js`; "Iniciar" gera as mensalidades por `fin.gerarMensalidades`. A tabela `obra_honorarios` não é mais usada (o `financeiro.sql` copia os dados dela).
   - *Relatório Gerencial da Obra*: documento interno tipo "Relatório" com os dados num comentário `<!--ob-relatorio:…-->` (período, retrato do progresso, visitas, fotos escolhidas, pendências, próximas etapas). Prévia e impressão no papel timbrado por `paginaTimbrada` (a mesma da proposta); as fotos ganham links novos a cada abertura. Editar mantém o progresso salvo, salvo se marcar "Atualizar…" ou mudar o período.
+  - *Solicitação de materiais* (aba "Materiais", `formMateriais`): documento interno tipo "Solicitação de materiais" com os dados num comentário `<!--ob-materiais:…-->` (número próprio 01, 02…, data, entrega na obra até, etapa, itens `{material, espec, qtd, unidade}`, observações, destinatário `para {nome, email}`, `enviada_em`). Folha no papel timbrado por `paginaTimbrada` com o `CSS_RELATORIO` (tabela de dados, carta ao proprietário, tabela de itens, assinatura). O e-mail do proprietário não tem coluna no processo: fica na solicitação, e a seguinte já vem com ele (e com os materiais anteriores como sugestão). "✉️ Enviar por e-mail" (`formEmailMateriais`) abre o Gmail (`mail.google.com/mail/?view=cm`) com destinatário, assunto e o texto com a lista; o PDF é salvo em "Imprimir / PDF" e anexado à mão (link de e-mail não anexa arquivo). Abrir o Gmail grava `enviada_em` e registra no andamento (tipo `mensagem`). Sem controle de entrega dos materiais (escolha do usuário). Relatório e solicitação passam pelo `ehDocObra`/`editarDoc`/`imprimirDoc` do obra.js, chamados pelo app.js.
   - Andamento: entradas do tipo `obra` (ponto laranja).
 - *Financeiro* (`apps/controle-obras/financeiro.js`, `window.OB_FIN(nucleo)`, criado antes da obra, que o recebe como `nucleo.fin`). Tabela `recebimentos`: descrição, `origem` (mensal | proposta | avulso), competência, valor, vencimento, `recebido_em`/`valor_recebido`/forma, nota fiscal (`nf_numero`, `nf_emitida_em`, `nf_enviada_em`, `nf_documento_id` = documento "Nota fiscal" do processo com o PDF/XML no bucket).
   - No processo: card "💰 Financeiro" (resumo e tabela; "Gerar mensalidades" se `p.mensal`; "Parcelas da proposta": entrada (% da proposta) hoje e saldo na entrega, em dias úteis, sobre o valor dos projetos com o desconto; itens em meses ficam de fora).

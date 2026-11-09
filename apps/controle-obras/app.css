@@ -350,6 +350,21 @@ a.ob-chip:hover { color: var(--silver-bright); }
 .ob-rel-linha strong { color: var(--silver-bright); display: block; }
 .ob-rel-linha small { color: var(--accent); font-size: 0.75rem; }
 
+/* solicitação de materiais */
+.ob-mat-itens { display: flex; flex-direction: column; border: 1px solid var(--border); border-radius: var(--r-md); overflow: hidden; }
+.ob-mat-item { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1.2fr) 80px 80px 34px; gap: 8px; align-items: center; padding: 7px 10px; border-top: 1px solid var(--border); }
+.ob-mat-cab { border-top: 0; background: var(--bg-glass); font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--accent); }
+.ob-passos { margin: 0; padding-left: 22px; display: flex; flex-direction: column; gap: 10px; font-size: 0.86rem; color: var(--silver); }
+@media (max-width: 640px) {
+  /* 1ª linha: material e ✕; 2ª: quantidade, unidade e especificação */
+  .ob-mat-item { grid-template-columns: 64px 64px minmax(0, 1fr) 34px; }
+  .ob-mat-item [name=material] { grid-column: 1 / 4; }
+  .ob-mat-item [name=qtd] { grid-row: 2; grid-column: 1; }
+  .ob-mat-item [name=unidade] { grid-row: 2; grid-column: 2; }
+  .ob-mat-item [name=espec] { grid-row: 2; grid-column: 3 / 5; }
+  .ob-mat-cab { display: none; }
+}
+
 /* formulários da obra */
 .ob-check.azul { background: rgba(96, 165, 250, 0.08); color: var(--azul); }
 .ob-check.azul input { accent-color: var(--azul); }

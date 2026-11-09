@@ -2,8 +2,8 @@
  *
  * Parte "Obra" de um processo da Gestão de Contratos: cronograma físico (etapas
  * com peso e % concluído), visitas técnicas com fotos, pendências, honorários
- * mensais (no financeiro.js, tabela recebimentos) e o Relatório Gerencial da Obra, que é um documento do processo
- * impresso no mesmo papel timbrado da proposta.
+ * mensais (no financeiro.js, tabela recebimentos), o Relatório Gerencial da Obra e as Solicitações de materiais
+ * ao proprietário, que são documentos do processo impressos no mesmo papel timbrado da proposta.
  *
  * Tabelas: obras, obra_etapas, obra_visitas e obra_pendencias
  * (supabase/acompanhamento.sql). Fotos no bucket obras-docs, em <processo>/obra/.
@@ -23,8 +23,11 @@ window.OB_OBRA = function (n) {
   const CLIMAS = ['☀️ Ensolarado', '⛅ Nublado', '🌧️ Chuvoso', '⛈️ Chuva forte (obra parada)'];
   const GRAVIDADES = { alta: 'Alta', media: 'Média', baixa: 'Baixa' };
   const ABAS = [['geral', 'Visão geral'], ['visitas', 'Visitas'], ['cronograma', 'Cronograma'],
-    ['pendencias', 'Pendências'], ['honorarios', 'Financeiro'], ['relatorios', 'Relatórios']];
+    ['pendencias', 'Pendências'], ['materiais', 'Materiais'], ['honorarios', 'Financeiro'], ['relatorios', 'Relatórios']];
+  // Documentos da obra guardam os dados num comentário no início do conteúdo
   const MARCA_RELATORIO = '<!--ob-relatorio:';
+  const MARCA_MATERIAIS = '<!--ob-materiais:';
+  const UNIDADES = ['un', 'pç', 'sc', 'kg', 't', 'm', 'm²', 'm³', 'l', 'gl', 'lata', 'cx', 'rolo', 'barra', 'milheiro'];
   const FOTO_MAX = 1600;   // lado maior da foto enviada (px)
   const ATRASO = 10;       // pontos abaixo do previsto para a etapa aparecer como atrasada
 
@@ -56,6 +59,7 @@ window.OB_OBRA = function (n) {
     .sort((a, b) => (!!a.corrigida_em - !!b.corrigida_em) || ordemGrav(a) - ordemGrav(b) || a.aberta_em.localeCompare(b.aberta_em));
   const ordemGrav = x => Object.keys(GRAVIDADES).indexOf(x.gravidade);
   const relatoriosDe = pid => n.docsDe(pid).filter(ehRelatorio);
+  const solicitacoesDe = pid => n.docsDe(pid).filter(ehMateriais);
 
   function fotosDoProcesso(pid) {
     const fs = visitas.filter(v => v.processo_id === pid).flatMap(v => (v.fotos || []).map(f => f.caminho));
@@ -117,6 +121,7 @@ window.OB_OBRA = function (n) {
   const addDias = (dia, k) => { const d = new Date(dia + 'T12:00:00'); d.setDate(d.getDate() + k); return n.dataLocal(d); };
   const diaSemana = dia => new Date(dia + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'long' });
   const comQuebras = s => esc(s).replace(/\n/g, '<br>');
+  const dois = k => String(k).padStart(2, '0');
 
   /* =============================================
      FOTOS (reduzidas antes do envio; links assinados de 1 h)
@@ -189,20 +194,20 @@ window.OB_OBRA = function (n) {
     if (!o) {
       return `<div class="ob-card ob-obra-inicio">
         <h3 class="ob-card-titulo">🏗️ Acompanhamento da obra</h3>
-        <p>Registre as visitas com fotos, acompanhe o cronograma físico e as pendências, controle os honorários mensais e gere o Relatório Gerencial da Obra para o cliente.</p>
+        <p>Registre as visitas com fotos, acompanhe o cronograma físico e as pendências, peça materiais ao proprietário, controle os honorários mensais e gere o Relatório Gerencial da Obra para o cliente.</p>
         <button type="button" class="ob-btn primario" data-acao="obra-configurar">Iniciar acompanhamento</button>
       </div>`;
     }
     const contagem = {
       visitas: visitasDe(p.id).length, cronograma: etapasDe(p.id).length,
-      pendencias: pendenciasDe(p.id).filter(x => !x.corrigida_em).length,
+      pendencias: pendenciasDe(p.id).filter(x => !x.corrigida_em).length, materiais: solicitacoesDe(p.id).length,
       honorarios: n.fin ? n.fin.resumoProcesso(p.id).qtdAberto : 0, relatorios: relatoriosDe(p.id).length
     };
     const sub = [o.endereco, o.inicio && `início ${fmtData(o.inicio)}`, o.termino && `término previsto ${fmtData(o.termino)}`,
       o.valor_mensal && `${fmtMoeda(o.valor_mensal)}/mês`].filter(Boolean).map(esc).join(' · ');
     const ativa = ABAS.some(([id]) => id === aba) ? aba : 'geral';
     const corpo = { geral: telaGeral, visitas: telaVisitas, cronograma: telaCronograma, pendencias: telaPendencias,
-      honorarios: telaHonorarios, relatorios: telaRelatorios }[ativa];
+      materiais: telaMateriais, honorarios: telaHonorarios, relatorios: telaRelatorios }[ativa];
     return `
       <div class="ob-card ob-obra-cab">
         <div class="ob-obra-topo">
@@ -364,6 +369,21 @@ window.OB_OBRA = function (n) {
           <span class="ob-sub">${(r.fotos || []).length} foto${(r.fotos || []).length === 1 ? '' : 's'}</span>
         </a>`;
       }).join('') || '<p class="ob-vazio">Nenhum relatório ainda.</p>'}
+    </div>`;
+  }
+
+  function telaMateriais(p) {
+    const ss = solicitacoesDe(p.id).map(d => [d, lerMateriais(d)]).filter(([, m]) => m).reverse();
+    return `<div class="ob-card">
+      <h3 class="ob-card-titulo">Solicitações de materiais
+        <button type="button" class="ob-btn primario" data-acao="obra-materiais-nova">📦 Nova solicitação</button></h3>
+      <p class="ob-sub">Cada solicitação é um documento do processo, no papel timbrado: abra-a para ver a prévia, salvar o PDF e enviar ao proprietário pelo Gmail.</p>
+      ${ss.map(([d, m]) => `<a class="ob-rel-linha" href="#/p/${esc(p.id)}/d/${esc(d.id)}">
+          <span class="ob-numero">${n.num4(d.numero)}</span>
+          <span><strong>Solicitação nº ${dois(m.numero)}</strong><small>${fmtData(m.data)}${m.etapa ? ` · ${esc(m.etapa)}` : ''}</small></span>
+          <span>${qtdItens(m)}${m.prazo ? ` · entrega até ${fmtData(m.prazo)}` : ''}</span>
+          <span class="ob-sub">${m.enviada_em ? `✉️ enviada em ${fmtData(m.enviada_em)}` : 'ainda não enviada'}</span>
+        </a>`).join('') || '<p class="ob-vazio">Nenhuma solicitação ainda.</p>'}
     </div>`;
   }
 
@@ -717,13 +737,18 @@ window.OB_OBRA = function (n) {
   /* =============================================
      RELATÓRIO GERENCIAL DA OBRA
   ============================================= */
-  function lerRelatorio(d) {
+  function lerMarca(d, marca) {
     const c = d && d.conteudo;
-    if (!c || !c.startsWith(MARCA_RELATORIO)) return null;
-    try { return JSON.parse(decodeURIComponent(c.slice(MARCA_RELATORIO.length, c.indexOf('-->')))); }
+    if (!c || !c.startsWith(marca)) return null;
+    try { return JSON.parse(decodeURIComponent(c.slice(marca.length, c.indexOf('-->')))); }
     catch { return null; }
   }
+  const comMarca = (marca, dados) => marca + encodeURIComponent(JSON.stringify(dados)) + '-->';
+  const lerRelatorio = d => lerMarca(d, MARCA_RELATORIO);
+  const lerMateriais = d => lerMarca(d, MARCA_MATERIAIS);
   const ehRelatorio = d => !!(d && d.conteudo && d.conteudo.startsWith(MARCA_RELATORIO));
+  const ehMateriais = d => !!(d && d.conteudo && d.conteudo.startsWith(MARCA_MATERIAIS));
+  const ehDocObra = d => ehRelatorio(d) || ehMateriais(d);
 
   // Retrato do avanço no período: % de cada etapa no início e no fim, e o previsto no fim
   function progressoNoPeriodo(pid, de, ate) {
@@ -918,42 +943,226 @@ window.OB_OBRA = function (n) {
     return n.paginaTimbrada(`Relatório ${String(r.numero).padStart(2, '0')} - ${p.cliente || p.assunto}`, htmlRelatorio(r, links), r.eu, modo, CSS_RELATORIO);
   }
 
+  /* =============================================
+     SOLICITAÇÃO DE MATERIAIS (ao proprietário)
+     Documento do processo no papel timbrado; os dados ficam em <!--ob-materiais:…-->.
+     Vai por e-mail pelo Gmail: o PDF é salvo em "Imprimir / PDF" e anexado à mão
+     (nenhum link de e-mail consegue anexar arquivo).
+  ============================================= */
+  const qtdItens = m => `${m.itens.length} ${m.itens.length === 1 ? 'item' : 'itens'}`;
+  const emailValido = s => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(s);
+
+  function formMateriais(p, d) {
+    const salvo = d && lerMateriais(d);
+    const anteriores = solicitacoesDe(p.id).map(lerMateriais).filter(Boolean);
+    const numero = salvo ? salvo.numero : Math.max(0, ...anteriores.map(m => m.numero || 0)) + 1;
+    // O e-mail do proprietário não tem campo no processo: vem da solicitação anterior
+    const ultima = anteriores[anteriores.length - 1];
+    const para = salvo ? salvo.para : (ultima && ultima.para) || { nome: p.cliente || p.contato || '', email: '' };
+    const sugestoes = [...new Set(anteriores.flatMap(m => m.itens.map(it => it.material)))].sort((a, b) => a.localeCompare(b));
+    const etapasObra = [...new Set([...etapasDe(p.id).map(e => e.nome), salvo && salvo.etapa].filter(Boolean))];
+    const linhaItem = (it = {}) => `<div class="ob-mat-item">
+        <input class="ob-input" name="material" value="${esc(it.material)}" placeholder="Material" aria-label="Material" list="ob-mat-sugestoes" />
+        <input class="ob-input" name="espec" value="${esc(it.espec)}" placeholder="Especificação (opcional)" aria-label="Especificação" />
+        <input class="ob-input" name="qtd" value="${esc(it.qtd)}" inputmode="decimal" placeholder="Qtd." aria-label="Quantidade" />
+        <input class="ob-input" name="unidade" value="${esc(it.unidade)}" placeholder="Un." aria-label="Unidade" list="ob-mat-unidades" />
+        <button type="button" class="ob-btn sutil" data-mat="remover" aria-label="Remover item">✕</button>
+      </div>`;
+
+    n.abrirModal(`Solicitação de materiais nº ${dois(numero)}`, `
+      <form id="ob-form-mat" class="ob-form" novalidate>
+        ${campo('Data', `<input type="date" class="ob-input" name="data" value="${esc(salvo ? salvo.data : n.hoje())}" />`)}
+        ${campo('Entregar na obra até (opcional)', `<input type="date" class="ob-input" name="prazo" value="${esc(salvo && salvo.prazo)}" />`)}
+        ${campo('Para (proprietário)', `<input class="ob-input" name="para_nome" value="${esc(para.nome)}" />`)}
+        ${campo('E-mail do proprietário', `<input type="email" class="ob-input" name="para_email" value="${esc(para.email)}" placeholder="nome@exemplo.com" />`)}
+        ${etapasObra.length ? campo('Etapa da obra (opcional)', `<select class="ob-input" name="etapa"><option value="">—</option>${opcoes(etapasObra.map(e => [e, e]), salvo && salvo.etapa)}</select>`, 'inteiro') : ''}
+        <div class="ob-mat-itens inteiro">
+          <div class="ob-mat-item ob-mat-cab"><span>Material</span><span>Especificação</span><span>Qtd.</span><span>Un.</span><span></span></div>
+          ${(salvo ? salvo.itens : [{}, {}, {}]).map(linhaItem).join('')}
+          <div class="ob-prop-rodape"><button type="button" class="ob-btn sutil" data-mat="mais">+ Item</button><small class="ob-sub">Enter passa para o próximo item</small></div>
+        </div>
+        <datalist id="ob-mat-sugestoes">${sugestoes.map(s => `<option value="${esc(s)}"></option>`).join('')}</datalist>
+        <datalist id="ob-mat-unidades">${UNIDADES.map(u => `<option value="${esc(u)}"></option>`).join('')}</datalist>
+        ${campo('Observações (opcional)', `<textarea class="ob-input" name="obs" rows="3" placeholder="Ex.: descarregar pelo portão lateral; recebimento das 7h às 17h">${esc(salvo && salvo.obs)}</textarea>`, 'inteiro')}
+        ${acoesForm(salvo ? 'Salvar' : 'Gerar solicitação')}
+      </form>`, true);
+
+    const form = document.getElementById('ob-form-mat');
+    const linhas = () => [...form.querySelectorAll('.ob-mat-item:not(.ob-mat-cab)')];
+    const novaLinha = () => {
+      form.querySelector('.ob-mat-itens .ob-prop-rodape').insertAdjacentHTML('beforebegin', linhaItem());
+      linhas().pop().querySelector('[name=material]').focus();
+    };
+    form.addEventListener('click', ev => {
+      const el = ev.target.closest('[data-mat]');
+      if (!el) return;
+      if (el.dataset.mat === 'mais') novaLinha();
+      else {
+        el.closest('.ob-mat-item').remove();
+        if (!linhas().length) novaLinha();
+      }
+    });
+    // Enter numa linha de item vai para o próximo (ou cria um), em vez de enviar o formulário
+    form.addEventListener('keydown', ev => {
+      const linha = ev.key === 'Enter' && ev.target.closest('.ob-mat-item');
+      if (!linha) return;
+      ev.preventDefault();
+      const prox = linha.nextElementSibling;
+      if (prox && prox.matches('.ob-mat-item')) prox.querySelector('[name=material]').focus(); else novaLinha();
+    });
+
+    form.addEventListener('submit', async ev => {
+      ev.preventDefault();
+      const f = new FormData(form);
+      const itens = linhas().map(row => {
+        const v = nome => row.querySelector(`[name=${nome}]`).value.trim();
+        return { material: v('material'), espec: v('espec'), qtd: v('qtd'), unidade: v('unidade') };
+      }).filter(it => it.material);
+      const email = f.get('para_email').trim();
+      if (!itens.length) { status(form, 'Inclua pelo menos um material.'); return; }
+      if (email && !emailValido(email)) { status(form, 'Confira o e-mail do proprietário.'); return; }
+      const o = obraDe(p.id) || {};
+      const etapa = f.get('etapa') || '';
+      const dados = {
+        numero, data: f.get('data') || n.hoje(), prazo: f.get('prazo') || '', etapa, itens, obs: f.get('obs').trim(),
+        para: { nome: f.get('para_nome').trim(), email }, enviada_em: (salvo && salvo.enviada_em) || '',
+        eu: n.meusDados(), cliente: p.cliente || '', assunto: p.assunto, endereco: o.endereco || p.local || ''
+      };
+      const doc = { ...(d || { id: n.novoId('d'), processo_id: p.id, numero: n.proximoNumeroDoc(p), origem: 'interno', criado_em: new Date().toISOString() }),
+        tipo: 'Solicitação de materiais', titulo: `Nº ${dois(numero)} — ${qtdItens(dados)}${etapa ? ` · ${etapa}` : ''}`,
+        data: dados.data, conteudo: comMarca(MARCA_MATERIAIS, dados) };
+      botaoSalvar(form, false);
+      if (!(await n.gravar('documentos', doc))) { botaoSalvar(form, true); return; }
+      if (d) Object.assign(d, doc); else n.incluirDocumento(doc);
+      await n.registrar(p, 'documento', `Documento ${n.num4(doc.numero)} ${d ? 'alterado' : 'incluído'}: Solicitação de materiais nº ${dois(numero)} (${qtdItens(dados)}).`);
+      n.fecharModal();
+      location.hash = `#/p/${p.id}/d/${doc.id}`;
+      n.render();
+    });
+  }
+
+  function htmlMateriais(m) {
+    const eu = m.eu || {};
+    const responsavel = [eu.profissao, eu.nomeCompleto || eu.nome, eu.registro].filter(Boolean).join(' ');
+    const info = [['Proprietário', m.cliente], ['Obra / serviço', m.assunto], ['Endereço da obra', m.endereco],
+      ['Etapa da obra', m.etapa], ['Entrega na obra até', m.prazo ? fmtData(m.prazo) : ''], ['Responsável técnico', responsavel]]
+      .filter(([, v]) => v);
+    const comEspec = m.itens.some(it => it.espec);
+    const nome = m.para && m.para.nome;
+    return `
+      <section>
+        <div class="rel-titulo"><p>SOLICITAÇÃO DE MATERIAIS Nº ${dois(m.numero)}</p><p>${fmtData(m.data)}</p></div>
+        <table class="rel-tab rel-info"><tbody>${info.map(([a, b]) => `<tr><th>${esc(a)}</th><td>${esc(b)}</td></tr>`).join('')}</tbody></table>
+        <p>${nome ? `Prezado(a) ${esc(nome)},` : 'Prezado(a) proprietário(a),'}</p>
+        <p>Para dar continuidade aos serviços da obra, solicito a aquisição e a entrega dos materiais relacionados abaixo${m.prazo ? ` até ${fmtData(m.prazo)}` : ''}.</p>
+        <table class="rel-tab"><thead><tr><th>Item</th><th>Material</th>${comEspec ? '<th>Especificação</th>' : ''}<th>Qtd.</th><th>Un.</th></tr></thead>
+          <tbody>${m.itens.map((it, i) => `<tr><td class="num">${i + 1}</td><td>${esc(it.material)}</td>${comEspec ? `<td>${esc(it.espec)}</td>` : ''}
+            <td class="num">${esc(it.qtd)}</td><td class="num">${esc(it.unidade)}</td></tr>`).join('')}</tbody></table>
+        ${m.obs ? `<p><b>Observações:</b> ${comQuebras(m.obs)}</p>` : ''}
+        <p>Fico à disposição para esclarecer as especificações ou avaliar a troca de algum material.</p>
+        <p class="prop-assinatura"><span></span>${esc(responsavel || eu.nome || '')}<br>Responsável técnico</p>
+      </section>`.replace(/\n\s*/g, '');
+  }
+
+  function paginaMateriais(p, d, modo) {
+    const m = lerMateriais(d);
+    // O título vira o nome sugerido ao salvar o PDF
+    return n.paginaTimbrada(`Solicitação de materiais ${dois(m.numero)} - ${p.cliente || p.assunto}`, htmlMateriais(m), m.eu, modo, CSS_RELATORIO);
+  }
+
+  function formEmailMateriais(p, d) {
+    const m = lerMateriais(d);
+    const h = new Date().getHours();
+    const primeiro = ((m.para && m.para.nome) || '').trim().split(/\s+/)[0];
+    const lista = m.itens.map(it => `• ${it.material}${it.espec ? ` (${it.espec})` : ''}${it.qtd || it.unidade ? ` — ${[it.qtd, it.unidade].filter(Boolean).join(' ')}` : ''}`).join('\n');
+    const assunto = `Solicitação de materiais nº ${dois(m.numero)} — ${p.assunto}`;
+    const assinatura = m.eu && (m.eu.nomeCompleto || m.eu.nome);
+    const texto = [
+      `${h < 12 ? 'Bom dia' : h < 18 ? 'Boa tarde' : 'Boa noite'}${primeiro ? `, ${primeiro}` : ''}!`,
+      `Segue em anexo a solicitação de materiais nº ${dois(m.numero)} da obra${m.endereco ? ` (${m.endereco})` : ''}${m.prazo ? `, com entrega na obra até ${fmtData(m.prazo)}` : ''}:`,
+      lista,
+      m.obs ? `Observações: ${m.obs}` : '',
+      'Qualquer dúvida, fico à disposição.',
+      assinatura ? `Atenciosamente,\n${assinatura}` : ''
+    ].filter(Boolean).join('\n\n');
+
+    n.abrirModal(`Enviar a solicitação nº ${dois(m.numero)} por e-mail`, `
+      <form id="ob-form-email" class="ob-form" novalidate>
+        <ol class="ob-passos inteiro">
+          <li>Clique em <button type="button" class="ob-btn" data-acao="obra-materiais-pdf" data-id="${esc(d.id)}">📄 Salvar o PDF</button> e, na janela de impressão, escolha “Salvar como PDF”.</li>
+          <li>Depois, clique em “Abrir no Gmail”, anexe o PDF salvo e envie.</li>
+        </ol>
+        ${campo('Para', `<input type="email" class="ob-input" name="para" value="${esc(m.para && m.para.email)}" placeholder="e-mail do proprietário" />`, 'inteiro')}
+        ${campo('Assunto', `<input class="ob-input" name="assunto" value="${esc(assunto)}" />`, 'inteiro')}
+        ${campo('Mensagem (pode editar antes de abrir)', `<textarea class="ob-input" name="texto" rows="12">${esc(texto)}</textarea>`, 'inteiro')}
+        ${acoesForm('✉️ Abrir no Gmail')}
+      </form>`, true);
+
+    const form = document.getElementById('ob-form-email');
+    form.addEventListener('submit', async ev => {
+      ev.preventDefault();
+      const f = new FormData(form);
+      const para = f.get('para').trim(), assuntoFinal = f.get('assunto').trim();
+      if (!emailValido(para)) { status(form, 'Informe o e-mail do proprietário.'); return; }
+      // Aberto antes de qualquer await, ainda no clique, para o navegador não bloquear a aba
+      window.open(`https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(para)}&su=${encodeURIComponent(assuntoFinal)}&body=${encodeURIComponent(f.get('texto'))}`, '_blank', 'noopener');
+      n.fecharModal();
+      // Guarda o e-mail (a próxima solicitação já vem com ele) e a data do envio
+      const doc = { ...d, conteudo: comMarca(MARCA_MATERIAIS, { ...m, para: { ...m.para, email: para }, enviada_em: n.hoje() }) };
+      if (await n.gravar('documentos', doc)) Object.assign(d, doc);
+      await n.registrar(p, 'mensagem', `E-mail para ${para}: “${assuntoFinal}”.`);
+      n.render();
+      n.aviso('Gmail aberto. Anexe o PDF da solicitação antes de enviar.');
+    });
+  }
+
+  /* =============================================
+     DOCUMENTOS DA OBRA (relatório e solicitação de materiais) na árvore do processo
+  ============================================= */
   function htmlDocumento(p, d) {
-    const r = lerRelatorio(d);
+    const m = lerMateriais(d);
+    const r = m ? null : lerRelatorio(d);
+    const resumo = m
+      ? `${qtdItens(m)}${m.prazo ? ` · entrega até ${fmtData(m.prazo)}` : ''} · ${m.enviada_em ? `enviada por e-mail em ${fmtData(m.enviada_em)}` : 'ainda não enviada'}`
+      : `${(r.visitas || []).length} visita(s) · ${(r.fotos || []).length} foto(s) · avanço ${fmtPct(r.avanco && r.avanco.atual)}`;
     return `<div class="ob-card ob-doc">
       <div class="ob-doc-cab">
         <div>
           <p class="ob-sub">Documento ${n.num4(d.numero)} · interno · ${fmtData(d.data)}</p>
           <h3 class="ob-doc-titulo">${esc(d.tipo)} — ${esc(d.titulo)}</h3>
-          <p class="ob-sub">${(r.visitas || []).length} visita(s) · ${(r.fotos || []).length} foto(s) · avanço ${fmtPct(r.avanco && r.avanco.atual)} · <a class="ob-link" href="#/p/${esc(p.id)}/obra">acompanhamento da obra</a></p>
+          <p class="ob-sub">${resumo} · <a class="ob-link" href="#/p/${esc(p.id)}/obra${m ? '/materiais' : ''}">acompanhamento da obra</a></p>
         </div>
         <div class="ob-doc-acoes">
+          ${m ? `<button type="button" class="ob-btn primario" data-acao="obra-materiais-email" data-id="${esc(d.id)}">✉️ Enviar por e-mail</button>` : ''}
           <button type="button" class="ob-btn" data-acao="imprimir-doc">Imprimir / PDF</button>
           <button type="button" class="ob-btn" data-acao="editar-doc">Editar</button>
           <button type="button" class="ob-btn perigo" data-acao="excluir-doc">Excluir</button>
         </div>
       </div>
-      <iframe class="ob-prop-visor" title="Prévia do relatório" data-relatorio="${esc(d.id)}"></iframe>
+      <iframe class="ob-prop-visor" title="Prévia do documento" data-doc-obra="${esc(d.id)}"></iframe>
     </div>`;
   }
 
-  async function imprimirRelatorio(p, d) {
+  const paginaDoc = (p, d, modo) => (ehMateriais(d) ? paginaMateriais(p, d, modo) : paginaRelatorio(p, d, modo));
+  const editarDoc = (p, d) => (ehMateriais(d) ? formMateriais : formRelatorio)(p, d);
+
+  async function imprimirDoc(p, d) {
     const w = window.open('', '_blank');   // aberta já no clique, para o navegador não bloquear
     if (!w) { n.aviso('Libere as janelas pop-up para imprimir.'); return; }
-    w.document.write('<p style="font-family:sans-serif">Preparando o relatório…</p>');
-    const html = await paginaRelatorio(p, d, 'imprimir');
+    w.document.write('<p style="font-family:sans-serif">Preparando o documento…</p>');
+    const html = await paginaDoc(p, d, 'imprimir');
     w.document.open();
     w.document.write(html);
     w.document.close();
   }
 
-  /* Depois de desenhar a tela: miniaturas das fotos e a prévia do relatório */
+  /* Depois de desenhar a tela: miniaturas das fotos e a prévia do documento da obra */
   async function depoisRender(p) {
     preencherFotos();
-    const fr = document.querySelector('iframe[data-relatorio]');
+    const fr = document.querySelector('iframe[data-doc-obra]');
     if (!fr) return;
-    const d = n.docsDe(p.id).find(x => x.id === fr.dataset.relatorio);
-    if (d) fr.srcdoc = await paginaRelatorio(p, d, 'tela');
+    const d = n.docsDe(p.id).find(x => x.id === fr.dataset.docObra);
+    if (d) fr.srcdoc = await paginaDoc(p, d, 'tela');
   }
 
   /* =============================================
@@ -967,6 +1176,11 @@ window.OB_OBRA = function (n) {
     else if (acao === 'obra-visita-nova') formVisita(p, null);
     else if (acao === 'obra-visita-editar') formVisita(p, visitas.find(v => v.id === id));
     else if (acao === 'obra-relatorio-novo') formRelatorio(p, null);
+    else if (acao === 'obra-materiais-nova') formMateriais(p, null);
+    else if (acao === 'obra-materiais-email' || acao === 'obra-materiais-pdf') {
+      const d = n.docsDe(p.id).find(x => x.id === id);
+      if (d) (acao === 'obra-materiais-pdf' ? imprimirDoc : formEmailMateriais)(p, d);
+    }
     else if (acao === 'obra-pendencia-nova') formPendencia(p, null);
     else if (acao === 'obra-pendencia-editar') formPendencia(p, pendencias.find(x => x.id === id));
     else if (acao === 'obra-pendencia-corrigir') formCorrigir(p, pendencias.find(x => x.id === id));
@@ -1002,6 +1216,6 @@ window.OB_OBRA = function (n) {
 
   return {
     carregar, esquecer, fotosDoProcesso, htmlArvore, htmlTela, htmlDocumento, depoisRender,
-    ehRelatorio, formRelatorio, imprimirRelatorio, aoClicar
+    ehDocObra, editarDoc, imprimirDoc, aoClicar
   };
 };
