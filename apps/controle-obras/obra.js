@@ -1348,19 +1348,17 @@ window.OB_OBRA = function (n) {
     const saudacao = nome && setor ? `Prezado(a) ${esc(nome)} – ${esc(setor)},` : nome ? `Prezado(a) ${esc(nome)},` : setor ? `Prezados – ${esc(setor)},` : 'Prezados,';
     const acao = temCompra && temLocacao ? 'a aquisição e a locação' : temLocacao ? 'a locação' : 'a aquisição';
     const comSubst = m.itens.some(it => it.subst || it.substObs);
-    const comFoto = m.itens.some(it => links[it.foto]);
     const aviso = m.rev > 0 && m.substitui
       ? `<div class="mat-aviso">Esta solicitação substitui a Nº ${dois(m.substitui.numero)} ${rotuloRev(m.substitui.rev)}, que deve ser DESCONSIDERADA.${m.mudancas ? `<span>O que mudou: ${comQuebras(m.mudancas)}</span>` : ''}</div>` : '';
     // Numeração única (1, 2, 3…) mesmo separando compra e locação: "compatível com o item 5" continua valendo
     const numerados = m.itens.map((it, i) => ({ it, k: i + 1 }));
-    const tabela = grupo => `<table class="rel-tab mat-tab"><thead><tr><th>Item</th><th>Material e especificação</th><th>Qtd.</th><th>Un.</th><th>Modalidade</th>${comSubst ? '<th>Substituição</th>' : ''}${comFoto ? '<th>Foto</th>' : ''}</tr></thead>
+    const tabela = grupo => `<table class="rel-tab mat-tab"><thead><tr><th>Item</th><th>Material e especificação</th><th>Qtd.</th><th>Un.</th><th>Modalidade</th>${comSubst ? '<th>Substituição</th>' : ''}</tr></thead>
       <tbody>${grupo.map(({ it, k }) => `<tr><td class="num">${k}</td>
         <td class="mat-desc"><b>${esc(it.material)}</b>${it.espec ? `<br>${esc(it.espec)}` : ''}${it.embalagem ? `<br><small>Forma de venda: ${esc(it.embalagem)}</small>` : ''}</td>
         <td class="num">${esc(it.qtd)}</td><td class="num">${esc(it.unidade)}</td><td class="num mat-modal">${esc(modalidadeTexto(it))}</td>
         ${comSubst ? `<td class="mat-subst">${esc(SUBSTITUICAO[it.subst] || '')}${it.substObs ? `${it.subst ? '<br>' : ''}<small>${esc(it.substObs)}</small>` : ''}</td>` : ''}
-        ${comFoto ? `<td class="mat-fotocel">${links[it.foto] ? `<img src="${esc(links[it.foto])}" alt="Foto do item ${k}" /><small>foto ${k} no fim</small>` : ''}</td>` : ''}</tr>`).join('')}</tbody></table>`;
-    // Miniatura de tamanho fixo na tabela (não deforma as linhas); as fotos grandes ficam numa página no fim
-    const comFotos = numerados.filter(x => links[x.it.foto]);
+</tr>
+        ${links[it.foto] ? `<tr class="mat-linha-foto"><td></td><td colspan="${comSubst ? 5 : 4}"><img src="${esc(links[it.foto])}" alt="Foto do item ${k}: ${esc(it.material)}" /><small>Foto do item ${k}: ${esc(it.material)}</small></td></tr>` : ''}`).join('')}</tbody></table>`;
     const itensHtml = temCompra && temLocacao
       ? `<h4 class="mat-secao">ITENS PARA COMPRA</h4>${tabela(numerados.filter(x => x.it.modalidade !== 'locacao'))}<h4 class="mat-secao">ITENS PARA LOCAÇÃO</h4>${tabela(numerados.filter(x => x.it.modalidade === 'locacao'))}`
       : tabela(numerados);
@@ -1376,9 +1374,7 @@ window.OB_OBRA = function (n) {
         <p>Em caso de dúvida sobre qualquer item, entre em contato antes de comprar ou locar.</p>
         <p class="prop-assinatura"><span></span>${esc(responsavel || eu.nome || '')}<br>Responsável técnico</p>
       </section>
-      ${comFotos.length ? `<section class="prop-quebra"><h3>FOTOS DE REFERÊNCIA</h3>
-        <div class="rel-fotos">${comFotos.map(({ it, k }) => `<figure><img src="${esc(links[it.foto])}" alt="" /><figcaption>Foto ${k} – item ${k}: ${esc(it.material)}</figcaption></figure>`).join('')}</div>
-      </section>` : ''}`.replace(/\n\s*/g, '');
+`.replace(/\n\s*/g, '');
   }
 
   const CSS_MATERIAIS = `
@@ -1388,9 +1384,13 @@ window.OB_OBRA = function (n) {
     .mat-tab td.mat-desc { width: 48%; }
     .mat-tab td.mat-modal { font-weight: bold; font-size: 11px; }
     .mat-tab td.mat-subst { font-size: 11px; }
-    .mat-tab td.mat-fotocel { width: 24mm; text-align: center; padding: 3px; }
-    .mat-tab td.mat-fotocel img { display: block; width: 22mm; height: 18mm; object-fit: contain; margin: 0 auto 1px; }
-    .mat-tab td.mat-fotocel small { font-size: 8.5px; color: #555; white-space: nowrap; }
+    /* Foto numa linha própria logo abaixo do item: não estica as colunas de quantidade e modalidade */
+    .mat-tab tr.mat-linha-foto td { border-top: 0; padding: 2px 7px 7px; }
+    .mat-tab td { vertical-align: top; }
+    .mat-tab tr.mat-linha-foto img { display: block; max-width: 65mm; max-height: 38mm; object-fit: contain; }
+    .mat-tab tr.mat-linha-foto small { display: block; font-size: 9.5px; color: #555; margin-top: 2px; }
+    .mat-tab tr:has(+ tr.mat-linha-foto) td { border-bottom: 0; }
+    .mat-tab tr.mat-linha-foto { break-before: avoid; }
     .rel-tab tr { break-inside: avoid; }`;
 
   async function paginaMateriais(p, d, modo) {
