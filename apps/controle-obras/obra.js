@@ -1358,7 +1358,7 @@ window.OB_OBRA = function (n) {
         <td class="num">${esc(it.qtd)}</td><td class="num">${esc(it.unidade)}</td><td class="num mat-modal">${esc(modalidadeTexto(it))}</td>
         ${comSubst ? `<td class="mat-subst">${esc(SUBSTITUICAO[it.subst] || '')}${it.substObs ? `${it.subst ? '<br>' : ''}<small>${esc(it.substObs)}</small>` : ''}</td>` : ''}
 </tr>
-        ${links[it.foto] ? `<tr class="mat-linha-foto"><td></td><td colspan="${comSubst ? 5 : 4}"><img src="${esc(links[it.foto])}" alt="Foto do item ${k}: ${esc(it.material)}" /><small>Foto do item ${k}: ${esc(it.material)}</small></td></tr>` : ''}`).join('')}</tbody></table>`;
+        ${links[it.foto] ? `<tr class="mat-linha-foto"><td colspan="${comSubst ? 6 : 5}"><img src="${esc(links[it.foto])}" alt="Foto do item ${k}: ${esc(it.material)}" /><small>Foto do item ${k}: ${esc(it.material)}</small></td></tr>` : ''}`).join('')}</tbody></table>`;
     const itensHtml = temCompra && temLocacao
       ? `<h4 class="mat-secao">ITENS PARA COMPRA</h4>${tabela(numerados.filter(x => x.it.modalidade !== 'locacao'))}<h4 class="mat-secao">ITENS PARA LOCAÇÃO</h4>${tabela(numerados.filter(x => x.it.modalidade === 'locacao'))}`
       : tabela(numerados);
@@ -1385,10 +1385,10 @@ window.OB_OBRA = function (n) {
     .mat-tab td.mat-modal { font-weight: bold; font-size: 11px; }
     .mat-tab td.mat-subst { font-size: 11px; }
     /* Foto numa linha própria logo abaixo do item: não estica as colunas de quantidade e modalidade */
-    .mat-tab tr.mat-linha-foto td { border-top: 0; padding: 2px 7px 7px; }
     .mat-tab td { vertical-align: top; }
-    .mat-tab tr.mat-linha-foto img { display: block; max-width: 65mm; max-height: 38mm; object-fit: contain; }
-    .mat-tab tr.mat-linha-foto small { display: block; font-size: 9.5px; color: #555; margin-top: 2px; }
+    .mat-tab tr.mat-linha-foto td { border-top: 1px dashed #bbb; padding: 6px 7px 7px; text-align: center; }
+    .mat-tab tr.mat-linha-foto img { display: block; max-width: 91mm; max-height: 53mm; object-fit: contain; margin: 0 auto; }
+    .mat-tab tr.mat-linha-foto small { display: block; font-size: 9.5px; color: #555; margin-top: 3px; }
     .mat-tab tr:has(+ tr.mat-linha-foto) td { border-bottom: 0; }
     .mat-tab tr.mat-linha-foto { break-before: avoid; }
     .rel-tab tr { break-inside: avoid; }`;
