@@ -8,7 +8,7 @@
  * o token de login; a função confere de novo se o usuário é o dono.
  */
 (function () {
-  const API = '/.netlify/functions/usuarios';
+  const API = '/api/usuarios';
   const SITE = 'https://matheusmirandaeng.com.br';
   const $ = id => document.getElementById(id);
   const esc = s => String(s ?? '').replace(/[&<>"']/g, c =>

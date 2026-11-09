@@ -46,17 +46,18 @@ const resposta = (status, corpo) => new Response(JSON.stringify(corpo), {
 function erroDaApi(status, msg) {
   // shortcut: falta de crédito não tem tipo de erro próprio na API, só este texto; se ele mudar, cai na mensagem genérica (que mostra o motivo)
   if (/credit balance/i.test(msg)) return 'Os créditos da API do Claude acabaram. Compre mais em console.anthropic.com (Billing).';
-  if (status === 401 || status === 403) return 'A chave da API do Claude (ANTHROPIC_API_KEY) não foi aceita. Confira a variável no Netlify.';
+  if (status === 401 || status === 403) return 'A chave da API do Claude (ANTHROPIC_API_KEY) não foi aceita. Confira a variável na hospedagem.';
   if (status === 429) return 'Limite de uso da API do Claude atingido. Espere um minuto e tente de novo.';
   if (status === 529 || status >= 500) return 'A API do Claude está sobrecarregada agora. Tente de novo em instantes.';
   if (status === 413) return 'Trecho grande demais. Selecione um pedaço menor.';
   return `A API do Claude recusou o pedido (erro ${status}${msg ? `: ${msg}` : ''}).`;
 }
 
-export default async (req) => {
+// Lógica da função; recebe as variáveis de ambiente da hospedagem (Netlify: process.env; Cloudflare: context.env)
+export async function tratar(req, env) {
   if (req.method !== 'POST') return resposta(405, { erro: 'Método não permitido.' });
-  const chaveApi = process.env.ANTHROPIC_API_KEY;
-  if (!chaveApi) return resposta(500, { erro: 'Falta a variável ANTHROPIC_API_KEY no Netlify (Site configuration > Environment variables).' });
+  const chaveApi = env.ANTHROPIC_API_KEY;
+  if (!chaveApi) return resposta(500, { erro: 'Falta a variável ANTHROPIC_API_KEY nas variáveis da hospedagem.' });
 
   // Quem está chamando? O Supabase confirma o token.
   const token = (req.headers.get('authorization') || '').replace(/^Bearer\s+/i, '');
@@ -122,4 +123,7 @@ export default async (req) => {
   if (!texto) return resposta(502, { erro: 'A IA não devolveu texto. Tente de novo.' });
   console.log('ia-resumo: tokens', dados.usage && dados.usage.input_tokens, '->', dados.usage && dados.usage.output_tokens, dados.model);
   return resposta(200, { html: texto });
-};
+}
+
+// Netlify (enquanto existir); o Cloudflare Pages chama tratar() por functions/
+export default req => tratar(req, process.env);

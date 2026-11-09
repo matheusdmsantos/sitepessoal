@@ -9,6 +9,7 @@ Site pessoal que funciona como **repositório de aplicações próprias**. Ele t
 - **Domínio:** https://matheusmirandaeng.com.br
 - **Repositório:** github.com/matheusdmsantos/sitepessoal, branch `main`. ⚠️ Hoje está **público**; a ideia é passar para privado.
 - **Deploy:** Netlify, projeto `shiny-moxie-5ef02b`, ligado ao GitHub. **Todo push na `main` publica em produção automaticamente** (em cerca de 30 s).
+- **Mudança para o Cloudflare Pages** (branch `cloudflare`, novembro de 2026; os créditos de deploy do Netlify acabaram): publica a própria pasta, sem build. `_headers` faz o papel dos headers do `netlify.toml`; as funções ficam em `functions/` (`api/ia-resumo.js`, `api/usuarios.js`, `agenda/[[caminho]].js`) e só repassam para `tratar(req, env)` dos módulos de `netlify/functions/`, que servem às duas hospedagens (no Netlify, `/api/*` é redirecionado para `/.netlify/functions/*`). As chaves vêm de `context.env` (painel do Pages: Settings > Variables and Secrets). `functions/_middleware.js` dá 404 em `supabase/`, `netlify/`, `functions/`, `ferramentas/`, `CLAUDE.md` etc.; `_routes.json` limita as funções a esses caminhos e a `/api/*` e `/agenda/*` (o resto é estático e não gasta a cota de 100 mil chamadas/dia do plano gratuito).
 - **Login e banco:** Supabase, projeto `https://smbvlquqqhtgmvgddjlq.supabase.co`.
 - **Editor:** VS Code com a extensão Claude Code, em Windows.
 - **Idioma:** a interface, os comentários, as mensagens de commit e as respostas ao usuário são em **português (pt-BR)**.

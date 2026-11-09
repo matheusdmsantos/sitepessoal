@@ -771,7 +771,7 @@
     status('✨ A IA está melhorando o trecho… (até 1 minuto)');
     try {
       const { data } = await window.supabaseClient.auth.getSession();
-      const r = await fetch('/.netlify/functions/ia-resumo', {
+      const r = await fetch('/api/ia-resumo', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${data && data.session ? data.session.access_token : ''}` },
         body: JSON.stringify({ html, disciplina: ctx.disc, assunto: ctx.topico })
@@ -779,7 +779,7 @@
       const corpo = await r.json().catch(() => ({}));
       if (!r.ok || !corpo.html) {
         throw new Error(corpo.erro || (r.status === 404
-          ? 'A função da IA não existe aqui: ela só roda no site publicado (Netlify).'
+          ? 'A função da IA não existe aqui: ela só roda no site publicado.'
           : `Erro ${r.status} ao chamar a IA.`));
       }
       if (ctx !== ctxAntes || atual !== paginaAntes) { aviso('Você trocou de resumo ou de página; a melhoria da IA foi descartada.'); return; }

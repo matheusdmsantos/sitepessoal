@@ -34,6 +34,13 @@
   [headers.values]
     Cache-Control = "public, max-age=2592000"
 
+# Mesmo endereço das funções no Cloudflare Pages (/api/<função>)
+[[redirects]]
+  from = "/api/*"
+  to = "/.netlify/functions/:splat"
+  status = 200
+  force = true
+
 # Agenda iCal da Gestão de Contratos (assinada no Google Agenda): /agenda/<token>.ics
 [[redirects]]
   from = "/agenda/*"

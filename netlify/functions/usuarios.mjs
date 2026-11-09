@@ -63,9 +63,10 @@ function traduzir(msg) {
   return msg;
 }
 
-export default async (req) => {
-  const chave = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!chave) return resposta(500, { erro: 'Falta a variável SUPABASE_SERVICE_ROLE_KEY no Netlify.' });
+// Lógica da função; recebe as variáveis de ambiente da hospedagem (Netlify: process.env; Cloudflare: context.env)
+export async function tratar(req, env) {
+  const chave = env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!chave) return resposta(500, { erro: 'Falta a variável SUPABASE_SERVICE_ROLE_KEY nas variáveis da hospedagem.' });
   if (req.method !== 'GET' && req.method !== 'POST') return resposta(405, { erro: 'Método não permitido.' });
 
   // Quem está chamando? O Supabase confirma o token.
@@ -124,4 +125,7 @@ export default async (req) => {
     console.error('usuarios:', e);
     return resposta(e.status && e.status < 500 ? 400 : 502, { erro: traduzir(e.message) });
   }
-};
+}
+
+// Netlify (enquanto existir); o Cloudflare Pages chama tratar() por functions/
+export default req => tratar(req, process.env);

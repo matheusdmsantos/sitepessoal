@@ -97,9 +97,10 @@ const naoEncontrado = () => new Response('Agenda não encontrada. Gere um link n
   status: 404, headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' }
 });
 
-export default async (req) => {
-  const chave = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!chave) return new Response('Falta a variável SUPABASE_SERVICE_ROLE_KEY no Netlify.', { status: 500 });
+// Lógica da função; recebe as variáveis de ambiente da hospedagem (Netlify: process.env; Cloudflare: context.env)
+export async function tratar(req, env) {
+  const chave = env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!chave) return new Response('Falta a variável SUPABASE_SERVICE_ROLE_KEY nas variáveis da hospedagem.', { status: 500 });
   if (req.method !== 'GET' && req.method !== 'HEAD') return new Response('Método não permitido.', { status: 405 });
 
   // Token pelo caminho (/agenda/<token>.ics) ou por ?t=
@@ -167,4 +168,7 @@ export default async (req) => {
       'X-Robots-Tag': 'noindex'
     }
   });
-};
+}
+
+// Netlify (enquanto existir); o Cloudflare Pages chama tratar() por functions/
+export default req => tratar(req, process.env);

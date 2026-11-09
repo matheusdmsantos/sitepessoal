@@ -1,0 +1,18 @@
+# Cloudflare Pages (o Netlify usa o netlify.toml). Não vale para as respostas das funções.
+/*
+  X-Frame-Options: SAMEORIGIN
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: camera=(), microphone=(), geolocation=()
+
+# Área pessoal fora dos buscadores.
+/apps/*
+  X-Robots-Tag: noindex, nofollow
+
+# apps.json sempre atualizado.
+/apps.json
+  Cache-Control: no-cache
+
+# Imagens: cache de 30 dias. Ao trocar uma imagem, troque também o nome do arquivo.
+/assets/*
+  Cache-Control: public, max-age=2592000
