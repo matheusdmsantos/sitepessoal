@@ -64,7 +64,7 @@ window.OB_OBRA = function (n) {
   function fotosDoProcesso(pid) {
     const fs = visitas.filter(v => v.processo_id === pid).flatMap(v => (v.fotos || []).map(f => f.caminho));
     pendencias.filter(x => x.processo_id === pid).forEach(x => fs.push(x.foto_antes, x.foto_depois));
-    solicitacoesDe(pid).forEach(d => fs.push(...fotosDoDoc(d)));
+    solicitacoesDe(pid).forEach(d => fs.push(...fotosDaSolicitacao(lerMateriais(d))));
     return fs.filter(Boolean);
   }
 
@@ -373,6 +373,9 @@ window.OB_OBRA = function (n) {
     </div>`;
   }
 
+  // Há uma revisão mais nova do mesmo número?
+  const substituida = (pid, m) => solicitacoesDe(pid).map(lerMateriais).some(x => x && x.numero === m.numero && x.rev > m.rev);
+
   function telaMateriais(p) {
     const ss = solicitacoesDe(p.id).map(d => [d, lerMateriais(d)]).filter(([, m]) => m).reverse();
     return `<div class="ob-card">
@@ -381,7 +384,7 @@ window.OB_OBRA = function (n) {
       <p class="ob-sub">Cada solicitação é um documento do processo, no papel timbrado: abra-a para ver a prévia, salvar o PDF e enviar ao proprietário pelo Gmail.</p>
       ${ss.map(([d, m]) => `<a class="ob-rel-linha" href="#/p/${esc(p.id)}/d/${esc(d.id)}">
           <span class="ob-numero">${n.num4(d.numero)}</span>
-          <span><strong>Solicitação nº ${dois(m.numero)}</strong><small>${fmtData(m.data)}${m.etapa ? ` · ${esc(m.etapa)}` : ''}</small></span>
+          <span><strong>Solicitação ${tituloNum(m)}</strong><small>${fmtData(m.data)}${m.etapa ? ` · ${esc(m.etapa)}` : ''}${substituida(p.id, m) ? ' · <b>substituída</b>' : ''}</small></span>
           <span>${qtdItens(m)}${m.prazo ? ` · entrega até ${fmtData(m.prazo)}` : ''}</span>
           <span class="ob-sub">${m.enviada_em ? `✉️ enviada em ${fmtData(m.enviada_em)}` : 'ainda não enviada'}</span>
         </a>`).join('') || '<p class="ob-vazio">Nenhuma solicitação ainda.</p>'}
@@ -746,7 +749,7 @@ window.OB_OBRA = function (n) {
   }
   const comMarca = (marca, dados) => marca + encodeURIComponent(JSON.stringify(dados)) + '-->';
   const lerRelatorio = d => lerMarca(d, MARCA_RELATORIO);
-  const lerMateriais = d => lerMarca(d, MARCA_MATERIAIS);
+  const lerMateriais = d => normalizar(lerMarca(d, MARCA_MATERIAIS));
   const ehRelatorio = d => !!(d && d.conteudo && d.conteudo.startsWith(MARCA_RELATORIO));
   const ehMateriais = d => !!(d && d.conteudo && d.conteudo.startsWith(MARCA_MATERIAIS));
   const ehDocObra = d => ehRelatorio(d) || ehMateriais(d);
@@ -952,58 +955,249 @@ window.OB_OBRA = function (n) {
   ============================================= */
   const qtdItens = m => `${m.itens.length} ${m.itens.length === 1 ? 'item' : 'itens'}`;
   const emailValido = s => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(s);
+  const catalogo = () => window.OB_CATALOGO_MATERIAIS || [];
+  const unidadesMat = () => window.OB_UNIDADES || UNIDADES;
+  const semAcento = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+  // Vale a palavra-chave que aparece primeiro: "Plataforma para andaime" é plataforma, não andaime
+  function modeloDe(material) {
+    const s = semAcento(material);
+    let melhor = null, pos = Infinity;
+    if (s) catalogo().forEach(c => c.chaves.forEach(k => { const i = s.indexOf(k); if (i >= 0 && i < pos) { pos = i; melhor = c; } }));
+    return melhor;
+  }
+  const SUBSTITUICAO = { indiferente: 'Marca indiferente', similar: 'Aceita similar', nao: 'Não aceitar substituição' };
+  const rotuloRev = r => `Rev. ${dois(Number(r) || 0)}`;
+  const tituloNum = m => `nº ${dois(m.numero)} – ${rotuloRev(m.rev)}`;
+  const modalidadeTexto = it => (it.modalidade === 'locacao' ? `LOCAÇÃO${it.dias ? ` – ${it.dias} dias` : ''}` : 'COMPRA');
+  const enderecoTexto = e => [[e.logradouro, e.numero].filter(Boolean).join(', '), e.bairro, e.cidade].filter(Boolean).join(' – ')
+    + (e.referencia ? ` (referência: ${e.referencia})` : '');
+  const recebimentoTexto = r => [r.nome, r.telefone, r.horario].filter(Boolean).join(' · ');
+
+  /* Solicitações gravadas antes desta versão (endereço num campo só, sem revisão, sem modalidade…)
+     ganham os campos novos com valores padrão: abrem e imprimem como antes. */
+  function normalizar(m) {
+    if (!m) return null;
+    const end = m.endereco && typeof m.endereco === 'object' ? m.endereco : { logradouro: m.endereco || '' };
+    const para = m.para || {};
+    return {
+      ...m,
+      rev: Number(m.rev) || 0, substitui: m.substitui || null, mudancas: m.mudancas || '',
+      proprietario: m.proprietario != null ? m.proprietario : (m.cliente || ''),
+      para: { nome: para.nome || '', setor: para.setor || '', email: para.email || '' },
+      endereco: { logradouro: '', numero: '', bairro: '', cidade: '', referencia: '', ...end },
+      recebimento: { nome: '', telefone: '', horario: '', ...(m.recebimento || {}) },
+      cargo: m.cargo != null ? m.cargo : ((m.eu && m.eu.cargo) || ''),
+      obs: m.obs || '', prazo: m.prazo || '', etapa: m.etapa || '',
+      itens: (m.itens || []).map(it => ({
+        material: '', espec: '', qtd: '', unidade: '', foto: '', modelo: '', campos: {}, modalidade: 'compra', dias: '',
+        embalagem: '', subst: '', substObs: '', ...it, especManual: it.especManual != null ? it.especManual : !!it.espec
+      }))
+    };
+  }
+
   const fotosDaSolicitacao = m => (m ? m.itens.map(it => it.foto).filter(Boolean) : []);
-  const fotosDoDoc = d => fotosDaSolicitacao(ehMateriais(d) && lerMateriais(d));
+  // Uma revisão reaproveita as fotos da anterior: só sai do bucket a foto que nenhuma outra solicitação usa
+  const fotosEmUso = (pid, excetoId) => new Set(solicitacoesDe(pid).filter(x => x.id !== excetoId).flatMap(x => fotosDaSolicitacao(lerMateriais(x))));
+  const fotosDoDoc = d => {
+    if (!ehMateriais(d)) return [];
+    const usadas = fotosEmUso(d.processo_id, d.id);
+    return fotosDaSolicitacao(lerMateriais(d)).filter(c => !usadas.has(c));
+  };
   // Foto do item no formulário: 📷 escolhe; com foto, a miniatura troca e o × tira.
   // shortcut: foto enviada e tirada antes de salvar (ou formulário cancelado) fica no bucket; limpar se pesar
   const celulaFoto = caminho => `<span class="ob-mat-foto" data-caminho="${esc(caminho)}">${caminho
     ? `<button type="button" class="ob-mat-mini" data-mat="foto" title="Trocar a foto" aria-label="Trocar a foto"><img data-foto="${esc(caminho)}" alt="" /></button><button type="button" class="ob-mat-tirar" data-mat="sem-foto" title="Tirar a foto" aria-label="Tirar a foto">×</button>`
-    : '<button type="button" class="ob-btn sutil" data-mat="foto" title="Incluir foto do material" aria-label="Incluir foto do material">📷</button>'}</span>`;
+    : '<button type="button" class="ob-btn sutil" data-mat="foto" title="Incluir foto do material (ou Ctrl+V)" aria-label="Incluir foto do material">📷</button>'}</span>`;
 
-  function formMateriais(p, d) {
-    const salvo = d && lerMateriais(d);
-    const anteriores = solicitacoesDe(p.id).map(lerMateriais).filter(Boolean);
-    const numero = salvo ? salvo.numero : Math.max(0, ...anteriores.map(m => m.numero || 0)) + 1;
-    // O e-mail do proprietário não tem campo no processo: vem da solicitação anterior
-    const ultima = anteriores[anteriores.length - 1];
-    const para = salvo ? salvo.para : (ultima && ultima.para) || { nome: p.cliente || p.contato || '', email: '' };
-    const sugestoes = [...new Set(anteriores.flatMap(m => m.itens.map(it => it.material)))].sort((a, b) => a.localeCompare(b));
-    const etapasObra = [...new Set([...etapasDe(p.id).map(e => e.nome), salvo && salvo.etapa].filter(Boolean))];
-    const linhaItem = (it = {}) => `<div class="ob-mat-item">
+  // Campos guiados do material do catálogo (valores em it.campos)
+  function htmlGuia(modelo, campos) {
+    if (!modelo) return '';
+    const c = campos || {};
+    return `<p class="ob-mat-guia-tit">Especificação guiada: ${esc(modelo.nome)}</p>` + modelo.campos.map(f => {
+      const v = c[f.id] != null ? c[f.id] : (f.padrao || '');
+      if (f.tipo === 'varios') {
+        const marc = Array.isArray(v) ? v : [];
+        return `<div class="ob-mat-g largo"><span>${esc(f.rotulo)}</span><div class="ob-mat-checks">${f.opcoes.map(o =>
+          `<label><input type="checkbox" data-c="${esc(f.id)}" value="${esc(o)}" ${marc.includes(o) ? 'checked' : ''} /> ${esc(o)}</label>`).join('')}</div></div>`;
+      }
+      const ctrl = f.tipo === 'opcao'
+        ? `<select class="ob-input" data-c="${esc(f.id)}">${f.opcoes.map(o => `<option value="${esc(o)}" ${String(o) === String(v) ? 'selected' : ''}>${esc(o)}</option>`).join('')}</select>`
+        : f.tipo === 'item'
+          ? `<select class="ob-input" data-c="${esc(f.id)}" data-item-ref data-valor="${esc(v)}"><option value="">—</option></select>`
+          : `<input class="ob-input" data-c="${esc(f.id)}" value="${esc(v)}" ${f.tipo === 'numero' ? 'inputmode="decimal"' : ''} placeholder="${esc(f.dica || '')}" />`;
+      return `<label class="ob-mat-g"><span>${esc(f.rotulo)}${f.dica && f.tipo !== 'texto' ? ` <small>(${esc(f.dica)})</small>` : ''}</span>${ctrl}</label>`;
+    }).join('');
+  }
+
+  function htmlItem(it = {}) {
+    const modelo = modeloDe(it.material);
+    const uns = unidadesMat();
+    const un = it.unidade || '';
+    const loc = it.modalidade === 'locacao';
+    return `<div class="ob-mat-item" data-modelo="${esc(modelo ? modelo.id : '')}">
+      <div class="ob-mat-l1">
+        <span class="ob-mat-n" aria-hidden="true"></span>
         <input class="ob-input" name="material" value="${esc(it.material)}" placeholder="Material" aria-label="Material" list="ob-mat-sugestoes" />
-        <input class="ob-input" name="espec" value="${esc(it.espec)}" placeholder="Especificação (opcional)" aria-label="Especificação" />
         <input class="ob-input" name="qtd" value="${esc(it.qtd)}" inputmode="decimal" placeholder="Qtd." aria-label="Quantidade" />
-        <input class="ob-input" name="unidade" value="${esc(it.unidade)}" placeholder="Un." aria-label="Unidade" list="ob-mat-unidades" />
+        <select class="ob-input" name="unidade" aria-label="Unidade"><option value="">Un.</option>${[...uns, ...(un && !uns.includes(un) ? [un] : [])]
+          .map(u => `<option value="${esc(u)}" ${u === un ? 'selected' : ''}>${esc(u)}</option>`).join('')}</select>
+        <select class="ob-input" name="modalidade" aria-label="Modalidade"><option value="compra">Compra</option><option value="locacao" ${loc ? 'selected' : ''}>Locação</option></select>
+        <input class="ob-input" name="dias" value="${esc(it.dias)}" inputmode="numeric" placeholder="Dias" aria-label="Período da locação (dias)" ${loc ? '' : 'hidden'} />
         ${celulaFoto(it.foto)}
         <button type="button" class="ob-btn sutil" data-mat="remover" aria-label="Remover item">✕</button>
-      </div>`;
+      </div>
+      <div class="ob-mat-guia" ${modelo ? '' : 'hidden'}>${htmlGuia(modelo, it.campos)}</div>
+      <div class="ob-mat-l2">
+        <label class="ob-mat-g ob-mat-espec"><span>Especificação <b>*</b> <button type="button" class="ob-link" data-mat="refazer" ${modelo && it.especManual ? '' : 'hidden'}>↺ montar pelos campos</button></span>
+          <textarea class="ob-input" name="espec" rows="3" data-manual="${it.especManual ? '1' : ''}" placeholder="Descreva para quem não é da obra: tipo, medidas, material…">${esc(it.espec)}</textarea></label>
+        <label class="ob-mat-g"><span>Embalagem / forma de venda</span><input class="ob-input" name="embalagem" value="${esc(it.embalagem)}" placeholder="ex.: rolo de 1 kg" /></label>
+        <label class="ob-mat-g"><span>Substituição</span><select class="ob-input" name="subst"><option value="">—</option>${Object.entries(SUBSTITUICAO)
+          .map(([k, t]) => `<option value="${k}" ${it.subst === k ? 'selected' : ''}>${t}</option>`).join('')}</select></label>
+        <label class="ob-mat-g"><span>Obs. sobre substituição</span><input class="ob-input" name="substObs" value="${esc(it.substObs)}" placeholder="ex.: não aceitar escora sem regulagem" /></label>
+      </div>
+    </div>`;
+  }
 
-    n.abrirModal(`Solicitação de materiais nº ${dois(numero)}`, `
-      <form id="ob-form-mat" class="ob-form" novalidate>
-        ${campo('Data', `<input type="date" class="ob-input" name="data" value="${esc(salvo ? salvo.data : n.hoje())}" />`)}
-        ${campo('Entregar na obra até (opcional)', `<input type="date" class="ob-input" name="prazo" value="${esc(salvo && salvo.prazo)}" />`)}
-        ${campo('Para (proprietário)', `<input class="ob-input" name="para_nome" value="${esc(para.nome)}" />`)}
-        ${campo('E-mail do proprietário', `<input type="email" class="ob-input" name="para_email" value="${esc(para.email)}" placeholder="nome@exemplo.com" />`)}
-        ${etapasObra.length ? campo('Etapa da obra (opcional)', `<select class="ob-input" name="etapa"><option value="">—</option>${opcoes(etapasObra.map(e => [e, e]), salvo && salvo.etapa)}</select>`, 'inteiro') : ''}
+  // d = documento que abre o formulário; revisao = true cria a próxima revisão dele (documento novo)
+  function formMateriais(p, d, revisao) {
+    const base = d && lerMateriais(d);
+    const editando = !!(base && !revisao);
+    const anteriores = solicitacoesDe(p.id).map(lerMateriais).filter(Boolean);
+    const numero = base ? base.numero : Math.max(0, ...anteriores.map(m => m.numero || 0)) + 1;
+    const rev = editando ? base.rev : revisao ? Math.max(...anteriores.filter(m => m.numero === numero).map(m => m.rev)) + 1 : 0;
+    const substitui = editando ? base.substitui : revisao ? { numero: base.numero, rev: base.rev } : null;
+    // Nova solicitação: dados de cabeçalho da anterior (o e-mail e o endereço detalhado não têm campo no processo)
+    const ultima = anteriores[anteriores.length - 1];
+    const o = obraDe(p.id) || {};
+    const cab = base || ultima || normalizar({ proprietario: p.cliente || '', para: { nome: p.contato || '', setor: 'Setor de Compras' },
+      endereco: o.endereco || p.local || '', cargo: n.meusDados().cargo || '' });
+    const sugestoes = [...new Set([...catalogo().map(c => c.nome), ...anteriores.flatMap(m => m.itens.map(it => it.material))].filter(Boolean))].sort((a, b) => a.localeCompare(b));
+    const etapasObra = [...new Set([...etapasDe(p.id).map(e => e.nome), base && base.etapa].filter(Boolean))];
+    const e = cab.endereco, r = cab.recebimento;
+
+    n.abrirModal(`Solicitação de materiais ${tituloNum({ numero, rev })}`, `
+      <form id="ob-form-mat" class="ob-form ob-mat-form" novalidate>
+        <fieldset class="ob-grupo inteiro"><legend>Solicitação</legend><div class="ob-form">
+          ${campo('Data', `<input type="date" class="ob-input" name="data" value="${esc(editando ? base.data : n.hoje())}" />`)}
+          ${campo('Entregar na obra até', `<input type="date" class="ob-input" name="prazo" value="${esc(base && base.prazo)}" />`)}
+          ${etapasObra.length ? campo('Etapa da obra', `<select class="ob-input" name="etapa"><option value="">—</option>${opcoes(etapasObra.map(x => [x, x]), base && base.etapa)}</select>`) : ''}
+          ${campo('Cargo no cabeçalho do PDF', `<input class="ob-input" name="cargo" value="${esc(cab.cargo)}" placeholder="ex.: Engenheiro Civil – Responsável Técnico" />`)}
+          ${rev > 0 ? `
+          <p class="ob-sub inteiro"><b>${rotuloRev(rev)}</b>: o PDF avisa que ela substitui a anterior, que deve ser desconsiderada.</p>
+          ${campo('Substitui a solicitação nº', `<input class="ob-input" name="sub_numero" inputmode="numeric" value="${esc(substitui ? substitui.numero : numero)}" />`)}
+          ${campo('Rev.', `<input class="ob-input" name="sub_rev" inputmode="numeric" value="${esc(substitui ? substitui.rev : rev - 1)}" />`)}
+          ${campo('O que mudou nesta revisão (opcional)', `<textarea class="ob-input" name="mudancas" rows="2">${esc(editando ? base.mudancas : '')}</textarea>`, 'inteiro')}` : ''}
+        </div></fieldset>
+
+        <fieldset class="ob-grupo inteiro"><legend>Proprietário e destinatário</legend><div class="ob-form">
+          ${campo('Proprietário (razão social / nome da empresa)', `<input class="ob-input" name="proprietario" value="${esc(cab.proprietario)}" />`, 'inteiro')}
+          ${campo('Destinatário (pessoa)', `<input class="ob-input" name="para_nome" value="${esc(cab.para.nome)}" placeholder="ex.: Marília" />`)}
+          ${campo('Setor', `<input class="ob-input" name="para_setor" value="${esc(cab.para.setor)}" placeholder="ex.: Setor de Compras" />`)}
+          ${campo('E-mail do destinatário', `<input type="email" class="ob-input" name="para_email" value="${esc(cab.para.email)}" placeholder="nome@empresa.com.br" />`, 'inteiro')}
+        </div></fieldset>
+
+        <fieldset class="ob-grupo inteiro"><legend>Endereço da obra</legend><div class="ob-form">
+          ${campo('Logradouro', `<input class="ob-input" name="end_logradouro" value="${esc(e.logradouro)}" placeholder="Rua, avenida…" />`)}
+          ${campo('Número', `<input class="ob-input" name="end_numero" value="${esc(e.numero)}" />`)}
+          ${campo('Bairro', `<input class="ob-input" name="end_bairro" value="${esc(e.bairro)}" />`)}
+          ${campo('Cidade/UF', `<input class="ob-input" name="end_cidade" value="${esc(e.cidade)}" placeholder="ex.: Teresina/PI" />`)}
+          ${campo('Ponto de referência', `<input class="ob-input" name="end_referencia" value="${esc(e.referencia)}" />`, 'inteiro')}
+        </div></fieldset>
+
+        <fieldset class="ob-grupo inteiro"><legend>Recebimento na obra</legend><div class="ob-form">
+          ${campo('Responsável', `<input class="ob-input" name="rec_nome" value="${esc(r.nome)}" />`)}
+          ${campo('Telefone', `<input class="ob-input" name="rec_telefone" inputmode="tel" value="${esc(r.telefone)}" placeholder="(86) 99999-0000" />`)}
+          ${campo('Horário de recebimento', `<input class="ob-input" name="rec_horario" value="${esc(r.horario)}" placeholder="ex.: seg. a sex., 7h às 17h" />`, 'inteiro')}
+        </div></fieldset>
+
         <div class="ob-mat-itens inteiro">
-          <div class="ob-mat-item ob-mat-cab"><span>Material</span><span>Especificação</span><span>Qtd.</span><span>Un.</span><span>Foto</span><span></span></div>
-          ${(salvo ? salvo.itens : [{}, {}, {}]).map(linhaItem).join('')}
-          <div class="ob-prop-rodape"><button type="button" class="ob-btn sutil" data-mat="mais">+ Item</button><small class="ob-sub">Enter passa para o próximo item · Ctrl+V cola a foto na linha do cursor</small></div>
+          <p class="ob-mat-itens-tit">Itens <small>Ctrl+V cola a foto no item em que está o cursor · materiais do catálogo (escora, tábua, prego, arame, andaime, plataforma) ganham campos guiados</small></p>
+          ${(base ? base.itens : [{}, {}, {}]).map(htmlItem).join('')}
+          <div class="ob-prop-rodape"><button type="button" class="ob-btn sutil" data-mat="mais">+ Item</button></div>
         </div>
         <datalist id="ob-mat-sugestoes">${sugestoes.map(s => `<option value="${esc(s)}"></option>`).join('')}</datalist>
-        <datalist id="ob-mat-unidades">${UNIDADES.map(u => `<option value="${esc(u)}"></option>`).join('')}</datalist>
-        ${campo('Observações (opcional)', `<textarea class="ob-input" name="obs" rows="3" placeholder="Ex.: descarregar pelo portão lateral; recebimento das 7h às 17h">${esc(salvo && salvo.obs)}</textarea>`, 'inteiro')}
+        ${campo('Observações (opcional)', `<textarea class="ob-input" name="obs" rows="2">${esc(base && base.obs)}</textarea>`, 'inteiro')}
+        <div class="ob-mat-avisos inteiro" hidden></div>
         <input type="file" accept="image/*" data-mat-arquivo hidden />
-        ${acoesForm(salvo ? 'Salvar' : 'Gerar solicitação')}
+        ${acoesForm(editando ? 'Salvar' : revisao ? `Gerar ${rotuloRev(rev)}` : 'Gerar solicitação')}
       </form>`, true);
 
     const form = document.getElementById('ob-form-mat');
     preencherFotos(form);
-    const linhas = () => [...form.querySelectorAll('.ob-mat-item:not(.ob-mat-cab)')];
+    const linhas = () => [...form.querySelectorAll('.ob-mat-item')];
+    const val = (row, nome) => row.querySelector(`[name=${nome}]`).value.trim();
+    const nomeDoItem = k => { const row = linhas()[Number(k) - 1]; return row ? val(row, 'material') : ''; };
+    const lerCampos = row => {
+      const c = {};
+      row.querySelectorAll('.ob-mat-guia [data-c]').forEach(el => {
+        if (el.type === 'checkbox') { (c[el.dataset.c] = c[el.dataset.c] || []); if (el.checked) c[el.dataset.c].push(el.value); }
+        else c[el.dataset.c] = el.value.trim();
+      });
+      return c;
+    };
+    // Listas "compatível com o item nº": refeitas quando os itens mudam
+    const atualizarRefs = () => linhas().forEach((row, i) => row.querySelectorAll('[data-item-ref]').forEach(sel => {
+      const atual = sel.value || sel.dataset.valor || '';
+      sel.innerHTML = '<option value="">—</option>' + linhas().map((x, j) => (j === i ? '' : `<option value="${j + 1}" ${String(j + 1) === atual ? 'selected' : ''}>${j + 1} – ${esc(val(x, 'material') || 'sem nome')}</option>`)).join('');
+      sel.dataset.valor = '';
+    }));
+    // Monta a especificação pelos campos guiados, se o texto não foi escrito à mão
+    const montar = row => {
+      const modelo = catalogo().find(c => c.id === row.dataset.modelo);
+      const espec = row.querySelector('[name=espec]');
+      if (modelo && espec.dataset.manual !== '1') espec.value = modelo.texto(lerCampos(row), nomeDoItem);
+    };
+    atualizarRefs();
+    linhas().forEach(row => { if (row.dataset.modelo && !row.querySelector('[name=espec]').value) montar(row); });
+
     const novaLinha = () => {
-      form.querySelector('.ob-mat-itens .ob-prop-rodape').insertAdjacentHTML('beforebegin', linhaItem());
+      form.querySelector('.ob-mat-itens .ob-prop-rodape').insertAdjacentHTML('beforebegin', htmlItem());
+      atualizarRefs();
       linhas().pop().querySelector('[name=material]').focus();
     };
+    // Material reconhecido no catálogo: campos guiados e padrões (unidade, modalidade, embalagem)
+    const reconhecer = row => {
+      const modelo = modeloDe(val(row, 'material'));
+      const id = modelo ? modelo.id : '';
+      if (id === row.dataset.modelo) return;
+      row.dataset.modelo = id;
+      const guia = row.querySelector('.ob-mat-guia');
+      guia.innerHTML = htmlGuia(modelo, {});
+      guia.hidden = !modelo;
+      if (!modelo) return;
+      const un = row.querySelector('[name=unidade]');
+      if (!un.value && modelo.unidade) un.value = modelo.unidade;
+      if (modelo.modalidade) { row.querySelector('[name=modalidade]').value = modelo.modalidade; row.querySelector('[name=dias]').hidden = modelo.modalidade !== 'locacao'; }
+      const emb = row.querySelector('[name=embalagem]');
+      if (!emb.value && modelo.embalagem) emb.value = modelo.embalagem;
+      const espec = row.querySelector('[name=espec]');
+      if (!espec.value.trim()) espec.dataset.manual = '';
+      row.querySelector('[data-mat="refazer"]').hidden = espec.dataset.manual !== '1';
+      atualizarRefs();
+      montar(row);
+    };
+
+    let confirmado = false;
+    const caixaAvisos = form.querySelector('.ob-mat-avisos');
+    const botaoEnviar = form.querySelector('[type=submit]');
+    const rotuloEnviar = botaoEnviar.textContent;
+    const desconfirmar = () => { if (confirmado) { confirmado = false; botaoEnviar.textContent = rotuloEnviar; } };
+
+    form.addEventListener('input', ev => {
+      const row = ev.target.closest('.ob-mat-item');
+      desconfirmar();
+      if (!row) return;
+      if (ev.target.name === 'material') { reconhecer(row); atualizarRefs(); linhas().forEach(montar); }
+      else if (ev.target.name === 'espec') { ev.target.dataset.manual = '1'; row.querySelector('[data-mat="refazer"]').hidden = !row.dataset.modelo; }
+      else if (ev.target.dataset.c) montar(row);
+    });
+    form.addEventListener('change', ev => {
+      const row = ev.target.closest('.ob-mat-item');
+      if (!row) return;
+      if (ev.target.name === 'modalidade') row.querySelector('[name=dias]').hidden = ev.target.value !== 'locacao';
+      if (ev.target.dataset.c) montar(row);
+    });
+
     const arquivo = form.querySelector('[data-mat-arquivo]');
     let celulaAlvo = null;
     let enviando = 0;
@@ -1014,20 +1208,27 @@ window.OB_OBRA = function (n) {
       if (acao === 'mais') novaLinha();
       else if (acao === 'foto') { celulaAlvo = el.closest('.ob-mat-foto'); arquivo.value = ''; arquivo.click(); }
       else if (acao === 'sem-foto') el.closest('.ob-mat-foto').outerHTML = celulaFoto('');
-      else {
+      else if (acao === 'refazer') {
+        const row = el.closest('.ob-mat-item');
+        row.querySelector('[name=espec]').dataset.manual = '';
+        el.hidden = true;
+        montar(row);
+      } else {
         el.closest('.ob-mat-item').remove();
         if (!linhas().length) novaLinha();
+        atualizarRefs();
+        linhas().forEach(montar);
       }
     });
     arquivo.addEventListener('change', () => anexar(arquivo.files[0], celulaAlvo));
-    // Ctrl+V com uma imagem (ex.: recorte do Win+Shift+S) vira a foto da linha do cursor;
-    // fora de uma linha, da última linha com material
+    // Ctrl+V com uma imagem (ex.: recorte do Win+Shift+S) vira a foto do item do cursor;
+    // fora de um item, da última linha com material
     form.addEventListener('paste', ev => {
       const img = [...((ev.clipboardData && ev.clipboardData.items) || [])].find(i => i.kind === 'file' && i.type.startsWith('image/'));
       if (!img) return;
       ev.preventDefault();
-      const linha = (document.activeElement && document.activeElement.closest('.ob-mat-item:not(.ob-mat-cab)'))
-        || linhas().filter(l => l.querySelector('[name=material]').value.trim()).pop() || linhas().pop();
+      const linha = (document.activeElement && document.activeElement.closest('.ob-mat-item'))
+        || linhas().filter(l => val(l, 'material')).pop() || linhas().pop();
       anexar(img.getAsFile(), linha.querySelector('.ob-mat-foto'));
     });
     async function anexar(f, alvo) {
@@ -1042,43 +1243,80 @@ window.OB_OBRA = function (n) {
       alvo.outerHTML = celulaFoto(caminho);
       preencherFotos(form);
     }
-    // Enter numa linha de item vai para o próximo (ou cria um), em vez de enviar o formulário
+    // Enter na linha principal do item vai para o próximo (ou cria um), em vez de enviar o formulário
     form.addEventListener('keydown', ev => {
-      const linha = ev.key === 'Enter' && ev.target.closest('.ob-mat-item');
-      if (!linha) return;
+      const l1 = ev.key === 'Enter' && ev.target.closest('.ob-mat-l1');
+      if (!l1) return;
       ev.preventDefault();
-      const prox = linha.nextElementSibling;
+      const prox = l1.closest('.ob-mat-item').nextElementSibling;
       if (prox && prox.matches('.ob-mat-item')) prox.querySelector('[name=material]').focus(); else novaLinha();
     });
 
+    // Avisos antes de salvar: não impedem, mas pedem uma segunda confirmação
+    function avisos(dados) {
+      const lista = [];
+      dados.itens.forEach((it, i) => {
+        const q = `Item ${i + 1} (${it.material})`;
+        if (!it.espec) lista.push(`${q}: sem especificação. O comprador pode levar o produto errado.`);
+        if (it.modalidade === 'locacao' && !Number(it.dias)) lista.push(`${q}: locação sem o período (dias).`);
+        const modelo = catalogo().find(c => c.id === it.modelo);
+        if (modelo && modelo.avisos) modelo.avisos(it.campos, it).forEach(a => lista.push(`${q}: ${a}`));
+      });
+      const en = dados.endereco;
+      if (!en.logradouro || !en.numero || !en.bairro || !en.cidade) lista.push('Endereço da obra incompleto (logradouro, número, bairro e cidade).');
+      if (!dados.recebimento.telefone) lista.push('Recebimento na obra sem telefone do responsável.');
+      return lista;
+    }
+
     form.addEventListener('submit', async ev => {
       ev.preventDefault();
-      const f = new FormData(form);
-      const itens = linhas().map(row => {
-        const v = nome => row.querySelector(`[name=${nome}]`).value.trim();
-        return { material: v('material'), espec: v('espec'), qtd: v('qtd'), unidade: v('unidade'), foto: row.querySelector('.ob-mat-foto').dataset.caminho || '' };
-      }).filter(it => it.material);
       if (enviando) { status(form, 'Espere a foto terminar de enviar.'); return; }
-      const email = f.get('para_email').trim();
+      const f = new FormData(form);
+      const g = nome => String(f.get(nome) || '').trim();
+      const itens = linhas().map(row => ({
+        material: val(row, 'material'), qtd: val(row, 'qtd'), unidade: val(row, 'unidade'),
+        modalidade: val(row, 'modalidade') || 'compra', dias: val(row, 'modalidade') === 'locacao' ? val(row, 'dias') : '',
+        modelo: row.dataset.modelo || '', campos: row.dataset.modelo ? lerCampos(row) : {},
+        espec: val(row, 'espec'), especManual: row.querySelector('[name=espec]').dataset.manual === '1',
+        embalagem: val(row, 'embalagem'), subst: val(row, 'subst'), substObs: val(row, 'substObs'),
+        foto: row.querySelector('.ob-mat-foto').dataset.caminho || ''
+      })).filter(it => it.material);
       if (!itens.length) { status(form, 'Inclua pelo menos um material.'); return; }
-      if (email && !emailValido(email)) { status(form, 'Confira o e-mail do proprietário.'); return; }
-      const o = obraDe(p.id) || {};
-      const etapa = f.get('etapa') || '';
+      const email = g('para_email');
+      if (email && !emailValido(email)) { status(form, 'Confira o e-mail do destinatário.'); return; }
       const dados = {
-        numero, data: f.get('data') || n.hoje(), prazo: f.get('prazo') || '', etapa, itens, obs: f.get('obs').trim(),
-        para: { nome: f.get('para_nome').trim(), email }, enviada_em: (salvo && salvo.enviada_em) || '',
-        eu: n.meusDados(), cliente: p.cliente || '', assunto: p.assunto, endereco: o.endereco || p.local || ''
+        versao: 2, numero, rev,
+        substitui: rev > 0 ? { numero: Number(g('sub_numero')) || numero, rev: Number(g('sub_rev')) || 0 } : null,
+        mudancas: rev > 0 ? g('mudancas') : '',
+        data: g('data') || n.hoje(), prazo: g('prazo'), etapa: g('etapa'), cargo: g('cargo'),
+        proprietario: g('proprietario'), para: { nome: g('para_nome'), setor: g('para_setor'), email },
+        endereco: { logradouro: g('end_logradouro'), numero: g('end_numero'), bairro: g('end_bairro'), cidade: g('end_cidade'), referencia: g('end_referencia') },
+        recebimento: { nome: g('rec_nome'), telefone: g('rec_telefone'), horario: g('rec_horario') },
+        itens, obs: g('obs'), enviada_em: editando ? base.enviada_em || '' : '',
+        eu: n.meusDados(), assunto: p.assunto
       };
-      const doc = { ...(d || { id: n.novoId('d'), processo_id: p.id, numero: n.proximoNumeroDoc(p), origem: 'interno', criado_em: new Date().toISOString() }),
-        tipo: 'Solicitação de materiais', titulo: `Nº ${dois(numero)} — ${qtdItens(dados)}${etapa ? ` · ${etapa}` : ''}`,
+      const lista = avisos(dados);
+      caixaAvisos.hidden = !lista.length;
+      if (lista.length && !confirmado) {
+        caixaAvisos.innerHTML = `<p><b>Antes de salvar, confira:</b></p><ul>${lista.map(a => `<li>${esc(a)}</li>`).join('')}</ul><p class="ob-sub">Corrija o que for preciso, ou clique de novo para salvar assim mesmo.</p>`;
+        confirmado = true;
+        botaoEnviar.textContent = 'Salvar mesmo assim';
+        caixaAvisos.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+        return;
+      }
+      const doc = { ...(editando ? d : { id: n.novoId('d'), processo_id: p.id, numero: n.proximoNumeroDoc(p), origem: 'interno', criado_em: new Date().toISOString() }),
+        tipo: 'Solicitação de materiais', titulo: `Nº ${dois(numero)} ${rotuloRev(rev)} — ${qtdItens(dados)}${dados.etapa ? ` · ${dados.etapa}` : ''}`,
         data: dados.data, conteudo: comMarca(MARCA_MATERIAIS, dados) };
       botaoSalvar(form, false);
       if (!(await n.gravar('documentos', doc))) { botaoSalvar(form, true); return; }
-      // Fotos tiradas da solicitação saem do armazenamento
-      const ficam = new Set(itens.map(it => it.foto));
-      apagarFotos(salvo ? salvo.itens.map(it => it.foto).filter(c => !ficam.has(c)) : []);
-      if (d) Object.assign(d, doc); else n.incluirDocumento(doc);
-      await n.registrar(p, 'documento', `Documento ${n.num4(doc.numero)} ${d ? 'alterado' : 'incluído'}: Solicitação de materiais nº ${dois(numero)} (${qtdItens(dados)}).`);
+      if (editando) {
+        // Fotos tiradas saem do armazenamento, se nenhuma outra solicitação (revisão) as usa
+        const ficam = new Set(itens.map(it => it.foto));
+        const usadas = fotosEmUso(p.id, d.id);
+        apagarFotos(base.itens.map(it => it.foto).filter(c => c && !ficam.has(c) && !usadas.has(c)));
+        Object.assign(d, doc);
+      } else n.incluirDocumento(doc);
+      await n.registrar(p, 'documento', `Documento ${n.num4(doc.numero)} ${editando ? 'alterado' : 'incluído'}: Solicitação de materiais ${tituloNum(dados)} (${qtdItens(dados)})${revisao ? `, que substitui a ${tituloNum(dados.substitui)}` : ''}.`);
       n.fecharModal();
       location.hash = `#/p/${p.id}/d/${doc.id}`;
       n.render();
@@ -1087,64 +1325,86 @@ window.OB_OBRA = function (n) {
 
   function htmlMateriais(m, links) {
     const eu = m.eu || {};
-    const comFoto = m.itens.some(it => links[it.foto]);
     const responsavel = [eu.profissao, eu.nomeCompleto || eu.nome, eu.registro].filter(Boolean).join(' ');
-    const info = [['Proprietário', m.cliente], ['Obra / serviço', m.assunto], ['Endereço da obra', m.endereco],
-      ['Etapa da obra', m.etapa], ['Entrega na obra até', m.prazo ? fmtData(m.prazo) : ''], ['Responsável técnico', responsavel]]
-      .filter(([, v]) => v);
-    const comEspec = m.itens.some(it => it.espec);
-    const nome = m.para && m.para.nome;
+    const temCompra = m.itens.some(it => it.modalidade !== 'locacao'), temLocacao = m.itens.some(it => it.modalidade === 'locacao');
+    const info = [['Proprietário', m.proprietario], ['Obra / serviço', m.assunto], ['Endereço da obra', enderecoTexto(m.endereco)],
+      ['Etapa da obra', m.etapa], ['Entrega na obra até', m.prazo ? fmtData(m.prazo) : ''], ['Recebimento na obra', recebimentoTexto(m.recebimento)],
+      ['Responsável técnico', responsavel]].filter(([, v]) => v);
+    const { nome, setor } = m.para;
+    const saudacao = nome && setor ? `Prezado(a) ${esc(nome)} – ${esc(setor)},` : nome ? `Prezado(a) ${esc(nome)},` : setor ? `Prezados – ${esc(setor)},` : 'Prezados,';
+    const acao = temCompra && temLocacao ? 'a aquisição e a locação' : temLocacao ? 'a locação' : 'a aquisição';
+    const comSubst = m.itens.some(it => it.subst || it.substObs);
+    const aviso = m.rev > 0 && m.substitui
+      ? `<div class="mat-aviso">Esta solicitação substitui a Nº ${dois(m.substitui.numero)} ${rotuloRev(m.substitui.rev)}, que deve ser DESCONSIDERADA.${m.mudancas ? `<span>O que mudou: ${comQuebras(m.mudancas)}</span>` : ''}</div>` : '';
+    // Numeração única (1, 2, 3…) mesmo separando compra e locação: "compatível com o item 5" continua valendo
+    const numerados = m.itens.map((it, i) => ({ it, k: i + 1 }));
+    const tabela = grupo => `<table class="rel-tab mat-tab"><thead><tr><th>Item</th><th>Material e especificação</th><th>Qtd.</th><th>Un.</th><th>Modalidade</th>${comSubst ? '<th>Substituição</th>' : ''}</tr></thead>
+      <tbody>${grupo.map(({ it, k }) => `<tr><td class="num">${k}</td>
+        <td class="mat-desc"><b>${esc(it.material)}</b>${it.espec ? `<br>${esc(it.espec)}` : ''}${it.embalagem ? `<br><small>Forma de venda: ${esc(it.embalagem)}</small>` : ''}
+          ${links[it.foto] ? `<img class="mat-foto" src="${esc(links[it.foto])}" alt="Foto: ${esc(it.material)}" />` : ''}</td>
+        <td class="num">${esc(it.qtd)}</td><td class="num">${esc(it.unidade)}</td><td class="num mat-modal">${esc(modalidadeTexto(it))}</td>
+        ${comSubst ? `<td class="mat-subst">${esc(SUBSTITUICAO[it.subst] || '')}${it.substObs ? `${it.subst ? '<br>' : ''}<small>${esc(it.substObs)}</small>` : ''}</td>` : ''}</tr>`).join('')}</tbody></table>`;
+    const itensHtml = temCompra && temLocacao
+      ? `<h4 class="mat-secao">ITENS PARA COMPRA</h4>${tabela(numerados.filter(x => x.it.modalidade !== 'locacao'))}<h4 class="mat-secao">ITENS PARA LOCAÇÃO</h4>${tabela(numerados.filter(x => x.it.modalidade === 'locacao'))}`
+      : tabela(numerados);
     return `
       <section>
-        <div class="rel-titulo"><p>SOLICITAÇÃO DE MATERIAIS Nº ${dois(m.numero)}</p><p>${fmtData(m.data)}</p></div>
+        <div class="rel-titulo"><p>SOLICITAÇÃO DE MATERIAIS Nº ${dois(m.numero)} – ${rotuloRev(m.rev)}</p><p>${fmtData(m.data)}</p></div>
+        ${aviso}
         <table class="rel-tab rel-info"><tbody>${info.map(([a, b]) => `<tr><th>${esc(a)}</th><td>${esc(b)}</td></tr>`).join('')}</tbody></table>
-        <p>${nome ? `Prezado(a) ${esc(nome)},` : 'Prezado(a) proprietário(a),'}</p>
-        <p>Para dar continuidade aos serviços da obra, solicito a aquisição e a entrega dos materiais relacionados abaixo${m.prazo ? ` até ${fmtData(m.prazo)}` : ''}.</p>
-        <table class="rel-tab"><thead><tr><th>Item</th><th>Material</th>${comEspec ? '<th>Especificação</th>' : ''}<th>Qtd.</th><th>Un.</th></tr></thead>
-          <tbody>${m.itens.map((it, i) => `<tr><td class="num">${i + 1}</td>
-            <td class="${comFoto ? 'mat-com-foto' : ''}">${esc(it.material)}${links[it.foto] ? `<img class="mat-foto" src="${esc(links[it.foto])}" alt="Foto: ${esc(it.material)}" />` : ''}</td>
-            ${comEspec ? `<td>${esc(it.espec)}</td>` : ''}<td class="num">${esc(it.qtd)}</td><td class="num">${esc(it.unidade)}</td></tr>`).join('')}</tbody></table>
+        <p>${saudacao}</p>
+        <p>Para dar continuidade aos serviços da obra, solicito ${acao} dos materiais relacionados abaixo${m.prazo ? `, com entrega na obra até ${fmtData(m.prazo)}` : ''}.</p>
+        ${itensHtml}
         ${m.obs ? `<p><b>Observações:</b> ${comQuebras(m.obs)}</p>` : ''}
-        <p>Fico à disposição para esclarecer as especificações ou avaliar a troca de algum material.</p>
+        <p>Em caso de dúvida sobre qualquer item, entre em contato antes de comprar ou locar.</p>
         <p class="prop-assinatura"><span></span>${esc(responsavel || eu.nome || '')}<br>Responsável técnico</p>
       </section>`.replace(/\n\s*/g, '');
   }
 
   const CSS_MATERIAIS = `
-    .rel-tab td.mat-com-foto { width: 42%; }
+    .mat-aviso { border: 2px solid #b91c1c; color: #b91c1c; font-weight: bold; text-align: center; padding: 6px 10px; margin: 0 0 10px; }
+    .mat-aviso span { display: block; color: #333; font-weight: normal; margin-top: 3px; }
+    h4.mat-secao { font-size: 12.5px; margin: 12px 0 2px; }
+    .mat-tab td.mat-desc { width: 48%; }
+    .mat-tab td.mat-modal { font-weight: bold; font-size: 11px; }
+    .mat-tab td.mat-subst { font-size: 11px; }
     .rel-tab img.mat-foto { display: block; max-width: 100%; max-height: 45mm; margin: 5px 0 2px; object-fit: contain; }
     .rel-tab tr { break-inside: avoid; }`;
 
   async function paginaMateriais(p, d, modo) {
     const m = lerMateriais(d);
     const links = await linksFotos(fotosDaSolicitacao(m));
-    // O título vira o nome sugerido ao salvar o PDF
-    return n.paginaTimbrada(`Solicitação de materiais ${dois(m.numero)} - ${p.cliente || p.assunto}`, htmlMateriais(m, links), m.eu, modo, CSS_RELATORIO + CSS_MATERIAIS);
+    // O título vira o nome sugerido ao salvar o PDF; o cargo do cabeçalho é o desta solicitação
+    return n.paginaTimbrada(`Solicitação de materiais ${dois(m.numero)} Rev ${dois(m.rev)} - ${m.proprietario || p.assunto}`,
+      htmlMateriais(m, links), { ...(m.eu || {}), cargo: m.cargo }, modo, CSS_RELATORIO + CSS_MATERIAIS);
   }
 
   function formEmailMateriais(p, d) {
     const m = lerMateriais(d);
     const h = new Date().getHours();
-    const primeiro = ((m.para && m.para.nome) || '').trim().split(/\s+/)[0];
-    const lista = m.itens.map(it => `• ${it.material}${it.espec ? ` (${it.espec})` : ''}${it.qtd || it.unidade ? ` — ${[it.qtd, it.unidade].filter(Boolean).join(' ')}` : ''}`).join('\n');
-    const assunto = `Solicitação de materiais nº ${dois(m.numero)} — ${p.assunto}`;
+    const primeiro = (m.para.nome || '').trim().split(/\s+/)[0];
+    const lista = m.itens.map((it, i) => `${i + 1}. ${it.material}${it.espec ? ` — ${it.espec}` : ''} — ${[it.qtd, it.unidade].filter(Boolean).join(' ')} — ${modalidadeTexto(it)}`).join('\n');
+    const assunto = `Solicitação de materiais ${tituloNum(m)} — ${p.assunto}`;
     const assinatura = m.eu && (m.eu.nomeCompleto || m.eu.nome);
+    const receb = recebimentoTexto(m.recebimento);
     const texto = [
       `${h < 12 ? 'Bom dia' : h < 18 ? 'Boa tarde' : 'Boa noite'}${primeiro ? `, ${primeiro}` : ''}!`,
-      `Segue em anexo a solicitação de materiais nº ${dois(m.numero)} da obra${m.endereco ? ` (${m.endereco})` : ''}${m.prazo ? `, com entrega na obra até ${fmtData(m.prazo)}` : ''}:`,
+      m.rev > 0 && m.substitui ? `Atenção: esta solicitação substitui a ${tituloNum(m.substitui)}, que deve ser desconsiderada.` : '',
+      `Segue em anexo a solicitação de materiais ${tituloNum(m)}${enderecoTexto(m.endereco) ? ` para a obra em ${enderecoTexto(m.endereco)}` : ''}${m.prazo ? `, com entrega na obra até ${fmtData(m.prazo)}` : ''}:`,
       lista,
+      receb ? `Recebimento na obra: ${receb}.` : '',
       m.obs ? `Observações: ${m.obs}` : '',
-      'Qualquer dúvida, fico à disposição.',
+      'Em caso de dúvida sobre qualquer item, fale comigo antes de comprar ou locar.',
       assinatura ? `Atenciosamente,\n${assinatura}` : ''
     ].filter(Boolean).join('\n\n');
 
-    n.abrirModal(`Enviar a solicitação nº ${dois(m.numero)} por e-mail`, `
+    n.abrirModal(`Enviar a solicitação ${tituloNum(m)} por e-mail`, `
       <form id="ob-form-email" class="ob-form" novalidate>
         <ol class="ob-passos inteiro">
           <li>Clique em <button type="button" class="ob-btn" data-acao="obra-materiais-pdf" data-id="${esc(d.id)}">📄 Salvar o PDF</button> e, na janela de impressão, escolha “Salvar como PDF”.</li>
           <li>Depois, clique em “Abrir no Gmail”, anexe o PDF salvo e envie.</li>
         </ol>
-        ${campo('Para', `<input type="email" class="ob-input" name="para" value="${esc(m.para && m.para.email)}" placeholder="e-mail do proprietário" />`, 'inteiro')}
+        ${campo('Para', `<input type="email" class="ob-input" name="para" value="${esc(m.para.email)}" placeholder="e-mail do destinatário" />`, 'inteiro')}
         ${campo('Assunto', `<input class="ob-input" name="assunto" value="${esc(assunto)}" />`, 'inteiro')}
         ${campo('Mensagem (pode editar antes de abrir)', `<textarea class="ob-input" name="texto" rows="12">${esc(texto)}</textarea>`, 'inteiro')}
         ${acoesForm('✉️ Abrir no Gmail')}
@@ -1155,7 +1415,7 @@ window.OB_OBRA = function (n) {
       ev.preventDefault();
       const f = new FormData(form);
       const para = f.get('para').trim(), assuntoFinal = f.get('assunto').trim();
-      if (!emailValido(para)) { status(form, 'Informe o e-mail do proprietário.'); return; }
+      if (!emailValido(para)) { status(form, 'Informe o e-mail do destinatário.'); return; }
       // Aberto antes de qualquer await, ainda no clique, para o navegador não bloquear a aba
       window.open(`https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(para)}&su=${encodeURIComponent(assuntoFinal)}&body=${encodeURIComponent(f.get('texto'))}`, '_blank', 'noopener');
       n.fecharModal();
@@ -1175,7 +1435,7 @@ window.OB_OBRA = function (n) {
     const m = lerMateriais(d);
     const r = m ? null : lerRelatorio(d);
     const resumo = m
-      ? `${qtdItens(m)}${m.prazo ? ` · entrega até ${fmtData(m.prazo)}` : ''} · ${m.enviada_em ? `enviada por e-mail em ${fmtData(m.enviada_em)}` : 'ainda não enviada'}`
+      ? `${qtdItens(m)}${m.prazo ? ` · entrega até ${fmtData(m.prazo)}` : ''} · ${m.enviada_em ? `enviada por e-mail em ${fmtData(m.enviada_em)}` : 'ainda não enviada'}${substituida(p.id, m) ? ' · <b>substituída por uma revisão mais nova</b>' : ''}`
       : `${(r.visitas || []).length} visita(s) · ${(r.fotos || []).length} foto(s) · avanço ${fmtPct(r.avanco && r.avanco.atual)}`;
     return `<div class="ob-card ob-doc">
       <div class="ob-doc-cab">
@@ -1185,7 +1445,8 @@ window.OB_OBRA = function (n) {
           <p class="ob-sub">${resumo} · <a class="ob-link" href="#/p/${esc(p.id)}/obra${m ? '/materiais' : ''}">acompanhamento da obra</a></p>
         </div>
         <div class="ob-doc-acoes">
-          ${m ? `<button type="button" class="ob-btn primario" data-acao="obra-materiais-email" data-id="${esc(d.id)}">✉️ Enviar por e-mail</button>` : ''}
+          ${m ? `<button type="button" class="ob-btn primario" data-acao="obra-materiais-email" data-id="${esc(d.id)}">✉️ Enviar por e-mail</button>
+            <button type="button" class="ob-btn" data-acao="obra-materiais-revisao" data-id="${esc(d.id)}" title="Cria a ${rotuloRev(m.rev + 1)} desta solicitação; esta fica guardada">Nova revisão</button>` : ''}
           <button type="button" class="ob-btn" data-acao="imprimir-doc">Imprimir / PDF</button>
           <button type="button" class="ob-btn" data-acao="editar-doc">Editar</button>
           <button type="button" class="ob-btn perigo" data-acao="excluir-doc">Excluir</button>
@@ -1229,9 +1490,9 @@ window.OB_OBRA = function (n) {
     else if (acao === 'obra-visita-editar') formVisita(p, visitas.find(v => v.id === id));
     else if (acao === 'obra-relatorio-novo') formRelatorio(p, null);
     else if (acao === 'obra-materiais-nova') formMateriais(p, null);
-    else if (acao === 'obra-materiais-email' || acao === 'obra-materiais-pdf') {
+    else if (['obra-materiais-email', 'obra-materiais-pdf', 'obra-materiais-revisao'].includes(acao)) {
       const d = n.docsDe(p.id).find(x => x.id === id);
-      if (d) (acao === 'obra-materiais-pdf' ? imprimirDoc : formEmailMateriais)(p, d);
+      if (d) ({ 'obra-materiais-pdf': imprimirDoc, 'obra-materiais-email': formEmailMateriais, 'obra-materiais-revisao': (pp, dd) => formMateriais(pp, dd, true) })[acao](p, d);
     }
     else if (acao === 'obra-pendencia-nova') formPendencia(p, null);
     else if (acao === 'obra-pendencia-editar') formPendencia(p, pendencias.find(x => x.id === id));
