@@ -771,6 +771,24 @@
     gravar('metas', novas);
   }
 
+  /* Terminou antes: traz para hoje as metas do próximo dia previsto (estudo e questões; as
+     revisões dependem da data e continuam onde estão). A projeção se refaz sem elas. */
+  async function adiantar() {
+    const e = editalAtivo();
+    const projecao = e && planoDe(e.id) ? projetar(e) : null;
+    const previstas = projecao ? projecao.semanas.flatMap(w => w.metas) : [];
+    if (!previstas.length) { aviso('Não há metas previstas para adiantar: o edital já está todo no plano.'); return; }
+    const dia = previstas.reduce((a, m) => (m.dia < a ? m.dia : a), previstas[0].dia);
+    const h = hoje(), semana = segundaDe(h);
+    const ordem0 = metasDaSemana(e.id, semana).filter(m => m.dia === h).length;
+    const novas = previstas.filter(m => m.dia === dia).map(({ previsto, ...m }, i) => ({ ...m, id: novoId('m'), semana, dia: h, ordem: ordem0 + i }));
+    metas.push(...novas);
+    await gravar('metas', novas);
+    semanaVista = semana;
+    renderTudo();
+    aviso(`${novas.length} meta${novas.length > 1 ? 's' : ''} de ${fmtData(dia)} adiantada${novas.length > 1 ? 's' : ''} para hoje.`);
+  }
+
   /* Apaga todas as metas e revisões do edital ativo e gera a semana de novo. A configuração
      (horas, dias, peso/nível, PDFs, incidência) e o progresso dos tópicos ficam. */
   async function reiniciarPlanejamento() {
@@ -1631,6 +1649,7 @@
           </div>
           ${plano ? `<button class="est-plano-btn" onclick="estPlano.alternarConfig()">⚙️ Plano</button>` : ''}
           ${plano && semanaVista === atual ? `<button class="est-plano-btn" onclick="estPlano.regerarSemana()" title="Refaz as metas não concluídas desta semana">↻ Regerar</button>` : ''}
+          ${plano && semanaVista >= atual && projecao && projecao.semanas.some(w => w.metas.length) ? `<button class="est-plano-btn" onclick="estPlano.adiantar()" title="Traz para hoje as metas do próximo dia previsto">⏩ Adiantar</button>` : ''}
           ${plano ? `<button class="est-plano-btn perigo" onclick="estPlano.reiniciarPlanejamento()" title="Apaga todas as metas e revisões deste edital e começa o plano de novo">⟲ Reiniciar do zero</button>` : ''}
         </div>
       </div>
@@ -2292,7 +2311,7 @@
 
   window.estPlano = {
     init, renderHoje, renderSecao, topicoConcluido, sessaoCriada, sessaoRemovida,
-    abrirConclusao, abrirEstudo, adiarRevisao, removerMeta, regerarSemana, reiniciarPlanejamento, metasDoTopico, agendarEstudados,
+    abrirConclusao, abrirEstudo, adiarRevisao, removerMeta, regerarSemana, adiantar, reiniciarPlanejamento, metasDoTopico, agendarEstudados,
     agendarReforco, mudarSemana, irParaSemana, alternarConfig, editalTrocado, projetar,
     incidenciaDaDisciplina, pctIncidencia, salvarIncidencias,
     materiaisDaDisciplina, paginasDoTopico, prioridadeDosTopicos, salvarMateriais, ordemPdfDe, juntarTopicos,
