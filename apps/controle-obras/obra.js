@@ -1090,10 +1090,10 @@ window.OB_OBRA = function (n) {
         <table class="rel-tab rel-info"><tbody>${info.map(([a, b]) => `<tr><th>${esc(a)}</th><td>${esc(b)}</td></tr>`).join('')}</tbody></table>
         <p>${nome ? `Prezado(a) ${esc(nome)},` : 'Prezado(a) proprietário(a),'}</p>
         <p>Para dar continuidade aos serviços da obra, solicito a aquisição e a entrega dos materiais relacionados abaixo${m.prazo ? ` até ${fmtData(m.prazo)}` : ''}.</p>
-        <table class="rel-tab"><thead><tr><th>Item</th><th>Material</th>${comEspec ? '<th>Especificação</th>' : ''}<th>Qtd.</th><th>Un.</th>${comFoto ? '<th>Foto</th>' : ''}</tr></thead>
-          <tbody>${m.itens.map((it, i) => `<tr><td class="num">${i + 1}</td><td>${esc(it.material)}</td>${comEspec ? `<td>${esc(it.espec)}</td>` : ''}
-            <td class="num">${esc(it.qtd)}</td><td class="num">${esc(it.unidade)}</td>
-            ${comFoto ? `<td class="foto">${links[it.foto] ? `<img src="${esc(links[it.foto])}" alt="" />` : ''}</td>` : ''}</tr>`).join('')}</tbody></table>
+        <table class="rel-tab"><thead><tr><th>Item</th><th>Material</th>${comEspec ? '<th>Especificação</th>' : ''}<th>Qtd.</th><th>Un.</th></tr></thead>
+          <tbody>${m.itens.map((it, i) => `<tr><td class="num">${i + 1}</td>
+            <td class="${comFoto ? 'mat-com-foto' : ''}">${esc(it.material)}${links[it.foto] ? `<img class="mat-foto" src="${esc(links[it.foto])}" alt="Foto: ${esc(it.material)}" />` : ''}</td>
+            ${comEspec ? `<td>${esc(it.espec)}</td>` : ''}<td class="num">${esc(it.qtd)}</td><td class="num">${esc(it.unidade)}</td></tr>`).join('')}</tbody></table>
         ${m.obs ? `<p><b>Observações:</b> ${comQuebras(m.obs)}</p>` : ''}
         <p>Fico à disposição para esclarecer as especificações ou avaliar a troca de algum material.</p>
         <p class="prop-assinatura"><span></span>${esc(responsavel || eu.nome || '')}<br>Responsável técnico</p>
@@ -1101,8 +1101,8 @@ window.OB_OBRA = function (n) {
   }
 
   const CSS_MATERIAIS = `
-    .rel-tab td.foto { width: 34mm; padding: 3px; text-align: center; }
-    .rel-tab td.foto img { display: block; max-width: 32mm; max-height: 26mm; margin: 0 auto; object-fit: contain; }
+    .rel-tab td.mat-com-foto { width: 42%; }
+    .rel-tab img.mat-foto { display: block; max-width: 100%; max-height: 45mm; margin: 5px 0 2px; object-fit: contain; }
     .rel-tab tr { break-inside: avoid; }`;
 
   async function paginaMateriais(p, d, modo) {
