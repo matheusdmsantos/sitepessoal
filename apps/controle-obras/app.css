@@ -379,6 +379,17 @@ a.ob-chip:hover { color: var(--silver-bright); }
 .ob-mat-avisos[hidden] { display: none; }
 .ob-mat-avisos p { margin: 0 0 6px; }
 .ob-mat-avisos ul { margin: 0 0 6px; padding-left: 18px; display: flex; flex-direction: column; gap: 3px; color: var(--silver-bright); }
+.ob-mat-acoes-tit { display: flex; gap: 8px; flex-wrap: wrap; }
+.ob-mat-cad-lista { display: flex; flex-direction: column; border: 1px solid var(--border); border-radius: var(--r-md); overflow: hidden; }
+.ob-mat-cad-linha { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 8px; align-items: center; padding: 9px 12px; border-top: 1px solid var(--border); font-size: 0.86rem; }
+.ob-mat-cad-linha:first-child { border-top: 0; }
+.ob-mat-cad-linha strong { display: block; color: var(--silver-bright); }
+.ob-mat-cad-linha small { color: var(--accent); font-size: 0.75rem; }
+.ob-mat-cad-lista .ob-vazio { margin: 0; padding: 12px; }
+[data-campos] { display: flex; flex-direction: column; gap: 8px; }
+.ob-mat-cad-campo { display: grid; grid-template-columns: minmax(0, 1.3fr) 150px minmax(0, 1.4fr) 120px 34px; gap: 8px; align-items: center; }
+.ob-mat-cad-campo [name=c_opcoes][hidden] { display: block; visibility: hidden; }
+@media (max-width: 760px) { .ob-mat-cad-campo { grid-template-columns: minmax(0, 1fr) 34px; } .ob-mat-cad-campo > :not(button) { grid-column: 1; } .ob-mat-cad-campo [name=c_opcoes][hidden] { display: none; } }
 .ob-passos { margin: 0; padding-left: 22px; display: flex; flex-direction: column; gap: 10px; font-size: 0.86rem; color: var(--silver); }
 @media (max-width: 760px) {
   .ob-mat-l1 { grid-template-columns: 22px minmax(0, 1fr) 46px 34px; }

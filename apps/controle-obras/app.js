@@ -1851,7 +1851,15 @@
       sb, BUCKET, esc, dataLocal, hoje, diasAte, fmtData, fmtDataHora, fmtMoeda, lerNumero, valorBr, num4, novoId,
       campo, opcoes, abrirModal, fecharModal, aviso, tabelaFaltando, gravar, apagar, registrar, render, fase, mudarFase,
       docsDe, proximoNumeroDoc, incluirDocumento: d => documentos.push(d), meusDados, fmtTelefone, paginaTimbrada,
-      propostasDe, contaProposta, formMensagem, nomeSeguro, TAMANHO_MAX, processo: id => processos.find(p => p.id === id)
+      propostasDe, contaProposta, formMensagem, nomeSeguro, TAMANHO_MAX, processo: id => processos.find(p => p.id === id),
+      // user_metadata da conta (ex.: materiais cadastrados na solicitação de materiais)
+      meta: () => (usuario && usuario.user_metadata) || {},
+      async salvarMeta(dados) {
+        const { data, error } = await sb.auth.updateUser({ data: dados });
+        if (error) { console.error('Erro ao salvar na conta:', error); aviso('Não foi possível salvar. Confira sua conexão.'); return false; }
+        if (data && data.user) usuario = data.user;
+        return true;
+      }
     };
   }
 

@@ -380,7 +380,8 @@ window.OB_OBRA = function (n) {
     const ss = solicitacoesDe(p.id).map(d => [d, lerMateriais(d)]).filter(([, m]) => m).reverse();
     return `<div class="ob-card">
       <h3 class="ob-card-titulo">Solicitações de materiais
-        <button type="button" class="ob-btn primario" data-acao="obra-materiais-nova">📦 Nova solicitação</button></h3>
+        <span class="ob-mat-acoes-tit"><button type="button" class="ob-btn sutil" data-acao="obra-materiais-cadastro" title="Materiais com especificação guiada, além dos que já vêm prontos">⚙️ Meus materiais</button>
+        <button type="button" class="ob-btn primario" data-acao="obra-materiais-nova">📦 Nova solicitação</button></span></h3>
       <p class="ob-sub">Cada solicitação é um documento do processo, no papel timbrado: abra-a para ver a prévia, salvar o PDF e enviar ao proprietário pelo Gmail.</p>
       ${ss.map(([d, m]) => `<a class="ob-rel-linha" href="#/p/${esc(p.id)}/d/${esc(d.id)}">
           <span class="ob-numero">${n.num4(d.numero)}</span>
@@ -955,7 +956,20 @@ window.OB_OBRA = function (n) {
   ============================================= */
   const qtdItens = m => `${m.itens.length} ${m.itens.length === 1 ? 'item' : 'itens'}`;
   const emailValido = s => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(s);
-  const catalogo = () => window.OB_CATALOGO_MATERIAIS || [];
+  /* Materiais cadastrados pelo usuário (botão "Meus materiais"): ficam no user_metadata da conta
+     (materiais_proprios) e entram no catálogo antes dos fixos, então valem mais num empate. */
+  const meusMateriais = () => (n.meta ? n.meta().materiais_proprios : null) || [];
+  const textoProprio = mat => c => [mat.nome, ...mat.campos.filter(f => String(c[f.id] || '').trim()).map(f => {
+    const v = f.tipo === 'numero' ? (window.OB_NUM ? window.OB_NUM(c[f.id]) : c[f.id]) : c[f.id];
+    return `${f.rotulo.toLowerCase()} ${v}${f.sufixo ? ` ${f.sufixo}` : ''}`;
+  })].join(', ');
+  const paraCatalogo = mat => ({
+    ...mat, proprio: true, chaves: (mat.chaves && mat.chaves.length ? mat.chaves : [mat.nome]).map(semAcento).filter(Boolean),
+    campos: mat.campos.map(f => ({ ...f, rotulo: f.rotulo + (f.sufixo ? ` (${f.sufixo})` : ''), tipo: f.tipo === 'opcao' ? 'opcao' : f.tipo,
+      opcoes: f.tipo === 'opcao' ? ['', ...(f.opcoes || [])] : undefined })),
+    texto: textoProprio(mat)
+  });
+  const catalogo = () => [...meusMateriais().map(paraCatalogo), ...(window.OB_CATALOGO_MATERIAIS || [])];
   const unidadesMat = () => window.OB_UNIDADES || UNIDADES;
   const semAcento = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
   // Vale a palavra-chave que aparece primeiro: "Plataforma para andaime" é plataforma, não andaime
@@ -1334,16 +1348,19 @@ window.OB_OBRA = function (n) {
     const saudacao = nome && setor ? `Prezado(a) ${esc(nome)} – ${esc(setor)},` : nome ? `Prezado(a) ${esc(nome)},` : setor ? `Prezados – ${esc(setor)},` : 'Prezados,';
     const acao = temCompra && temLocacao ? 'a aquisição e a locação' : temLocacao ? 'a locação' : 'a aquisição';
     const comSubst = m.itens.some(it => it.subst || it.substObs);
+    const comFoto = m.itens.some(it => links[it.foto]);
     const aviso = m.rev > 0 && m.substitui
       ? `<div class="mat-aviso">Esta solicitação substitui a Nº ${dois(m.substitui.numero)} ${rotuloRev(m.substitui.rev)}, que deve ser DESCONSIDERADA.${m.mudancas ? `<span>O que mudou: ${comQuebras(m.mudancas)}</span>` : ''}</div>` : '';
     // Numeração única (1, 2, 3…) mesmo separando compra e locação: "compatível com o item 5" continua valendo
     const numerados = m.itens.map((it, i) => ({ it, k: i + 1 }));
-    const tabela = grupo => `<table class="rel-tab mat-tab"><thead><tr><th>Item</th><th>Material e especificação</th><th>Qtd.</th><th>Un.</th><th>Modalidade</th>${comSubst ? '<th>Substituição</th>' : ''}</tr></thead>
+    const tabela = grupo => `<table class="rel-tab mat-tab"><thead><tr><th>Item</th><th>Material e especificação</th><th>Qtd.</th><th>Un.</th><th>Modalidade</th>${comSubst ? '<th>Substituição</th>' : ''}${comFoto ? '<th>Foto</th>' : ''}</tr></thead>
       <tbody>${grupo.map(({ it, k }) => `<tr><td class="num">${k}</td>
-        <td class="mat-desc"><b>${esc(it.material)}</b>${it.espec ? `<br>${esc(it.espec)}` : ''}${it.embalagem ? `<br><small>Forma de venda: ${esc(it.embalagem)}</small>` : ''}
-          ${links[it.foto] ? `<img class="mat-foto" src="${esc(links[it.foto])}" alt="Foto: ${esc(it.material)}" />` : ''}</td>
+        <td class="mat-desc"><b>${esc(it.material)}</b>${it.espec ? `<br>${esc(it.espec)}` : ''}${it.embalagem ? `<br><small>Forma de venda: ${esc(it.embalagem)}</small>` : ''}</td>
         <td class="num">${esc(it.qtd)}</td><td class="num">${esc(it.unidade)}</td><td class="num mat-modal">${esc(modalidadeTexto(it))}</td>
-        ${comSubst ? `<td class="mat-subst">${esc(SUBSTITUICAO[it.subst] || '')}${it.substObs ? `${it.subst ? '<br>' : ''}<small>${esc(it.substObs)}</small>` : ''}</td>` : ''}</tr>`).join('')}</tbody></table>`;
+        ${comSubst ? `<td class="mat-subst">${esc(SUBSTITUICAO[it.subst] || '')}${it.substObs ? `${it.subst ? '<br>' : ''}<small>${esc(it.substObs)}</small>` : ''}</td>` : ''}
+        ${comFoto ? `<td class="mat-fotocel">${links[it.foto] ? `<img src="${esc(links[it.foto])}" alt="Foto do item ${k}" /><small>foto ${k} no fim</small>` : ''}</td>` : ''}</tr>`).join('')}</tbody></table>`;
+    // Miniatura de tamanho fixo na tabela (não deforma as linhas); as fotos grandes ficam numa página no fim
+    const comFotos = numerados.filter(x => links[x.it.foto]);
     const itensHtml = temCompra && temLocacao
       ? `<h4 class="mat-secao">ITENS PARA COMPRA</h4>${tabela(numerados.filter(x => x.it.modalidade !== 'locacao'))}<h4 class="mat-secao">ITENS PARA LOCAÇÃO</h4>${tabela(numerados.filter(x => x.it.modalidade === 'locacao'))}`
       : tabela(numerados);
@@ -1358,7 +1375,10 @@ window.OB_OBRA = function (n) {
         ${m.obs ? `<p><b>Observações:</b> ${comQuebras(m.obs)}</p>` : ''}
         <p>Em caso de dúvida sobre qualquer item, entre em contato antes de comprar ou locar.</p>
         <p class="prop-assinatura"><span></span>${esc(responsavel || eu.nome || '')}<br>Responsável técnico</p>
-      </section>`.replace(/\n\s*/g, '');
+      </section>
+      ${comFotos.length ? `<section class="prop-quebra"><h3>FOTOS DE REFERÊNCIA</h3>
+        <div class="rel-fotos">${comFotos.map(({ it, k }) => `<figure><img src="${esc(links[it.foto])}" alt="" /><figcaption>Foto ${k} – item ${k}: ${esc(it.material)}</figcaption></figure>`).join('')}</div>
+      </section>` : ''}`.replace(/\n\s*/g, '');
   }
 
   const CSS_MATERIAIS = `
@@ -1368,7 +1388,9 @@ window.OB_OBRA = function (n) {
     .mat-tab td.mat-desc { width: 48%; }
     .mat-tab td.mat-modal { font-weight: bold; font-size: 11px; }
     .mat-tab td.mat-subst { font-size: 11px; }
-    .rel-tab img.mat-foto { display: block; max-width: 100%; max-height: 45mm; margin: 5px 0 2px; object-fit: contain; }
+    .mat-tab td.mat-fotocel { width: 24mm; text-align: center; padding: 3px; }
+    .mat-tab td.mat-fotocel img { display: block; width: 22mm; height: 18mm; object-fit: contain; margin: 0 auto 1px; }
+    .mat-tab td.mat-fotocel small { font-size: 8.5px; color: #555; white-space: nowrap; }
     .rel-tab tr { break-inside: avoid; }`;
 
   async function paginaMateriais(p, d, modo) {
@@ -1426,6 +1448,104 @@ window.OB_OBRA = function (n) {
       n.render();
       n.aviso('Gmail aberto. Anexe o PDF da solicitação antes de enviar.');
     });
+  }
+
+  /* Cadastro de materiais próprios: nome, palavras que o reconhecem, padrões e campos guiados.
+     O texto da especificação sai como "Nome, rótulo valor unidade, …" (ex.: "Cimento, tipo CP-II, peso 50 kg"). */
+  const TIPOS_CAMPO = { texto: 'Texto', numero: 'Número', opcao: 'Lista de opções' };
+
+  function formMeusMateriais() {
+    const lista = meusMateriais();
+    const fixos = (window.OB_CATALOGO_MATERIAIS || []).map(c => c.nome).join(', ');
+    n.abrirModal('Meus materiais', `
+      <div class="ob-form">
+        <p class="ob-sub inteiro">Materiais que você cadastra aqui ganham campos guiados na solicitação, como os que já vêm prontos (${esc(fixos)}).</p>
+        <div class="inteiro ob-mat-cad-lista">${lista.map((m, i) => `<div class="ob-mat-cad-linha">
+            <span><strong>${esc(m.nome)}</strong><small>${m.campos.length ? esc(m.campos.map(f => f.rotulo).join(' · ')) : 'sem campos'} · ${esc(m.unidade || 'sem unidade')} · ${m.modalidade === 'locacao' ? 'locação' : 'compra'}</small></span>
+            <button type="button" class="ob-btn sutil" data-acao="obra-material-editar" data-i="${i}">Editar</button>
+            <button type="button" class="ob-btn sutil perigo" data-acao="obra-material-excluir" data-i="${i}" aria-label="Excluir ${esc(m.nome)}">✕</button>
+          </div>`).join('') || '<p class="ob-vazio">Nenhum material cadastrado ainda.</p>'}</div>
+        <div class="ob-form-acoes inteiro">
+          <button type="button" class="ob-btn" data-acao="fechar-modal">Fechar</button>
+          <button type="button" class="ob-btn primario" data-acao="obra-material-novo">+ Cadastrar material</button>
+        </div>
+      </div>`, true);
+  }
+
+  function formMaterial(i) {
+    const lista = meusMateriais();
+    const mat = i != null ? lista[i] : { nome: '', chaves: [], unidade: '', modalidade: 'compra', embalagem: '', campos: [] };
+    const linhaCampo = (f = {}) => `<div class="ob-mat-cad-campo">
+        <input class="ob-input" name="c_rotulo" value="${esc(f.rotulo)}" placeholder="Nome do campo (ex.: Peso)" aria-label="Nome do campo" />
+        <select class="ob-input" name="c_tipo" aria-label="Tipo do campo">${opcoes(Object.entries(TIPOS_CAMPO), f.tipo || 'texto')}</select>
+        <input class="ob-input" name="c_opcoes" value="${esc((f.opcoes || []).join(', '))}" placeholder="Opções, separadas por vírgula" aria-label="Opções" ${f.tipo === 'opcao' ? '' : 'hidden'} />
+        <input class="ob-input" name="c_sufixo" value="${esc(f.sufixo)}" placeholder="Unidade (ex.: kg, cm)" aria-label="Unidade da medida" />
+        <button type="button" class="ob-btn sutil" data-cad="remover" aria-label="Remover campo">✕</button>
+      </div>`;
+    n.abrirModal(i != null ? `Material: ${mat.nome}` : 'Cadastrar material', `
+      <form id="ob-form-material" class="ob-form" novalidate>
+        ${campo('Nome do material', `<input class="ob-input" name="nome" value="${esc(mat.nome)}" placeholder="ex.: Cimento" required />`)}
+        ${campo('Palavras que reconhecem o material (opcional)', `<input class="ob-input" name="chaves" value="${esc((mat.chaves || []).join(', '))}" placeholder="padrão: o próprio nome" />`)}
+        ${campo('Unidade padrão', `<select class="ob-input" name="unidade"><option value="">—</option>${opcoes(unidadesMat().map(u => [u, u]), mat.unidade)}</select>`)}
+        ${campo('Modalidade padrão', `<select class="ob-input" name="modalidade">${opcoes([['compra', 'Compra'], ['locacao', 'Locação']], mat.modalidade)}</select>`)}
+        ${campo('Embalagem / forma de venda padrão (opcional)', `<input class="ob-input" name="embalagem" value="${esc(mat.embalagem)}" placeholder="ex.: saco de 50 kg" />`, 'inteiro')}
+        <fieldset class="ob-grupo inteiro"><legend>Campos guiados da especificação</legend>
+          <div data-campos>${mat.campos.map(linhaCampo).join('')}</div>
+          <button type="button" class="ob-btn sutil" data-cad="mais">+ Campo</button>
+          <p class="ob-sub">Exemplo do texto: <b data-exemplo></b></p>
+        </fieldset>
+        ${acoesForm(i != null ? 'Salvar' : 'Cadastrar')}
+      </form>`, true);
+    const form = document.getElementById('ob-form-material');
+    const lerCamposCad = () => [...form.querySelectorAll('.ob-mat-cad-campo')].map((row, k) => ({
+      id: `f${k + 1}`, rotulo: row.querySelector('[name=c_rotulo]').value.trim(), tipo: row.querySelector('[name=c_tipo]').value,
+      opcoes: row.querySelector('[name=c_opcoes]').value.split(',').map(s => s.trim()).filter(Boolean), sufixo: row.querySelector('[name=c_sufixo]').value.trim()
+    })).filter(f => f.rotulo).map(f => (f.tipo === 'opcao' ? f : { ...f, opcoes: undefined }));
+    const exemplo = () => {
+      const campos = lerCamposCad();
+      const c = Object.fromEntries(campos.map(f => [f.id, f.tipo === 'opcao' ? (f.opcoes[0] || '…') : f.tipo === 'numero' ? '10' : '…']));
+      form.querySelector('[data-exemplo]').textContent = textoProprio({ nome: form.nome.value.trim() || 'Material', campos })(c);
+    };
+    if (!mat.campos.length) form.querySelector('[data-campos]').insertAdjacentHTML('beforeend', linhaCampo());
+    exemplo();
+    form.addEventListener('input', exemplo);
+    form.addEventListener('change', ev => {
+      if (ev.target.name === 'c_tipo') ev.target.closest('.ob-mat-cad-campo').querySelector('[name=c_opcoes]').hidden = ev.target.value !== 'opcao';
+      exemplo();
+    });
+    form.addEventListener('click', ev => {
+      const el = ev.target.closest('[data-cad]');
+      if (!el) return;
+      if (el.dataset.cad === 'mais') form.querySelector('[data-campos]').insertAdjacentHTML('beforeend', linhaCampo());
+      else el.closest('.ob-mat-cad-campo').remove();
+      exemplo();
+    });
+    form.addEventListener('submit', async ev => {
+      ev.preventDefault();
+      const nome = form.nome.value.trim();
+      if (!nome) { status(form, 'Informe o nome do material.'); return; }
+      const campos = lerCamposCad();
+      const semOpcoes = campos.find(f => f.tipo === 'opcao' && !f.opcoes.length);
+      if (semOpcoes) { status(form, `Informe as opções do campo “${semOpcoes.rotulo}”.`); return; }
+      const novo = { id: (i != null && mat.id) || n.novoId('mat'), nome, chaves: form.chaves.value.split(',').map(s => s.trim()).filter(Boolean),
+        unidade: form.unidade.value, modalidade: form.modalidade.value, embalagem: form.embalagem.value.trim(), campos };
+      const outra = meusMateriais().find((m, k) => k !== i && semAcento(m.nome) === semAcento(nome));
+      if (outra) { status(form, `Já existe um material chamado “${outra.nome}”.`); return; }
+      const lista2 = meusMateriais().slice();
+      if (i != null) lista2[i] = novo; else lista2.push(novo);
+      botaoSalvar(form, false);
+      if (!(await n.salvarMeta({ materiais_proprios: lista2 }))) { botaoSalvar(form, true); return; }
+      n.aviso(`Material “${nome}” ${i != null ? 'salvo' : 'cadastrado'}.`);
+      formMeusMateriais();
+    });
+  }
+
+  async function excluirMaterial(i) {
+    const lista = meusMateriais().slice();
+    const mat = lista[i];
+    if (!mat || !confirm(`Excluir o material “${mat.nome}”? As solicitações já feitas não mudam.`)) return;
+    lista.splice(i, 1);
+    if (await n.salvarMeta({ materiais_proprios: lista })) formMeusMateriais();
   }
 
   /* =============================================
@@ -1490,6 +1610,10 @@ window.OB_OBRA = function (n) {
     else if (acao === 'obra-visita-editar') formVisita(p, visitas.find(v => v.id === id));
     else if (acao === 'obra-relatorio-novo') formRelatorio(p, null);
     else if (acao === 'obra-materiais-nova') formMateriais(p, null);
+    else if (acao === 'obra-materiais-cadastro') formMeusMateriais();
+    else if (acao === 'obra-material-novo') formMaterial(null);
+    else if (acao === 'obra-material-editar') formMaterial(Number(el.dataset.i));
+    else if (acao === 'obra-material-excluir') excluirMaterial(Number(el.dataset.i));
     else if (['obra-materiais-email', 'obra-materiais-pdf', 'obra-materiais-revisao'].includes(acao)) {
       const d = n.docsDe(p.id).find(x => x.id === id);
       if (d) ({ 'obra-materiais-pdf': imprimirDoc, 'obra-materiais-email': formEmailMateriais, 'obra-materiais-revisao': (pp, dd) => formMateriais(pp, dd, true) })[acao](p, d);
