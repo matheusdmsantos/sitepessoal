@@ -64,6 +64,7 @@ window.OB_OBRA = function (n) {
   function fotosDoProcesso(pid) {
     const fs = visitas.filter(v => v.processo_id === pid).flatMap(v => (v.fotos || []).map(f => f.caminho));
     pendencias.filter(x => x.processo_id === pid).forEach(x => fs.push(x.foto_antes, x.foto_depois));
+    solicitacoesDe(pid).forEach(d => fs.push(...fotosDoDoc(d)));
     return fs.filter(Boolean);
   }
 
@@ -951,6 +952,13 @@ window.OB_OBRA = function (n) {
   ============================================= */
   const qtdItens = m => `${m.itens.length} ${m.itens.length === 1 ? 'item' : 'itens'}`;
   const emailValido = s => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(s);
+  const fotosDaSolicitacao = m => (m ? m.itens.map(it => it.foto).filter(Boolean) : []);
+  const fotosDoDoc = d => fotosDaSolicitacao(ehMateriais(d) && lerMateriais(d));
+  // Foto do item no formulário: 📷 escolhe; com foto, a miniatura troca e o × tira.
+  // shortcut: foto enviada e tirada antes de salvar (ou formulário cancelado) fica no bucket; limpar se pesar
+  const celulaFoto = caminho => `<span class="ob-mat-foto" data-caminho="${esc(caminho)}">${caminho
+    ? `<button type="button" class="ob-mat-mini" data-mat="foto" title="Trocar a foto" aria-label="Trocar a foto"><img data-foto="${esc(caminho)}" alt="" /></button><button type="button" class="ob-mat-tirar" data-mat="sem-foto" title="Tirar a foto" aria-label="Tirar a foto">×</button>`
+    : '<button type="button" class="ob-btn sutil" data-mat="foto" title="Incluir foto do material" aria-label="Incluir foto do material">📷</button>'}</span>`;
 
   function formMateriais(p, d) {
     const salvo = d && lerMateriais(d);
@@ -966,6 +974,7 @@ window.OB_OBRA = function (n) {
         <input class="ob-input" name="espec" value="${esc(it.espec)}" placeholder="Especificação (opcional)" aria-label="Especificação" />
         <input class="ob-input" name="qtd" value="${esc(it.qtd)}" inputmode="decimal" placeholder="Qtd." aria-label="Quantidade" />
         <input class="ob-input" name="unidade" value="${esc(it.unidade)}" placeholder="Un." aria-label="Unidade" list="ob-mat-unidades" />
+        ${celulaFoto(it.foto)}
         <button type="button" class="ob-btn sutil" data-mat="remover" aria-label="Remover item">✕</button>
       </div>`;
 
@@ -977,30 +986,51 @@ window.OB_OBRA = function (n) {
         ${campo('E-mail do proprietário', `<input type="email" class="ob-input" name="para_email" value="${esc(para.email)}" placeholder="nome@exemplo.com" />`)}
         ${etapasObra.length ? campo('Etapa da obra (opcional)', `<select class="ob-input" name="etapa"><option value="">—</option>${opcoes(etapasObra.map(e => [e, e]), salvo && salvo.etapa)}</select>`, 'inteiro') : ''}
         <div class="ob-mat-itens inteiro">
-          <div class="ob-mat-item ob-mat-cab"><span>Material</span><span>Especificação</span><span>Qtd.</span><span>Un.</span><span></span></div>
+          <div class="ob-mat-item ob-mat-cab"><span>Material</span><span>Especificação</span><span>Qtd.</span><span>Un.</span><span>Foto</span><span></span></div>
           ${(salvo ? salvo.itens : [{}, {}, {}]).map(linhaItem).join('')}
           <div class="ob-prop-rodape"><button type="button" class="ob-btn sutil" data-mat="mais">+ Item</button><small class="ob-sub">Enter passa para o próximo item</small></div>
         </div>
         <datalist id="ob-mat-sugestoes">${sugestoes.map(s => `<option value="${esc(s)}"></option>`).join('')}</datalist>
         <datalist id="ob-mat-unidades">${UNIDADES.map(u => `<option value="${esc(u)}"></option>`).join('')}</datalist>
         ${campo('Observações (opcional)', `<textarea class="ob-input" name="obs" rows="3" placeholder="Ex.: descarregar pelo portão lateral; recebimento das 7h às 17h">${esc(salvo && salvo.obs)}</textarea>`, 'inteiro')}
+        <input type="file" accept="image/*" data-mat-arquivo hidden />
         ${acoesForm(salvo ? 'Salvar' : 'Gerar solicitação')}
       </form>`, true);
 
     const form = document.getElementById('ob-form-mat');
+    preencherFotos(form);
     const linhas = () => [...form.querySelectorAll('.ob-mat-item:not(.ob-mat-cab)')];
     const novaLinha = () => {
       form.querySelector('.ob-mat-itens .ob-prop-rodape').insertAdjacentHTML('beforebegin', linhaItem());
       linhas().pop().querySelector('[name=material]').focus();
     };
+    const arquivo = form.querySelector('[data-mat-arquivo]');
+    let celulaAlvo = null;
+    let enviando = 0;
     form.addEventListener('click', ev => {
       const el = ev.target.closest('[data-mat]');
       if (!el) return;
-      if (el.dataset.mat === 'mais') novaLinha();
+      const acao = el.dataset.mat;
+      if (acao === 'mais') novaLinha();
+      else if (acao === 'foto') { celulaAlvo = el.closest('.ob-mat-foto'); arquivo.value = ''; arquivo.click(); }
+      else if (acao === 'sem-foto') el.closest('.ob-mat-foto').outerHTML = celulaFoto('');
       else {
         el.closest('.ob-mat-item').remove();
         if (!linhas().length) novaLinha();
       }
+    });
+    arquivo.addEventListener('change', async () => {
+      const f = arquivo.files[0], alvo = celulaAlvo;
+      if (!f || !alvo) return;
+      enviando++;
+      botaoSalvar(form, false);
+      status(form, 'Enviando a foto…');
+      const caminho = await enviarFoto(p.id, f);
+      enviando--;
+      if (!enviando) { botaoSalvar(form, true); status(form, caminho ? '' : 'Não foi possível enviar a foto. Tente de novo.'); }
+      if (!caminho || !alvo.isConnected) return;
+      alvo.outerHTML = celulaFoto(caminho);
+      preencherFotos(form);
     });
     // Enter numa linha de item vai para o próximo (ou cria um), em vez de enviar o formulário
     form.addEventListener('keydown', ev => {
@@ -1016,8 +1046,9 @@ window.OB_OBRA = function (n) {
       const f = new FormData(form);
       const itens = linhas().map(row => {
         const v = nome => row.querySelector(`[name=${nome}]`).value.trim();
-        return { material: v('material'), espec: v('espec'), qtd: v('qtd'), unidade: v('unidade') };
+        return { material: v('material'), espec: v('espec'), qtd: v('qtd'), unidade: v('unidade'), foto: row.querySelector('.ob-mat-foto').dataset.caminho || '' };
       }).filter(it => it.material);
+      if (enviando) { status(form, 'Espere a foto terminar de enviar.'); return; }
       const email = f.get('para_email').trim();
       if (!itens.length) { status(form, 'Inclua pelo menos um material.'); return; }
       if (email && !emailValido(email)) { status(form, 'Confira o e-mail do proprietário.'); return; }
@@ -1033,6 +1064,9 @@ window.OB_OBRA = function (n) {
         data: dados.data, conteudo: comMarca(MARCA_MATERIAIS, dados) };
       botaoSalvar(form, false);
       if (!(await n.gravar('documentos', doc))) { botaoSalvar(form, true); return; }
+      // Fotos tiradas da solicitação saem do armazenamento
+      const ficam = new Set(itens.map(it => it.foto));
+      apagarFotos(salvo ? salvo.itens.map(it => it.foto).filter(c => !ficam.has(c)) : []);
       if (d) Object.assign(d, doc); else n.incluirDocumento(doc);
       await n.registrar(p, 'documento', `Documento ${n.num4(doc.numero)} ${d ? 'alterado' : 'incluído'}: Solicitação de materiais nº ${dois(numero)} (${qtdItens(dados)}).`);
       n.fecharModal();
@@ -1041,8 +1075,9 @@ window.OB_OBRA = function (n) {
     });
   }
 
-  function htmlMateriais(m) {
+  function htmlMateriais(m, links) {
     const eu = m.eu || {};
+    const comFoto = m.itens.some(it => links[it.foto]);
     const responsavel = [eu.profissao, eu.nomeCompleto || eu.nome, eu.registro].filter(Boolean).join(' ');
     const info = [['Proprietário', m.cliente], ['Obra / serviço', m.assunto], ['Endereço da obra', m.endereco],
       ['Etapa da obra', m.etapa], ['Entrega na obra até', m.prazo ? fmtData(m.prazo) : ''], ['Responsável técnico', responsavel]]
@@ -1055,19 +1090,26 @@ window.OB_OBRA = function (n) {
         <table class="rel-tab rel-info"><tbody>${info.map(([a, b]) => `<tr><th>${esc(a)}</th><td>${esc(b)}</td></tr>`).join('')}</tbody></table>
         <p>${nome ? `Prezado(a) ${esc(nome)},` : 'Prezado(a) proprietário(a),'}</p>
         <p>Para dar continuidade aos serviços da obra, solicito a aquisição e a entrega dos materiais relacionados abaixo${m.prazo ? ` até ${fmtData(m.prazo)}` : ''}.</p>
-        <table class="rel-tab"><thead><tr><th>Item</th><th>Material</th>${comEspec ? '<th>Especificação</th>' : ''}<th>Qtd.</th><th>Un.</th></tr></thead>
+        <table class="rel-tab"><thead><tr><th>Item</th><th>Material</th>${comEspec ? '<th>Especificação</th>' : ''}<th>Qtd.</th><th>Un.</th>${comFoto ? '<th>Foto</th>' : ''}</tr></thead>
           <tbody>${m.itens.map((it, i) => `<tr><td class="num">${i + 1}</td><td>${esc(it.material)}</td>${comEspec ? `<td>${esc(it.espec)}</td>` : ''}
-            <td class="num">${esc(it.qtd)}</td><td class="num">${esc(it.unidade)}</td></tr>`).join('')}</tbody></table>
+            <td class="num">${esc(it.qtd)}</td><td class="num">${esc(it.unidade)}</td>
+            ${comFoto ? `<td class="foto">${links[it.foto] ? `<img src="${esc(links[it.foto])}" alt="" />` : ''}</td>` : ''}</tr>`).join('')}</tbody></table>
         ${m.obs ? `<p><b>Observações:</b> ${comQuebras(m.obs)}</p>` : ''}
         <p>Fico à disposição para esclarecer as especificações ou avaliar a troca de algum material.</p>
         <p class="prop-assinatura"><span></span>${esc(responsavel || eu.nome || '')}<br>Responsável técnico</p>
       </section>`.replace(/\n\s*/g, '');
   }
 
-  function paginaMateriais(p, d, modo) {
+  const CSS_MATERIAIS = `
+    .rel-tab td.foto { width: 34mm; padding: 3px; text-align: center; }
+    .rel-tab td.foto img { display: block; max-width: 32mm; max-height: 26mm; margin: 0 auto; object-fit: contain; }
+    .rel-tab tr { break-inside: avoid; }`;
+
+  async function paginaMateriais(p, d, modo) {
     const m = lerMateriais(d);
+    const links = await linksFotos(fotosDaSolicitacao(m));
     // O título vira o nome sugerido ao salvar o PDF
-    return n.paginaTimbrada(`Solicitação de materiais ${dois(m.numero)} - ${p.cliente || p.assunto}`, htmlMateriais(m), m.eu, modo, CSS_RELATORIO);
+    return n.paginaTimbrada(`Solicitação de materiais ${dois(m.numero)} - ${p.cliente || p.assunto}`, htmlMateriais(m, links), m.eu, modo, CSS_RELATORIO + CSS_MATERIAIS);
   }
 
   function formEmailMateriais(p, d) {
@@ -1216,6 +1258,6 @@ window.OB_OBRA = function (n) {
 
   return {
     carregar, esquecer, fotosDoProcesso, htmlArvore, htmlTela, htmlDocumento, depoisRender,
-    ehDocObra, editarDoc, imprimirDoc, aoClicar
+    ehDocObra, editarDoc, imprimirDoc, fotosDoDoc, aoClicar
   };
 };

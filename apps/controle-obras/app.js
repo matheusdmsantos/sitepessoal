@@ -1697,7 +1697,8 @@
   async function excluirDoc(p, d) {
     if (!confirm(`Excluir o documento ${num4(d.numero)} (${d.tipo} — ${d.titulo})? O arquivo também será apagado.`)) return;
     if (!(await apagar('documentos', d.id))) return;
-    if (d.arquivo_caminho) sb.storage.from(BUCKET).remove([d.arquivo_caminho]);
+    const arquivos = [d.arquivo_caminho, ...(obra ? obra.fotosDoDoc(d) : [])].filter(Boolean);
+    if (arquivos.length) sb.storage.from(BUCKET).remove(arquivos);
     documentos = documentos.filter(x => x.id !== d.id);
     // Sem a revisão excluída, o valor do processo volta a ser o da proposta que sobrou mais recente
     const vigente = lerProposta(d) && propostasDe(p.id).pop();
