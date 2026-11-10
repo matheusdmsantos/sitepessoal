@@ -1151,12 +1151,15 @@
     const el = $('est-sessao-leitura');
     const leitura = (ctx && ctx.leitura) || [];
     el.hidden = !leitura.length;
+    // Uma linha por PDF (nome | páginas | alterar), com o modo de abrir no cabeçalho
     el.innerHTML = leitura.length
-      ? `<strong>📄 ${ctx.leituraParcial ? 'Ler agora' : 'Material'}:</strong> ` + leitura.map((x, i) =>
-          `<span class="est-sessao-pdf"><button type="button" class="est-sessao-ler" data-i="${i}" title="Abrir o PDF${x.aprox ? '' : ' na página ' + x.de}">${escapeHtml(x.nome)}, ${textoPaginas(x)} ↗</button>` +
-          `<button type="button" class="est-sessao-trocar" data-i="${i}" ${noApp() ? '' : 'hidden'}>alterar PDF</button></span>`
-        ).join('; ') +
-        ` <button type="button" class="est-sessao-trocar est-sessao-modo" title="Onde o PDF abre neste computador">${noApp() ? 'abre no Foxit' : 'abre no navegador'} ⇄</button>`
+      ? `<div class="est-sessao-leitura-topo"><strong>📄 ${ctx.leituraParcial ? 'Ler agora' : 'Material'}</strong>` +
+        `<button type="button" class="est-sessao-trocar est-sessao-modo" title="Onde o PDF abre neste computador">${noApp() ? 'abre no Foxit' : 'abre no navegador'} ⇄</button></div>` +
+        '<ul class="est-sessao-pdfs">' + leitura.map((x, i) =>
+          `<li><button type="button" class="est-sessao-ler" data-i="${i}" title="Abrir o PDF${x.aprox ? '' : ' na página ' + x.de}">${escapeHtml(x.nome)} ↗</button>` +
+          `<span class="est-sessao-pags">${textoPaginas(x)}</span>` +
+          `<button type="button" class="est-sessao-trocar" data-i="${i}" ${noApp() ? '' : 'hidden'}>alterar PDF</button></li>`
+        ).join('') + '</ul>'
       : '';
     if (!window.showOpenFilePicker) return;
     const atual = ctx;

@@ -2075,6 +2075,13 @@ html, body {
 .page-estudos .est-sessao-trocar { margin-left: 8px; padding: 1px 8px; border: 1px solid var(--est-border); border-radius: 999px; font-size: 0.72rem; color: var(--est-accent); cursor: pointer; }
 #est-modal-confirm-msg { white-space: pre-line; }
 .page-estudos .est-sessao-trocar:hover { color: #fff; border-color: var(--est-accent); }
+/* PDFs da janela: cabeçalho (rótulo + modo de abrir) e uma linha por PDF em colunas alinhadas */
+.est-sessao-leitura-topo { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.est-sessao-pdfs { list-style: none; margin: 4px 0 0; padding: 0; display: grid; grid-template-columns: minmax(0, 1fr) auto auto; column-gap: 12px; }
+.est-sessao-pdfs li { display: grid; grid-column: 1 / -1; grid-template-columns: subgrid; align-items: baseline; padding: 4px 0; }
+.est-sessao-pdfs li + li { border-top: 1px solid var(--est-border); }
+.est-sessao-pags { color: var(--est-silver); white-space: nowrap; text-align: right; font-variant-numeric: tabular-nums; }
+.page-estudos .est-sessao-pdfs .est-sessao-trocar, .page-estudos .est-sessao-leitura-topo .est-sessao-trocar { margin-left: 0; }
 /* Tópico escondido da tela (pedido do usuário); fica para leitor de tela, pois rotula a janela */
 .est-sessao-topico {
   position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden;
