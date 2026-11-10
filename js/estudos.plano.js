@@ -1349,6 +1349,12 @@
       }));
   }
 
+  // Linha do card no plano: o PDF e as páginas a ler (as mesmas do "Ler agora"); sem PDF, o tópico
+  function linhaDoItem(tipo, item, top) {
+    const l = roteiroDeLeitura(tipo, item);
+    return l.length ? '📄 ' + l.map(x => `${x.nome}, p. ${x.de === x.ate ? x.de : `${x.de}–${x.ate}`}`).join(' · ') : top;
+  }
+
   function itemMeta(m, { compacto = false } = {}) {
     const ref = acharTopico(m.topico_id);
     const disc = ref ? ref.d.nome : 'Disciplina removida';
@@ -1362,7 +1368,7 @@
         <div class="est-plano-item-info"${m.previsto ? '' : abreEstudo('meta', m.id)}>
           <span class="est-plano-tag">${tag} · ${fmtMin(m.minutos)}${seloIncidencia(m.topico_id)}${q ? '' : seloPaginas(m.topico_id)}${seloCrono(m)}</span>
           <span class="est-plano-item-disc">${escapeHtml(disc)}</span>
-          <span class="est-plano-item-top" title="${escapeHtml(top)}">${escapeHtml(top)}</span>
+          <span class="est-plano-item-top" title="${escapeHtml(top)}">${escapeHtml(q ? top : linhaDoItem('meta', m, top))}</span>
         </div>
         ${m.concluida || m.previsto ? '' : `
         <div class="est-plano-item-acoes">
@@ -1385,7 +1391,7 @@
         <div class="est-plano-item-info"${r.previsto ? '' : abreEstudo('revisao', r.id)}>
           <span class="est-plano-tag">${rotuloRevisao(r)} · ${fmtMin(r.minutos || MIN_REVISAO)} · ${quando}${r.previsto ? '' : seloCrono(r)}</span>
           <span class="est-plano-item-disc">${escapeHtml(disc)}</span>
-          <span class="est-plano-item-top" title="${escapeHtml(top)}">${escapeHtml(top)}
+          <span class="est-plano-item-top" title="${escapeHtml(top)}">${escapeHtml(linhaDoItem('revisao', r, top))}
             ${pct !== null && !r.previsto ? `<span class="est-plano-acerto ${classeAcerto(pct)}">${pct}%</span>` : ''}</span>
         </div>
         ${r.previsto ? '' : `<div class="est-plano-item-acoes">
