@@ -176,16 +176,17 @@
     abrirTec([caderno(ref, assuntos)]);
   }
 
-  // Botão da janela de estudo: abre o caderno do assunto selecionado; sem ele, o do item
-  // ou, se ainda não houver, cria
+  // Botão da janela de estudo: mostra na própria janela o caderno do assunto selecionado; sem
+  // ele, o do item ou, se ainda não houver, cria. Link de fora do TEC abre em outra aba.
   function daJanela() {
     const ctx = window.estSessao && window.estSessao.contexto();
     const ref = ctx && ctx.topicoId && acharTopico(ctx.topicoId);
     if (!ref) return;
     const sub = ctx.subtopicoId && window.estSub && window.estSub.porId(ctx.subtopicoId);
-    if (sub && sub.tec_link) window.open(sub.tec_link, '_blank', 'noopener');
-    else if (ref.t.tecLink) window.open(ref.t.tecLink, '_blank', 'noopener');
-    else criar(ref.t.id);
+    const url = (sub && sub.tec_link) || ref.t.tecLink;
+    if (!url) criar(ref.t.id);
+    else if (url.startsWith(TEC + '/')) window.estSessao.mostrarTec(url);
+    else window.open(url, '_blank', 'noopener');
   }
 
   window.addEventListener('message', async ev => {
@@ -208,7 +209,7 @@
   });
 
   // Texto do botão da janela de estudo
-  const rotulo = topicId => { const ref = acharTopico(topicId); return ref && ref.t.tecLink ? 'TEC ↗' : '📝 Gerar caderno'; };
+  const rotulo = topicId => { const ref = acharTopico(topicId); return ref && ref.t.tecLink ? 'TEC' : '📝 Gerar caderno'; };
 
   window.estTec = { criar, daJanela, guardarAssuntos, rotulo };
 })();

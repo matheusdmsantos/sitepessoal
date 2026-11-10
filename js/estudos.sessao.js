@@ -165,6 +165,7 @@
 
   function mostrarPagina(i) {
     esconderAlca();
+    mostrarResumo();
     guardarPaginaAtual();
     atual = Math.max(0, Math.min(i, paginas.length - 1));
     const p = paginas[atual];
@@ -292,18 +293,38 @@
     }
     const b = $('est-sessao-tec');
     if (ctx && ctx.topicoId && window.estTec) {
-      b.textContent = s && s.tec_link ? 'TEC do assunto ↗' : window.estTec.rotulo(ctx.topicoId);
-      b.title = s && s.tec_link ? `Abre o caderno do TEC de “${s.nome}”` : 'Abre o caderno do TEC do item; se ainda não houver, cria pelo userscript';
+      b.textContent = s && s.tec_link ? 'TEC do assunto' : window.estTec.rotulo(ctx.topicoId);
+      b.title = s && s.tec_link ? `Mostra aqui o caderno do TEC de “${s.nome}”` : 'Mostra aqui o caderno do TEC do item; se ainda não houver, cria pelo userscript';
     }
   }
 
   async function gravarTecDoAssunto() {
     const id = subAtual();
     if (!id) return;
-    const v = $('est-sessao-tec-link').value.trim();
+    let v = $('est-sessao-tec-link').value.trim();
+    const src = v.match(/<iframe[^>]*\ssrc="(https?:\/\/[^"]+)"/i);   // colou o código de incorporação do TEC
+    if (src) v = src[1];
     if (v && !/^https?:\/\//i.test(v)) { aviso('Cole o endereço completo do caderno (começa com https://).'); return; }
     await window.estSub.definirTec(id, v);
     mostrarTecDoAssunto();
+  }
+
+  /* Caderno do TEC na janela, no lugar da folha do resumo; clicar de novo volta ao resumo.
+     Do código de incorporação do TEC fica só o quadro: o script de altura dele rodaria nesta
+     página, com acesso à sessão do site. */
+  function mostrarTec(url) {
+    const box = $('est-sessao-tecbox'), frame = $('est-sessao-tec-frame');
+    if (!box.hidden && frame.dataset.url === url) { mostrarResumo(); return; }
+    esconderAlca();
+    if (frame.dataset.url !== url) { frame.src = url; frame.dataset.url = url; }
+    $('est-sessao-tec-aba').href = url;
+    $('est-sessao-folha').hidden = true;
+    box.hidden = false;
+  }
+
+  function mostrarResumo() {
+    $('est-sessao-tecbox').hidden = true;
+    $('est-sessao-folha').hidden = false;
   }
 
   // "+ Assunto": escolhe um assunto do item (liga ao PDF da meta) ou cria um novo
@@ -1090,6 +1111,9 @@
     esconderAlca();
     await salvar();
     clearInterval(tick);
+    mostrarResumo();
+    const frame = $('est-sessao-tec-frame');
+    if (frame.dataset.url) { frame.src = 'about:blank'; delete frame.dataset.url; }   // para o TEC de rodar escondido
     $('est-modal-sessao').classList.remove('active');
     $('est-modal-sessao').setAttribute('aria-hidden', 'true');
     const comCrono = !!ctx.id;
@@ -1261,6 +1285,7 @@
       if (b) abrirPdf(Number(b.dataset.i), b.classList.contains('est-sessao-trocar'));
     });
     $('est-sessao-fechar').addEventListener('click', fechar);
+    $('est-sessao-tec-voltar').addEventListener('click', mostrarResumo);
     $('est-sessao-concluir').addEventListener('click', concluir);
     $('est-sessao-play').addEventListener('click', alternarPlay);
     $('est-sessao-zerar').addEventListener('click', zerar);
@@ -1289,7 +1314,7 @@
   document.addEventListener('DOMContentLoaded', init);
 
   window.estSessao = {
-    abrir, abrirResumo, fechar, minutosDe, selo, separarPaginas, juntarPaginas, tempoPorAssunto,
+    abrir, abrirResumo, fechar, minutosDe, selo, separarPaginas, juntarPaginas, tempoPorAssunto, mostrarTec,
     irPagina: mostrarPagina, apagarPagina,
     irAssunto: id => mostrarPagina(paginaDoAssunto(id)), tirarDoPdf, usarNestePdf,
     outrosAbertos: v => { outrosAbertos = v; },
