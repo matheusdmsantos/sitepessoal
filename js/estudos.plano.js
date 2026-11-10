@@ -2766,6 +2766,14 @@
     });
   }
 
+  // Campos extras do motor no plano (plano_estudos.motor), como as linhas tiradas do resumo de véspera
+  async function salvarMotorPlano(plano, campos) {
+    if (!temCfgMotor) { aviso('Para guardar isto, rode o supabase/motor-interface.sql.'); return false; }
+    plano.motor = { ...(plano.motor || {}), ...campos };
+    await gravar('plano_estudos', plano);
+    return true;
+  }
+
   // Tela do PDF: grava os campos do PDF em motor_pdfs (cria a linha se o PDF ainda não estiver no motor)
   // Edital ativo é por PDF e o motor está ligado? (Caderno de Erros, cards do motor)
   const editalAtivoPorPdf = () => temMotor && editalPorPdf(editalAtivo());
@@ -3539,7 +3547,7 @@
     agendarReforco, mudarSemana, irParaSemana, alternarConfig, editalTrocado, projetar,
     incidenciaDaDisciplina, pctIncidencia, salvarIncidencias,
     materiaisDaDisciplina, paginasDoTopico, prioridadeDosTopicos, salvarMateriais, ordemPdfDe, porPdfDe, criarEditalPorPdf, juntarTopicos,
-    migrarMotor, verSemanaDoMotor, converterAgendaErros, abrirParametros, projecaoMotor: e => { const p = planoDe(e.id); aplicarConfigMotor(p); const x = paginasDoMotor(e); return window.estMotorSemana.projetar({ ...x, minutosSemana: Math.round(Number(p.horas_semana) * 60), dataProva: motorDataProva(p), hoje: segundaDe(hoje()) }); }, criarReleitura, revisarErrosDaMeta, _recarregarMotor: carregarMotor, salvarMotorPdf, itensDoEditalDeOrigem, editalAtivoPorPdf, pdfsDaDisciplina, temMotor: () => temMotor, motorPdfs: () => motorPdfs,
+    migrarMotor, verSemanaDoMotor, converterAgendaErros, salvarMotorPlano, planoDoEdital: id => planoDe(id), abrirParametros, projecaoMotor: e => { const p = planoDe(e.id); aplicarConfigMotor(p); const x = paginasDoMotor(e); return window.estMotorSemana.projetar({ ...x, minutosSemana: Math.round(Number(p.horas_semana) * 60), dataProva: motorDataProva(p), hoje: segundaDe(hoje()) }); }, criarReleitura, revisarErrosDaMeta, _recarregarMotor: carregarMotor, salvarMotorPdf, itensDoEditalDeOrigem, editalAtivoPorPdf, pdfsDaDisciplina, temMotor: () => temMotor, motorPdfs: () => motorPdfs,
     renderTudo, fmtMin, aviso, revisoesDoTopico, paginasLidas, aproveitarDe
   };
 })();

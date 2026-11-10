@@ -313,6 +313,16 @@ A meia-vida inicial não é parâmetro: vem de `1 / log2(1 / retencaoAlvo)` (≈
 
 ## 9. Pendente de interface
 
+> **Estado:** as seis etapas da interface foram feitas na branch `feat/motor-estudos` (ver o `CLAUDE.md`, seção "Motor de estudos"):
+> 1. cadastro de PDFs e subtópicos;
+> 2. erros;
+> 3. metas e blocos;
+> 4. painel de projeção e parâmetros;
+> 5. estatísticas;
+> 6. resumo de véspera.
+>
+> A lista abaixo ficou como registro do que foi pedido.
+
 - Ficha do subtópico: páginas (`pag_ini`/`pag_fim`), "não cai no edital", peso, caderno do TEC (herda do PDF) e itens do edital vinculados (vários).
 - Lista de PDFs por disciplina: ordem (arrastar), caderno do TEC, peso e conclusão, gravando em `motor_pdfs`.
 - Decidir o dono dos subtópicos com páginas em mais de um PDF (relatório da migração).

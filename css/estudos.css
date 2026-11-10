@@ -2885,3 +2885,18 @@ html, body {
 .est-stat-carga { display: flex; flex-direction: column; gap: 4px; }
 .est-stat-carga-barras { display: flex; flex-direction: column; gap: 2px; }
 .est-stat-carga-barras i { display: block; height: 6px; border-radius: 3px; }
+
+/* Resumo de véspera (estudos.vespera.js, interface etapa 6) */
+.est-vespera { display: flex; flex-direction: column; gap: 6px; }
+.est-vespera-disc { margin: 0 0 4px; font-size: 1.05rem; color: var(--est-silver-bright); }
+.est-vespera-pdf h4 { margin: 10px 0 4px; font-size: 0.92rem; color: var(--est-silver-bright); border-bottom: 1px solid var(--est-border); padding-bottom: 4px; }
+.est-vespera-sub h5 { margin: 8px 0 2px; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--est-accent); }
+.est-vespera-sub ul { list-style: none; margin: 0; padding: 0; }
+.est-vespera-sub li { display: flex; align-items: flex-start; gap: 8px; padding: 5px 0; border-bottom: 1px dashed var(--est-border); font-size: 0.86rem; color: var(--est-silver-bright); line-height: 1.45; }
+.est-vespera-sub li.recorrente { font-weight: 600; }
+.est-vespera-sub li.oculta { opacity: 0.45; text-decoration: line-through; }
+.est-vespera-regra { flex: 1; }
+.est-vespera-edit { flex: 1; padding: 4px 8px; font-size: 0.84rem; }
+.est-vespera-rec { flex-shrink: 0; padding: 0 6px; border-radius: 6px; background: var(--est-amber-dim); color: var(--est-amber); font-size: 0.74rem; font-weight: 700; }
+.est-vespera-acoes { display: flex; gap: 2px; opacity: 0.55; }
+.est-vespera-sub li:hover .est-vespera-acoes, .est-vespera-sub li:focus-within .est-vespera-acoes { opacity: 1; }

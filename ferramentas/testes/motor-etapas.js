@@ -251,6 +251,26 @@
     teste('edital: cobertura, acerto por item e itens sem subtópico', perto(ed.cobertura, 1 / 3) && ed.itens[0].total === 40 && ed.semSubtopico.map(x => x.id).join() === 'i3');
   }
 
+  /* ---------- Interface, etapa 6: resumo de véspera ---------- */
+  grupo('Interface 6 — resumo de véspera');
+  {
+    const Vs = window.estVespera;
+    const E = (id, extra) => ({ id, disciplina_id: 'd1', motivo: 'conteudo', regra: 'Regra ' + id, recorrencias: 0, criado_em: '2026-11-0' + id.slice(-1), ...extra });
+    const r = Vs.montar([
+      E('e1', { material_id: 'P2', subtopico_id: 'sB' }), E('e2', { material_id: 'P1', subtopico_id: 'sA', recorrencias: 1 }),
+      E('e3', { material_id: 'P1', subtopico_id: 'sA' }), E('e4', { material_id: 'P1', subtopico_id: 'sA', recorrencias: 3 }),
+      E('e5', { material_id: 'P1', subtopico_id: 'sA', motivo: 'gabarito' }), E('e6', { material_id: 'P1', subtopico_id: 'sA', regra: '  ' }),
+      E('e7', { material_id: 'P1', subtopico_id: 'sZ' }), E('e8', { material_id: 'P1', subtopico_id: 'sA', disciplina_id: 'd2' }),
+      E('e9', { material_id: 'P1', subtopico_id: 'sA' }), E('e0', {})],
+      { discId: 'd1', pdfs: [{ id: 'P1', nome: 'Aula 01', ordem: 0 }, { id: 'P2', nome: 'Aula 02', ordem: 1 }],
+        subs: [{ id: 'sA', nome: 'Acentuação', pag_ini: 5 }, { id: 'sB', nome: 'Hífen', pag_ini: 1 }, { id: 'sZ', nome: 'Crase', pag_ini: 1 }], ocultos: ['e9'] });
+    const ord = r.pdfs.map(p => p.nome + '[' + p.subtopicos.map(s => s.nome + ':' + s.linhas.map(l => l.id).join(',')).join(' ') + ']').join(' ');
+    teste('agrupado por PDF (na ordem de leitura) e subtópico (pela página)', r.pdfs.map(p => p.nome).join() === 'Aula 01,Aula 02,Sem PDF' && r.pdfs[0].subtopicos.map(s => s.nome).join() === 'Crase,Acentuação', ord);
+    teste('recorrentes primeiro (mais recorrências antes)', r.pdfs[0].subtopicos[1].linhas.map(l => l.id).join() === 'e4,e2,e3', ord);
+    teste('fora: "Gabarito discutível", outra disciplina e linhas tiradas do resumo', !ord.includes('e5') && !ord.includes('e8') && !ord.includes('e9') && r.ocultos === 1);
+    teste('erros sem a regra escrita são contados, não listados', r.semRegra === 1 && !ord.includes('e6'));
+  }
+
   const falhas = window.__teste.falhas();
   const fim = document.createElement('p');
   fim.id = 'resultado';

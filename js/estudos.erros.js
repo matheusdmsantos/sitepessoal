@@ -961,9 +961,19 @@
 
   document.addEventListener('DOMContentLoaded', init);
 
+  // Resumo de véspera: editar a regra de um erro
+  async function atualizarRegra(id, regra) {
+    const er = erros.find(x => x.id === id);
+    if (!er) return false;
+    er.regra = regra;
+    const ok = await gravar(er);
+    renderTudo();
+    return ok;
+  }
+
   // C2: itens vencidos hoje no edital ativo (o card "Revisão de erros" do plano)
   const vencidosHoje = () => (carregado ? pendentes(doEdital()) : []);
 
-  window.estErros = { novo, editar, revisar, revisarTopico, verTopico, blocoFicha, render, copiarPara, temErro, vencidosHoje, modoMotor,
+  window.estErros = { novo, editar, revisar, revisarTopico, verTopico, blocoFicha, render, copiarPara, temErro, vencidosHoje, modoMotor, atualizarRegra,
     todos: () => erros, mudarAssunto };
 })();
