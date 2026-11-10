@@ -2735,6 +2735,7 @@ html, body {
 .est-sub-lista li { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 8px; align-items: center; padding: 7px 0; border-bottom: 1px solid var(--est-border); font-size: 0.82rem; }
 .est-sub-lista li:last-child { border-bottom: none; }
 .est-sub-nome { color: var(--est-silver-bright); overflow-wrap: anywhere; }
+.est-sub-tec { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: -5px; font-size: 0.74rem; }
 .est-sub-nums { display: flex; align-items: center; gap: 8px; font-size: 0.74rem; color: var(--est-accent); white-space: nowrap; }
 .est-sub-acoes { display: flex; gap: 2px; }
 .page-estudos .est-sub-acoes .est-plano-btn { padding: 3px 7px; font-size: 0.75rem; }

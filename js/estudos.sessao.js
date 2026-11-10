@@ -301,10 +301,8 @@
   async function gravarTecDoAssunto() {
     const id = subAtual();
     if (!id) return;
-    let v = $('est-sessao-tec-link').value.trim();
-    const src = v.match(/<iframe[^>]*\ssrc="(https?:\/\/[^"]+)"/i);   // colou o código de incorporação do TEC
-    if (src) v = src[1];
-    if (v && !/^https?:\/\//i.test(v)) { aviso('Cole o endereço completo do caderno (começa com https://).'); return; }
+    const v = window.estSub.linkDoCaderno($('est-sessao-tec-link').value);   // aceita o código de incorporação do TEC
+    if (v === null) { aviso('Cole o endereço completo do caderno (começa com https://).'); return; }
     await window.estSub.definirTec(id, v);
     mostrarTecDoAssunto();
   }

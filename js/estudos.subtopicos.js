@@ -257,6 +257,27 @@
     await gravar(s);
   }
 
+  /* Link do caderno do TEC colado pelo usuário: o endereço ou o código de incorporação do TEC (fica só o src).
+     Devolve '' (sem link), o endereço, ou null se não for http/https. */
+  function linkDoCaderno(v) {
+    v = String(v || '').trim();
+    const src = v.match(/<iframe[^>]*\ssrc="(https?:\/\/[^"]+)"/i);
+    if (src) v = src[1];
+    return !v || /^https?:\/\//i.test(v) ? v : null;
+  }
+
+  // Ficha do item: colar ou trocar o caderno do TEC de um assunto
+  async function editarTec(id) {
+    const s = porId(id);
+    if (!s) return;
+    const v = await window.customPrompt(`Link do caderno do TEC de “${s.nome}” (o endereço ou o código de incorporação; vazio tira o link):`, s.tec_link || '');
+    if (v === null) return;
+    const link = linkDoCaderno(v);
+    if (link === null) { aviso('Cole o endereço completo do caderno (começa com https://).'); return; }
+    await definirTec(id, link);
+    redesenhar();
+  }
+
   /* Renomeia o assunto e a página dele no resumo do item. comDoc = false quando quem renomeia é a
      janela de estudo (ela grava a página com o nome novo). false se o nome já é de outro assunto. */
   async function renomear(id, nome, comDoc = true) {
@@ -428,6 +449,9 @@
           <button type="button" class="est-plano-btn sutil" onclick="estSub.renomearPerguntando('${n.s.id}')" aria-label="Renomear ${esc(n.s.nome)}" title="Renomear">✎</button>
           <button type="button" class="est-plano-btn sutil" onclick="estSub.excluir('${n.s.id}')" aria-label="Excluir ${esc(n.s.nome)}" title="Excluir">✕</button>
         </span>
+        <span class="est-sub-tec">${n.s.tec_link
+          ? `<a href="${esc(n.s.tec_link)}" target="_blank" rel="noopener" class="est-ed-tec-link">Abrir caderno ↗</a><button type="button" class="est-ed-link" onclick="estSub.editarTec('${n.s.id}')">Alterar link</button>`
+          : `<button type="button" class="est-ed-link" onclick="estSub.editarTec('${n.s.id}')">+ Colar link do caderno</button>`}</span>
       </li>`;
     }).join('');
     const semTxt = [sem.q && plural(sem.q, 'questão', 'questões'), sem.erros && plural(sem.erros, 'erro', 'erros'), sem.min && fmtMin(sem.min)].filter(Boolean).join(' · ');
@@ -657,7 +681,7 @@
 
   window.estSub = {
     carregar, migrar, doTopico, porId, doRegistro, sugestao, topicoPorNomes, ligarPaginas,
-    criar, vincular, desvincular, faixa, definirTec, renomear, mover, mesclar, reclassificar, excluir,
+    criar, vincular, desvincular, faixa, definirTec, linkDoCaderno, editarTec, renomear, mover, mesclar, reclassificar, excluir,
     numerosDe, distribuir, selo, blocoFicha, abrirPainel, fecharPainel, marcarTodos, confirmarMesclar,
     confirmarReclassificar, novoPerguntando, renomearPerguntando, htmlDesempenho, ver,
     temSessoes: () => temSessoes, temErros: () => temErros, remoto: () => remoto,
