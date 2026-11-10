@@ -262,6 +262,8 @@
         <div class="est-mat-cab">
           <span class="est-mat-nome" title="${escapeHtml(m.nome)}">📄 ${escapeHtml(m.nome)}</span>
           <span class="est-mat-pag"><input type="number" class="est-form-input" min="1" value="${m.paginas}" data-m="${i}" data-campo="paginas" aria-label="Páginas de ${escapeHtml(m.nome)}" title="Número de páginas" /> p.</span>
+          ${ctx.porPdf && window.estPdf && window.estPlano.temMotor() && window.estPlano.materiaisDaDisciplina(ctx.disc.id).some(x => x.id === m.id)
+            ? `<button type="button" class="est-plano-btn sutil" data-acao="tela" data-m="${i}" title="Subtópicos, páginas e caderno do TEC deste PDF">🧩 Subtópicos</button>` : ''}
           <button type="button" class="est-plano-btn sutil" data-acao="remover" data-m="${i}" aria-label="Remover ${escapeHtml(m.nome)}" title="Remover material">✕</button>
         </div>
         ${m.topicos.map((l, j) => `
@@ -367,6 +369,7 @@
       const b = e.target.closest('button[data-acao]');
       if (!b || !ctx) return;
       const m = ctx.lista[b.dataset.m];
+      if (b.dataset.acao === 'tela') { window.estPdf.abrir(m.id); return; }
       if (b.dataset.acao === 'remover') ctx.lista.splice(b.dataset.m, 1);
       else if (b.dataset.acao === 'ligar') m.topicos.push({ topico_id: '', de: null, ate: null });
       else if (b.dataset.acao === 'desligar') m.topicos.splice(b.dataset.l, 1);

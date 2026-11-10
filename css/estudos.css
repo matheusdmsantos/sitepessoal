@@ -2790,3 +2790,35 @@ html, body {
 /* Caderno de erros: assunto do erro */
 #est-erro-sub-campo[hidden] { display: none; }
 .est-erro-sub { font-weight: 400; color: var(--est-accent); }
+
+/* Tela do PDF (estudos.pdf.js): subtópicos com páginas, caderno, peso, "não cai" e itens do edital */
+.est-modal.est-pdf-tela { max-width: 1180px; width: 96%; max-height: 92vh; padding: 22px 24px; display: flex; flex-direction: column; gap: 12px; }
+.est-pdf-sub { margin: 2px 0 0; font-size: 0.78rem; color: var(--est-silver); }
+.est-pdf-sub code, .est-pdf-rapido code { font-size: 0.76rem; color: var(--est-silver-bright); }
+.est-pdf-cab { display: grid; grid-template-columns: minmax(0, 1fr) 160px; gap: 12px; }
+.est-pdf-cab label { display: flex; flex-direction: column; gap: 4px; font-size: 0.78rem; color: var(--est-silver); }
+.est-pdf-cab small, .est-pdf-h3 small { color: var(--est-accent-muted); font-weight: 400; }
+.est-pdf-h3 { margin: 4px 0 0; font-size: 0.9rem; color: var(--est-silver-bright); }
+.est-pdf-tabela-caixa { overflow-x: auto; }
+.est-pdf-tabela { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
+.est-pdf-tabela th { text-align: left; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--est-accent); padding: 4px 6px; border-bottom: 1px solid var(--est-border); white-space: nowrap; }
+.est-pdf-tabela td { padding: 5px 6px; border-bottom: 1px solid var(--est-border); vertical-align: top; color: var(--est-silver-bright); }
+.est-pdf-tabela .est-form-input { padding: 5px 8px; font-size: 0.8rem; min-width: 0; width: 100%; }
+.est-pdf-tabela td:first-child { min-width: 180px; }
+.est-pdf-pags { white-space: nowrap; }
+.est-pdf-pags .est-form-input { width: 62px; display: inline-block; }
+.est-pdf-pags span { margin: 0 4px; color: var(--est-silver); }
+.est-pdf-tabela .est-pdf-peso { width: 64px; }
+.est-pdf-centro { text-align: center; }
+.est-pdf-tabela tr.erro td { background: rgba(239, 68, 68, 0.08); }
+.est-pdf-tabela tr.nao-cai td { opacity: 0.6; }
+.est-pdf-msg { display: block; margin-top: 3px; font-size: 0.72rem; color: var(--est-red); }
+.est-pdf-itens-lista { display: flex; flex-wrap: wrap; gap: 4px 14px; max-height: 180px; overflow-y: auto; margin-bottom: 6px; font-size: 0.78rem; }
+.est-pdf-itens-lista label { display: flex; align-items: flex-start; gap: 6px; flex: 1 1 280px; color: var(--est-silver); }
+.est-pdf-avisos p { margin: 0; font-size: 0.78rem; color: var(--est-amber); }
+.est-pdf-rapido summary { cursor: pointer; font-size: 0.82rem; color: var(--est-silver-bright); }
+.est-pdf-rapido textarea { width: 100%; margin-top: 6px; font: 0.8rem/1.5 ui-monospace, monospace; }
+.est-pdf-previa { margin-top: 8px; }
+.est-pdf-rodape { display: flex; align-items: center; justify-content: flex-end; gap: 10px; flex-wrap: wrap; padding-top: 6px; border-top: 1px solid var(--est-border); }
+.est-pdf-rodape .est-pdf-sub { margin-right: auto; }
+@media (max-width: 700px) { .est-pdf-cab { grid-template-columns: 1fr; } }

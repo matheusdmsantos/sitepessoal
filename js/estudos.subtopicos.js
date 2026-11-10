@@ -250,6 +250,14 @@
     await gravar(s);
   }
 
+  // Tela do PDF (estudos.pdf.js): grava vários campos do assunto de uma vez (colunas do supabase/motor.sql)
+  async function atualizarCampos(id, campos) {
+    const s = porId(id);
+    if (!s) return false;
+    Object.assign(s, campos);
+    return gravar(s);
+  }
+
   async function definirTec(id, link) {
     const s = porId(id);
     if (!s || (s.tec_link || '') === link) return;
@@ -484,6 +492,7 @@
         ${semTxt ? `<p class="est-ed-ficha-vazio">Sem subtópico: ${semTxt}.</p>` : ''}
         <div class="est-ed-ficha-linha">
           <button type="button" class="est-plano-btn" onclick="estSub.novoPerguntando('${t.id}')">＋ Novo assunto</button>
+          ${pdfUnico && window.estPdf && window.estPlano.temMotor() ? `<button type="button" class="est-plano-btn" onclick="estPdf.abrir('${pdfUnico.id}')" title="Subtópicos com páginas, caderno do TEC, peso, “não cai” e itens do edital">📄 Tela do PDF</button>` : ''}
           ${assuntos.length > 1 ? `<button type="button" class="est-ed-link" onclick="estSub.abrirPainel('${t.id}', 'mesclar')">Mesclar duplicados</button>` : ''}
           ${assuntos.length && reclass ? `<button type="button" class="est-ed-link" onclick="estSub.abrirPainel('${t.id}', 'reclassificar')">Reclassificar sem subtópico (${reclass})</button>` : ''}
         </div>
@@ -701,7 +710,7 @@
 
   window.estSub = {
     carregar, migrar, doTopico, porId, doRegistro, sugestao, topicoPorNomes, ligarPaginas,
-    criar, vincular, desvincular, faixa, paginasNoPdf, definirTec, linkDoCaderno, editarTec, renomear, mover, mesclar, reclassificar, excluir,
+    criar, vincular, desvincular, faixa, paginasNoPdf, atualizarCampos, definirTec, linkDoCaderno, editarTec, renomear, mover, mesclar, reclassificar, excluir,
     numerosDe, distribuir, selo, blocoFicha, abrirPainel, fecharPainel, marcarTodos, confirmarMesclar,
     confirmarReclassificar, novoPerguntando, renomearPerguntando, htmlDesempenho, ver,
     temSessoes: () => temSessoes, temErros: () => temErros, remoto: () => remoto,

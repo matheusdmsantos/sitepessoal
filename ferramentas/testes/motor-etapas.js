@@ -174,6 +174,34 @@
       `término ${pj.terminoLeitura}; questões ${pj.semanas.map(s => s.minutosQuestoes).join(', ')}`);
   }
 
+  /* ---------- Interface, etapa 1: cadastro do PDF (T1) ---------- */
+  grupo('Interface 1 — cadastro de subtópicos (T1)');
+  const Cd = window.estCadastroPdf;
+  {
+    const r = Cd.lerLinhas(['Acentuação; 1-12', 'Hífen; pág. 13–15; https://www.tecconcursos.com.br/caderno/AbC', '', 'Crase; 16', ' ; 20-22',
+      'Regência; 22-20', 'Pontuação; 30-90', 'Colocação; 10 a 12', 'Concordância; abc', 'Vírgula; 40-41; tec.com/x', 'A; 1-2; https://x; extra'].join('\n'), 60);
+    const e = n => (r.find(x => x.linha === n) || {}).erros || [];
+    teste('linhas válidas: nome, páginas e caderno', r[0].pag_ini === 1 && r[0].pag_fim === 12 && !e(1).length &&
+      r[1].pag_ini === 13 && r[1].pag_fim === 15 && r[1].tec_link === 'https://www.tecconcursos.com.br/caderno/AbC' && !e(2).length);
+    teste('página única e "10 a 12" são aceitas', r.find(x => x.linha === 4).pag_fim === 16 && !e(4).length && r.find(x => x.linha === 8).pag_fim === 12 && !e(8).length);
+    teste('linha em branco é ignorada', !r.some(x => x.linha === 3));
+    teste('linhas inválidas: sem nome, final antes da inicial, fora do PDF, formato, link e campos a mais',
+      /sem nome/.test(e(5)) && /antes da inicial/.test(e(6)) && /última página/.test(e(7)) && /formato/.test(e(9)) && /https/.test(e(10)) && /3 campos/.test(e(11)),
+      r.filter(x => x.erros.length).map(x => x.linha + ': ' + x.erros.join('/')).join(' | '));
+    const v = Cd.validar([{ nome: 'A', pag_ini: 1, pag_fim: 12 }, { nome: 'B', pag_ini: 10, pag_fim: 20 }, { nome: 'C', pag_ini: 30, pag_fim: 40 },
+      { nome: 'a', pag_ini: 50, pag_fim: 52 }, { nome: 'D', pag_ini: 55, pag_fim: 70 }, { nome: 'E' }], 60);
+    teste('sobreposição de páginas: erro na linha que repete', v.erros.some(x => x.i === 1 && /10–12/.test(x.msg)), v.erros.map(x => x.i + ': ' + x.msg).join(' | '));
+    teste('nome repetido (sem diferenciar maiúsculas) e faixa fora do PDF: erro', v.erros.some(x => x.i === 3 && /repetido/.test(x.msg)) && v.erros.some(x => x.i === 4 && /fora do PDF/.test(x.msg)));
+    teste('páginas não cobertas e subtópico sem páginas: aviso', v.avisos.some(x => /21–29, 41–49, 53–54/.test(x)) && v.avisos.some(x => /sem páginas: E/.test(x)), v.avisos.join(' | '));
+    teste('lista correta: sem erros', !Cd.validar([{ nome: 'A', pag_ini: 1, pag_fim: 30 }, { nome: 'B', pag_ini: 31, pag_fim: 60 }], 60).erros.length);
+    const sum = Cd.lerSumario(['Curso de Português', 'Sumário', '1 - Acentuação gráfica ........ 3', '2. Hífen .... 15', 'Regras gerais 15',
+      '3 Crase ............. 22', 'Lista de questões ....... 40', 'Página 2 de 60'], 60);
+    teste('sumário: faixas de cada item até a véspera do seguinte; o último até o fim do PDF',
+      sum.length === 4 && sum[0].nome === 'Acentuação gráfica' && sum[0].pag_ini === 3 && sum[0].pag_fim === 14 && sum[1].nome === 'Regras gerais' && sum[3].pag_fim === 60,
+      sum.map(x => `${x.nome} ${x.pag_ini}-${x.pag_fim}`).join(' | '));
+    teste('texto sem sumário: nenhuma sugestão', !Cd.lerSumario(['Aula 01', 'Nesta aula veremos 3 temas', 'Bons estudos 2'], 60).length);
+  }
+
   const falhas = window.__teste.falhas();
   const fim = document.createElement('p');
   fim.id = 'resultado';

@@ -2724,6 +2724,30 @@
     });
   }
 
+  // Tela do PDF: grava os campos do PDF em motor_pdfs (cria a linha se o PDF ainda não estiver no motor)
+  async function salvarMotorPdf(id, campos) {
+    let x = motorPdfs.find(p => p.id === id);
+    if (!x) {
+      const m = materiais.find(y => y.id === id);
+      if (!m) return false;
+      x = { id, edital_id: m.edital_id, disciplina_id: m.disciplina_id, ordem: materiaisDaDisciplina(m.disciplina_id).indexOf(m), itens_edital: [] };
+      motorPdfs.push(x);
+    }
+    Object.assign(x, campos);
+    const { dono, ...linha } = x;
+    const { error } = await sb.from('motor_pdfs').upsert(linha, { onConflict: 'id' });
+    if (error) { console.error('Erro ao salvar o PDF no motor:', error); aviso('Não foi possível salvar o PDF no servidor.'); return false; }
+    return true;
+  }
+
+  // Itens do edital de origem (o desativado com o mesmo nome, sem "— por PDF") na disciplina de mesmo nome
+  function itensDoEditalDeOrigem(e, discNome) {
+    const titulo = e.titulo.replace(/\s*—\s*por PDF\s*$/i, '');
+    const origem = editaisData.find(x => x !== e && x.titulo === titulo);
+    const d = origem && origem.disciplinas.find(x => x.nome === discNome);
+    return d ? d.topicos.map(t => ({ id: t.id, nome: t.nome })) : [];
+  }
+
   async function migrarMotor() {
     const e = editalAtivo();
     if (!temMotor || !editalPorPdf(e)) { aviso('A migração vale para o edital por PDF, com o supabase/motor.sql já rodado.'); return; }
@@ -2869,7 +2893,7 @@
     agendarReforco, mudarSemana, irParaSemana, alternarConfig, editalTrocado, projetar,
     incidenciaDaDisciplina, pctIncidencia, salvarIncidencias,
     materiaisDaDisciplina, paginasDoTopico, prioridadeDosTopicos, salvarMateriais, ordemPdfDe, porPdfDe, criarEditalPorPdf, juntarTopicos,
-    migrarMotor, verSemanaDoMotor, converterAgendaErros, temMotor: () => temMotor, motorPdfs: () => motorPdfs,
+    migrarMotor, verSemanaDoMotor, converterAgendaErros, salvarMotorPdf, itensDoEditalDeOrigem, temMotor: () => temMotor, motorPdfs: () => motorPdfs,
     renderTudo, fmtMin, aviso, revisoesDoTopico, paginasLidas, aproveitarDe
   };
 })();
