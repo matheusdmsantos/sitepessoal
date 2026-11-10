@@ -36,6 +36,8 @@
   // incidência do TEC (≥ 10% da disciplina = alta, < 2% = baixa) ou, sem ela, o peso da disciplina
   const QUESTOES_POR_RELEVANCIA = { 3: 20, 2: 15, 1: 10 };
   const MIN_POR_QUESTAO = 3;
+  // Assunto com páginas no PDF: uma meta de questões dele, na metade ou no fim do PDF (assuntosParaQuestoes)
+  const QUESTOES_POR_ASSUNTO = 15;
   // Só os estudos a partir desta semana geram meta de questões (os antigos não ganham de uma vez)
   const INICIO_QUESTOES = '2026-11-02';
   const PADRAO_DISC = { peso: 2, nivel: 2, ativa: true };
@@ -47,6 +49,7 @@
      ESTADO
   ============================================= */
   let remoto = false;
+  let temSubMeta = true;      // coluna metas.subtopico_id (meta de questões de um assunto); sem ela, uma meta por item
   let metas = [];
   let revisoes = [];
   let planos = [];
@@ -183,6 +186,7 @@
     }
 
     const [rSessoes, rMetas, rRevisoes, rPlanos] = resultado.map(r => r.data || []);
+    temSubMeta = !(await sb.from('metas').select('subtopico_id').limit(1)).error;
     metas = rMetas;
     revisoes = rRevisoes;
     planos = rPlanos;
@@ -587,10 +591,11 @@
     });
     // Questões que ainda faltam: tópico sem meta de questões cujo estudo já passou da metade
     // das páginas (com PDF) ou terminou (sem PDF), contando o que está planejado até semanaBase
-    ctx.comQuestoes = new Set(metas.filter(ehQuestoes).map(m => m.topico_id));
+    ctx.comQuestoes = new Set(metas.filter(m => ehQuestoes(m) && !m.subtopico_id).map(m => m.topico_id));
+    ctx.comQuestoesSub = new Set(metas.filter(m => ehQuestoes(m) && m.subtopico_id).map(m => m.subtopico_id));
     const porTopico = {};
     metas.filter(m => m.edital_id === edital.id && !ehQuestoes(m) && m.semana >= INICIO_QUESTOES &&
-      m.semana <= semanaBase && !ctx.comQuestoes.has(m.topico_id))
+      m.semana <= semanaBase && !ctx.comQuestoes.has(m.topico_id) && !questoesPorAssunto(ctx, m.topico_id).length)
       .forEach(m => (porTopico[m.topico_id] = porTopico[m.topico_id] || []).push(m));
     Object.values(porTopico).forEach(lista => {
       lista.sort((a, b) => (a.dia < b.dia ? -1 : a.dia > b.dia ? 1 : (a.ordem || 0) - (b.ordem || 0)));
@@ -605,7 +610,30 @@
         ctx.questoes.push({ topico_id: tId, disciplina_id: gatilho.disciplina_id, depoisDe: gatilho.dia });
       }
     });
+    // Por assunto: o que já foi lido (ou planejado até aqui) e ainda não tem meta de questões
+    const vistos = new Set();
+    metas.filter(m => m.edital_id === edital.id && !ehQuestoes(m) && m.semana >= INICIO_QUESTOES && m.semana <= semanaBase).forEach(m => {
+      if (vistos.has(m.topico_id)) return;
+      vistos.add(m.topico_id);
+      const ass = questoesPorAssunto(ctx, m.topico_id);
+      if (!ass.length) return;
+      const ref = acharTopico(m.topico_id);
+      const pos = paginasLidas(m.topico_id) + metas.filter(x => x.topico_id === m.topico_id && !x.concluida && !ehQuestoes(x) && x.semana <= semanaBase)
+        .reduce((a, x) => a + x.minutos * PAGINAS_POR_HORA / 60, 0);
+      assuntosParaQuestoes(ass, ctx, pos, paginasDoTopico(m.topico_id), !!(ref && ref.t.estudado))
+        .forEach(a => ctx.questoes.push({ topico_id: m.topico_id, disciplina_id: m.disciplina_id, subtopico_id: a.s.id, depoisDe: hoje() }));
+    });
     return ctx;
+  }
+
+  /* Questões por assunto: na metade do PDF, uma meta para cada assunto já lido; no fim, para os que
+     faltam (QUESTOES_POR_ASSUNTO cada, então cada meta fica abaixo de PARTE_MAX). Marca os escolhidos. */
+  function assuntosParaQuestoes(ass, ctx, pos, total, fim) {
+    const primeira = !ass.some(a => ctx.comQuestoesSub.has(a.s.id));
+    const r = ass.filter(a => !ctx.comQuestoesSub.has(a.s.id) &&
+      (fim || pos >= total - 0.5 || (primeira && pos >= total / 2 && a.fim <= pos + 0.5)));
+    r.forEach(a => ctx.comQuestoesSub.add(a.s.id));
+    return r;
   }
 
   const ehQuestoes = m => m.tipo === 'questoes';
@@ -645,6 +673,10 @@
       const bloco = blocoDoTopico(x, t), partes = Math.ceil(bloco / PARTE_MAX);
       return Math.round(bloco / partes) * Math.max(0, partes - (ctx.partesFeitas[t.id] || 0));
     }
+    if (cortesDoTopico(t.id)) {
+      const resto = pags - posicaoNoTopico(ctx, t.id);
+      return resto >= 0.5 ? Math.round(resto * 60 / PAGINAS_POR_HORA) : ctx.planejado[t.id] ? 0 : 15;
+    }
     const restantes = Math.max(0, pags - paginasLidas(t.id));
     const leitura = Math.max(15, Math.ceil((restantes / PAGINAS_POR_HORA) * 60 / 15) * 15);
     const falta = leitura - (ctx.planejado[t.id] || 0);
@@ -655,6 +687,14 @@
      partes de até PARTE_MAX. */
   function proximaParte(ctx, x, t) {
     const falta = faltaDoTopico(ctx, x, t);
+    const fins = paginasDoTopico(t.id) ? cortesDoTopico(t.id) : null;
+    if (fins) {   // com assuntos: a parte acaba no fim do próximo corte
+      const n = (ctx.partesFeitas[t.id] || 0) + 1;
+      const pos = posicaoNoTopico(ctx, t.id);
+      const restam = fins.filter(f => f > pos + 0.5);
+      return restam.length ? { minutos: Math.round((restam[0] - pos) * 60 / PAGINAS_POR_HORA), parte: n, partes: n - 1 + restam.length }
+        : { minutos: falta, parte: n, partes: n };
+    }
     const parte = (ctx.partesFeitas[t.id] || 0) + 1;
     const resto = Math.ceil(falta / PARTE_MAX);
     return { minutos: resto <= 1 ? falta : Math.round(falta / resto), parte, partes: parte - 1 + resto };
@@ -701,7 +741,7 @@
     // Meta de questões no mesmo dia do fim do estudo, se couber; senão, no próximo dia com espaço.
     // A que não cabe nesta semana fica em ctx.questoes para a seguinte.
     const colocarQuestoes = q => {
-      const minutos = questoesDoTopico(plano, q.topico_id, q.disciplina_id) * MIN_POR_QUESTAO;
+      const minutos = (q.subtopico_id ? QUESTOES_POR_ASSUNTO : questoesDoTopico(plano, q.topico_id, q.disciplina_id)) * MIN_POR_QUESTAO;
       const dia = dias.find(d => d >= q.depoisDe && cabe(d, minutos));
       if (!dia) return false;
       usado[dia] = (usado[dia] || 0) + minutos;
@@ -709,7 +749,8 @@
       novas.push({
         id: novoId('m'), edital_id: edital.id, semana, dia,
         disciplina_id: q.disciplina_id, topico_id: q.topico_id,
-        tipo: 'questoes', minutos, concluida: false, ordem: novas.length
+        tipo: 'questoes', minutos, concluida: false, ordem: novas.length,
+        ...(q.subtopico_id ? { subtopico_id: q.subtopico_id } : {})
       });
       return true;
     };
@@ -741,8 +782,15 @@
         ...(p.partes > 1 || p.parte > 1 ? { parte: p.parte, partes: p.partes } : {})
       });
       const total = paginasDoTopico(t.id);
-      const metade = total > 0 && paginasLidas(t.id) + (ctx.planejado[t.id] || 0) * PAGINAS_POR_HORA / 60 >= total / 2;
-      if (!ctx.comQuestoes.has(t.id) && (ultima || metade)) {
+      const pos = posicaoNoTopico(ctx, t.id);
+      const metade = total > 0 && pos >= total / 2;
+      const ass = questoesPorAssunto(ctx, t.id);
+      if (ass.length) {
+        assuntosParaQuestoes(ass, ctx, pos, total, ultima).forEach(a => {
+          const q = { topico_id: t.id, disciplina_id: x.d.id, subtopico_id: a.s.id, depoisDe: dia };
+          if (!colocarQuestoes(q)) ctx.questoes.push(q);
+        });
+      } else if (!ctx.comQuestoes.has(t.id) && (ultima || metade)) {
         ctx.comQuestoes.add(t.id);
         const q = { topico_id: t.id, disciplina_id: x.d.id, depoisDe: dia };
         if (!colocarQuestoes(q)) ctx.questoes.push(q);
@@ -1027,6 +1075,67 @@
   let previstasDoTopico = [];   // metas previstas da última ficha aberta (não são gravadas)
 
   /* Trechos do assunto nos PDFs, na ordem cadastrada: { m, l, nome, inicio, pags, aprox } */
+  /* Assuntos do item com faixa de páginas no PDF, em posições contadas como em paginasLidas
+     (as páginas do item em sequência pelos trechos): [{ s, ini, fim }] na ordem das páginas */
+  function assuntosNasPaginas(tId) {
+    if (!window.estSub) return [];
+    const trechos = trechosDoTopico(tId);
+    const r = [];
+    window.estSub.doTopico(tId).forEach(s => (s.pdfs || []).forEach(p => {
+      if (!(p.de > 0 && p.ate >= p.de)) return;
+      let pos = 0;
+      trechos.forEach(x => {
+        if (x.m.id === p.material_id) {
+          const a = Math.max(0, p.de - x.inicio), b = Math.min(x.pags, p.ate - x.inicio + 1);
+          if (b > a) r.push({ s, ini: pos + a, fim: pos + b });
+        }
+        pos += x.pags;
+      });
+    }));
+    return r.sort((a, b) => a.ini - b.ini || a.fim - b.fim);
+  }
+  // Um registro por assunto (o que aparece em mais de um trecho fica com a faixa toda)
+  function assuntosUnicos(tId) {
+    const por = new Map();
+    assuntosNasPaginas(tId).forEach(x => {
+      const y = por.get(x.s.id);
+      if (!y) por.set(x.s.id, { ...x });
+      else { y.ini = Math.min(y.ini, x.ini); y.fim = Math.max(y.fim, x.fim); }
+    });
+    return [...por.values()];
+  }
+  const posicaoNoTopico = (ctx, tId) => paginasLidas(tId) + (ctx.planejado[tId] || 0) * PAGINAS_POR_HORA / 60;
+  const questoesPorAssunto = (ctx, tId) => (temSubMeta && !ctx.comQuestoes.has(tId) ? assuntosUnicos(tId) : []);
+
+  const PAG_PARTE = PARTE_MAX * PAGINAS_POR_HORA / 60;   // páginas de uma meta de até PARTE_MAX
+  /* Item com assuntos com páginas: a leitura é cortada nos limites dos assuntos. O assunto grande
+     vira partes iguais de até PARTE_MAX; os curtos seguidos ficam juntos até PARTE_MAX. Páginas sem
+     assunto entram do mesmo jeito. Devolve onde cada parte acaba (posições do item), ou null. */
+  function cortesDoTopico(tId) {
+    const total = Math.round(paginasDoTopico(tId));
+    const ass = assuntosNasPaginas(tId);
+    if (!ass.length || !total) return null;
+    const pecas = [];
+    const add = (a, b) => {
+      const n = Math.ceil((b - a) / PAG_PARTE);
+      for (let i = 0; i < n; i++) pecas.push([a + Math.round((b - a) * i / n), a + Math.round((b - a) * (i + 1) / n)]);
+    };
+    let pos = 0;
+    ass.forEach(x => {
+      const b = Math.min(total, x.fim);
+      if (b <= pos) return;
+      if (x.ini > pos) add(pos, Math.min(x.ini, total));
+      add(Math.max(pos, x.ini), b);
+      pos = b;
+    });
+    if (pos < total) add(pos, total);
+    const fins = [];
+    let ini = 0;
+    pecas.forEach(([a, b]) => { if (b - ini > PAG_PARTE + 0.01 && a > ini) { fins.push(a); ini = a; } });
+    fins.push(total);
+    return fins;
+  }
+
   function trechosDoTopico(tId) {
     return materiais.map(m => {
       const l = (m.topicos || []).find(x => x.topico_id === tId);
@@ -1078,7 +1187,13 @@
     const tId = item.topico_id;
     const trechos = trechosDoTopico(tId);
     if (!trechos.length) return [];
-    const total = trechos.reduce((a, x) => a + x.pags, 0);
+    const { ini, fim } = faixaDaMeta(tipo, item, trechos.reduce((a, x) => a + x.pags, 0));
+    return recortar(trechos, ini, fim);
+  }
+
+  // Páginas [ini, fim) da meta, contadas em sequência pelos trechos do item (como as páginas lidas)
+  function faixaDaMeta(tipo, item, total) {
+    const tId = item.topico_id;
     let ini = 0, fim = total;
     if (tipo === 'meta' && !item.concluida && !ehQuestoes(item)) {
       const ritmo = min => min * PAGINAS_POR_HORA / 60;
@@ -1089,7 +1204,11 @@
       ini = Math.min(Math.round(ini), total - 1);
       fim = item.partes > 1 && item.parte < item.partes ? Math.min(total, ini + Math.round(ritmo(item.minutos))) : total;
     }
-    // Recorta [ini, fim) do assunto nos PDFs, na ordem em que estão cadastrados
+    return { ini, fim };
+  }
+
+  // Recorta [ini, fim) nos PDFs do item, na ordem em que estão cadastrados
+  function recortar(trechos, ini, fim) {
     const r = [];
     let pos = 0;
     trechos.forEach(x => {
@@ -1100,6 +1219,18 @@
     return r;
   }
 
+  // Assuntos (com páginas no PDF) que a meta de estudo cobre, com as páginas de cada um dentro dela
+  function assuntosDaMeta(item) {
+    if (ehQuestoes(item)) return [];
+    const trechos = trechosDoTopico(item.topico_id), ass = assuntosUnicos(item.topico_id);
+    if (!trechos.length || !ass.length) return [];
+    const { ini, fim } = faixaDaMeta('meta', item, trechos.reduce((a, x) => a + x.pags, 0));
+    return ass.filter(a => a.fim > ini && a.ini < fim).map(a => {
+      const de = Math.max(a.ini, ini), ate = Math.min(a.fim, fim);
+      return { s: a.s, paginas: ate - de, trecho: recortar(trechos, de, ate) };
+    });
+  }
+
   /* Janela de estudo (estudos.sessao.js): cronômetro e resumo do tópico */
   function abrirEstudo(tipo, id) {
     // Meta prevista (ficha do Edital): abre sem cronômetro nem "Concluir", só resumo e leitura
@@ -1108,15 +1239,17 @@
     const ref = acharTopico(item.topico_id);
     if (!ref) { aviso('Este tópico não existe mais no edital.'); return; }
     const rotulo = (item.previsto ? 'Previsto · ' : '') + (tipo !== 'meta' ? rotuloRevisao(item)
-      : ehQuestoes(item) ? `Questões · ${questoesDaMeta(item)}`
+      : ehQuestoes(item) ? `Questões · ${questoesDaMeta(item)}${nomeDoAssunto(item)}`
       : 'Estudo' + (item.partes > 1 ? ` · parte ${item.parte}/${item.partes}` : ''));
+    const assMeta = tipo === 'meta' && !item.concluida ? assuntosDaMeta(item) : [];
     window.estSessao.abrir({
       tipo, id: item.previsto ? undefined : id, topicoId: ref.t.id, disc: ref.d.nome, topico: ref.t.nome, rotulo,
       minutos: tipo === 'meta' ? item.minutos : item.minutos || MIN_REVISAO,
       concluida: tipo === 'meta' ? !!item.concluida : !!item.concluida_em,
       leitura: roteiroDeLeitura(tipo, item),
       leituraParcial: tipo === 'meta' && !item.concluida && item.partes > 1 && !ehQuestoes(item),
-      questoes: tipo === 'meta' && ehQuestoes(item) ? questoesDaMeta(item) : 0
+      questoes: tipo === 'meta' && ehQuestoes(item) ? questoesDaMeta(item) : 0,
+      subtopicoId: item.subtopico_id || (assMeta[0] && assMeta[0].s.id) || undefined   // abre já no assunto da meta
     });
   }
 
@@ -1179,6 +1312,7 @@
     const caixa = document.getElementById('est-concluir-assuntos');
     const sub = window.estSub;
     if (!caixa) return;
+    if (item.subtopico_id) { caixa.hidden = true; return; }   // meta de um assunto: o registro vai direto para ele
     const todos = sub && sub.temSessoes() ? sub.doTopico(ref.t.id) : [];
     const tempos = window.estSessao ? window.estSessao.tempoPorAssunto(contextoConclusao.id) : {};
     const mats = new Set(roteiroDeLeitura(tipo, item).map(x => x.id));
@@ -1264,6 +1398,15 @@
     fecharConclusao();
     if (window.estSessao) window.estSessao.zerarCrono(ctx.id);
 
+    // Meta de um assunto (questões) ou de assuntos com páginas (estudo), sem divisão à mão: o registro vai para eles
+    if (!assuntos.length && ctx.tipo === 'meta' && window.estSub && window.estSub.temSessoes()) {
+      if (item.subtopico_id) assuntos.push({ subtopico_id: item.subtopico_id, minutos, questoes, acertos });
+      else if (!questoesMeta) {
+        const ass = assuntosDaMeta(item), pags = ass.reduce((a, x) => a + x.paginas, 0);
+        if (pags > 0) ass.forEach(a => assuntos.push({ subtopico_id: a.s.id, minutos: Math.round(minutos * a.paginas / pags),
+          questoes: ass.length === 1 ? questoes : 0, acertos: ass.length === 1 ? acertos : 0 }));
+      }
+    }
     // Registra a sessão no histórico
     const sessao = {
       id: novoId('s'), date: hoje(), timestamp: new Date().toISOString(),
@@ -1424,15 +1567,34 @@
       .sort((a, b) => a.dia.localeCompare(b.dia) || (a.ordem || 0) - (b.ordem || 0))
       .map(m => ({
         id: m.id, dia: m.dia, previsto: !!m.previsto,
-        rotulo: (ehQuestoes(m) ? `Questões · ${questoesDaMeta(m)}` : 'Estudo' + (m.partes > 1 ? ` · parte ${m.parte}/${m.partes}` : '')) + ` · ${fmtMin(m.minutos)}`,
+        rotulo: (ehQuestoes(m) ? `Questões · ${questoesDaMeta(m)}${nomeDoAssunto(m)}` : 'Estudo' + (m.partes > 1 ? ` · parte ${m.parte}/${m.partes}` : '')) + ` · ${fmtMin(m.minutos)}`,
         situacao: m.concluida ? 'feita' : m.previsto ? 'prevista' : m.dia < hoje() ? 'atrasada' : 'planejada'
       }));
   }
 
   // Linha do card no plano: o PDF e as páginas a ler (as mesmas do "Ler agora"); sem PDF, o tópico
+  const txtPags = x => `p. ${x.de === x.ate ? x.de : `${x.de}–${x.ate}`}`;
+  const listaE = l => (l.length > 1 ? l.slice(0, -1).join(', ') + ' e ' + l[l.length - 1] : l[0] || '');
+  const nomeDoAssunto = m => {
+    const s = m.subtopico_id && window.estSub && window.estSub.porId(m.subtopico_id);
+    return s ? ` · ${s.nome}` : '';
+  };
+  // Com assuntos com páginas: "Estude Hífen (p. 13–15) e Acentuação (p. 16–25) · 📄 PDF, p. 13–25"
   function linhaDoItem(tipo, item, top) {
     const l = roteiroDeLeitura(tipo, item);
-    return l.length ? '📄 ' + l.map(x => `${x.nome}, p. ${x.de === x.ate ? x.de : `${x.de}–${x.ate}`}`).join(' · ') : top;
+    const pdf = l.length ? '📄 ' + l.map(x => `${x.nome}, ${txtPags(x)}`).join(' · ') : top;
+    const ass = tipo === 'meta' && !item.concluida ? assuntosDaMeta(item) : [];
+    return ass.length ? `Estude ${listaE(ass.map(a => `${a.s.nome} (${a.trecho.map(txtPags).join(', ')})`))} · ${pdf}` : pdf;
+  }
+
+  function textoQuestoesAssunto(m, sub) {
+    return `Faça ${questoesDaMeta(m)} questões de ${sub.nome} e registre os erros e as dificuldades no Caderno de Erros` +
+      (sub.tec_link ? '' : ' (crie o caderno no TEC, se ainda não tiver)');
+  }
+  function botaoTecAssunto(sub) {
+    return sub.tec_link
+      ? `<a class="est-plano-btn" href="${escapeHtml(sub.tec_link)}" target="_blank" rel="noopener" title="Abrir o caderno do TEC de ${escapeHtml(sub.nome)}">TEC ↗</a>`
+      : `<button class="est-plano-btn" onclick="estSub.editarTec('${sub.id}').then(() => estPlano.renderTudo())" title="Colar o link do caderno deste assunto no TEC">+ Caderno TEC</button>`;
   }
 
   function itemMeta(m, { compacto = false } = {}) {
@@ -1441,6 +1603,8 @@
     const top = ref ? ref.t.nome : 'Tópico removido';
     const atrasada = !m.concluida && !m.previsto && m.dia < hoje();
     const q = ehQuestoes(m);
+    const sub = q && m.subtopico_id && window.estSub ? window.estSub.porId(m.subtopico_id) : null;
+    const linha = q ? (sub ? textoQuestoesAssunto(m, sub) : top) : linhaDoItem('meta', m, top);
     const tag = (m.previsto ? 'Previsto' : m.concluida ? '✓ Feito' : atrasada ? 'Atrasada' : q ? 'Questões' : 'Estudo') +
       (q ? ` · ${questoesDaMeta(m)} questões` : m.partes > 1 ? ` · parte ${m.parte}/${m.partes}` : '');
     return `
@@ -1448,15 +1612,22 @@
         <div class="est-plano-item-info"${m.previsto ? '' : abreEstudo('meta', m.id)}>
           <span class="est-plano-tag">${tag} · ${fmtMin(m.minutos)}${seloIncidencia(m.topico_id)}${q ? '' : seloPaginas(m.topico_id)}${seloCrono(m)}</span>
           <span class="est-plano-item-disc">${escapeHtml(disc)}</span>
-          <span class="est-plano-item-top" title="${escapeHtml(top)}">${escapeHtml(q ? top : linhaDoItem('meta', m, top))}</span>
+          <span class="est-plano-item-top" title="${escapeHtml(linha)}">${escapeHtml(linha)}</span>
         </div>
         ${m.concluida || m.previsto ? '' : `
         <div class="est-plano-item-acoes">
           ${compacto ? '' : `<button class="est-plano-btn sutil" onclick="estPlano.removerMeta('${m.id}')" title="Remover meta" aria-label="Remover meta">✕</button>`}
-          ${q && ref && !ref.t.tecLink && window.estTec ? `<button class="est-plano-btn" onclick="estTec.criar('${ref.t.id}')" title="Gera no TEC o caderno deste assunto (userscript no Tampermonkey)">📝 Gerar caderno</button>` : botaoTec(ref && ref.t)}
+          ${sub ? botaoTecAssunto(sub) : q && ref && !ref.t.tecLink && window.estTec ? `<button class="est-plano-btn" onclick="estTec.criar('${ref.t.id}')" title="Gera no TEC o caderno deste assunto (userscript no Tampermonkey)">📝 Gerar caderno</button>` : botaoTec(ref && ref.t)}
           <button class="est-plano-btn primario" onclick="estPlano.abrirConclusao('meta', '${m.id}')">Concluir</button>
         </div>`}
       </div>`;
+  }
+
+  /* Na revisão: assuntos abaixo de 70% (com ao menos 5 questões) pedem mais questões e o registro dos erros */
+  function assuntosFracos(tId) {
+    const fracos = window.estSub ? window.estSub.numerosDe(tId).assuntos.filter(n => n.q >= 5 && n.c / n.q < 0.7) : [];
+    return fracos.length ? `<span class="est-plano-item-fracos">⚠ ${fracos.map(n => `${escapeHtml(n.s.nome)} (${Math.round(n.c / n.q * 100)}%)`).join(', ')}: ` +
+      `faça mais ${QUESTOES_POR_ASSUNTO} questões${fracos.length > 1 ? ' de cada' : ''} e registre os erros no Caderno de Erros.</span>` : '';
   }
 
   function itemRevisao(r) {
@@ -1473,6 +1644,7 @@
           <span class="est-plano-item-disc">${escapeHtml(disc)}</span>
           <span class="est-plano-item-top" title="${escapeHtml(top)}">${escapeHtml(linhaDoItem('revisao', r, top))}
             ${pct !== null && !r.previsto ? `<span class="est-plano-acerto ${classeAcerto(pct)}">${pct}%</span>` : ''}</span>
+          ${r.previsto || !ref ? '' : assuntosFracos(ref.t.id)}
         </div>
         ${r.previsto ? '' : `<div class="est-plano-item-acoes">
           <button class="est-plano-btn sutil" onclick="estPlano.adiarRevisao('${r.id}')" title="Adiar para amanhã">Adiar</button>

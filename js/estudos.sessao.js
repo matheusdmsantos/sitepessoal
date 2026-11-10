@@ -1105,6 +1105,7 @@
     outrosAbertos = false;
     atual = -1;
     mostrarPagina(0);
+    if (dados.subtopicoId && comAssuntos()) mostrarPagina(paginaDoAssunto(dados.subtopicoId));   // meta de um assunto
     status(vazio(salvo) ? '' : 'Salvo');
 
     clearInterval(tick);

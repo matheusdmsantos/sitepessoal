@@ -432,8 +432,28 @@
   const redesenhar = () => { if (window.estEdital) window.estEdital.render(); };
   const opcoesAssuntos = (lista, sel) => lista.map(n => `<option value="${n.s.id}" ${n.s.id === sel ? 'selected' : ''}>${esc(n.s.nome)}</option>`).join('');
 
+  // Páginas do assunto no PDF do item (só com um PDF; com vários, na tela de PDFs): cortam as metas do plano
+  function campoPaginas(s, m) {
+    if (!m) return '';
+    const p = s.pdfs.find(x => x.material_id === m.id) || {};
+    const campo = (k, v, rot) => `<input type="number" min="1" max="${m.paginas || ''}" data-k="${k}" value="${v || ''}" placeholder="pág."
+      aria-label="${rot} de ${esc(s.nome)} no PDF" onchange="estSub.paginasNoPdf('${s.id}', '${m.id}', this.parentNode)" />`;
+    return `<span class="est-sub-pags" title="Páginas do assunto no PDF: as metas de estudo e de questões seguem esses assuntos">📄 p. ${campo('de', p.de, 'Página inicial')} a ${campo('ate', p.ate, 'Página final')}</span>`;
+  }
+
+  async function paginasNoPdf(id, materialId, caixa) {
+    const v = k => parseInt(caixa.querySelector(`[data-k="${k}"]`).value, 10) || 0;
+    const de = v('de'), ate = v('ate');
+    if (de && ate && ate < de) { aviso('A página final tem de vir depois da inicial.'); return; }
+    await vincular(id, [materialId]);
+    await faixa(id, materialId, de, ate);
+    if (window.estPlano) window.estPlano.renderTudo();
+  }
+
   function blocoFicha(e, d, t) {
     const { assuntos, sem } = numeros(t);
+    const pdfsItem = window.estPlano ? window.estPlano.materiaisDaDisciplina(d.id).filter(m => (m.topicos || []).some(l => l.topico_id === t.id)) : [];
+    const pdfUnico = pdfsItem.length === 1 ? pdfsItem[0] : null;
     const linhas = assuntos.map((n, i) => {
       const p = pct(n);
       return `<li>
@@ -449,7 +469,7 @@
           <button type="button" class="est-plano-btn sutil" onclick="estSub.renomearPerguntando('${n.s.id}')" aria-label="Renomear ${esc(n.s.nome)}" title="Renomear">✎</button>
           <button type="button" class="est-plano-btn sutil" onclick="estSub.excluir('${n.s.id}')" aria-label="Excluir ${esc(n.s.nome)}" title="Excluir">✕</button>
         </span>
-        <span class="est-sub-tec">${n.s.tec_link
+        <span class="est-sub-tec">${campoPaginas(n.s, pdfUnico)}${n.s.tec_link
           ? `<a href="${esc(n.s.tec_link)}" target="_blank" rel="noopener" class="est-ed-tec-link">Abrir caderno ↗</a><button type="button" class="est-ed-link" onclick="estSub.editarTec('${n.s.id}')">Alterar link</button>`
           : `<button type="button" class="est-ed-link" onclick="estSub.editarTec('${n.s.id}')">+ Colar link do caderno</button>`}</span>
       </li>`;
@@ -681,7 +701,7 @@
 
   window.estSub = {
     carregar, migrar, doTopico, porId, doRegistro, sugestao, topicoPorNomes, ligarPaginas,
-    criar, vincular, desvincular, faixa, definirTec, linkDoCaderno, editarTec, renomear, mover, mesclar, reclassificar, excluir,
+    criar, vincular, desvincular, faixa, paginasNoPdf, definirTec, linkDoCaderno, editarTec, renomear, mover, mesclar, reclassificar, excluir,
     numerosDe, distribuir, selo, blocoFicha, abrirPainel, fecharPainel, marcarTodos, confirmarMesclar,
     confirmarReclassificar, novoPerguntando, renomearPerguntando, htmlDesempenho, ver,
     temSessoes: () => temSessoes, temErros: () => temErros, remoto: () => remoto,

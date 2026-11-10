@@ -42,3 +42,7 @@ select c.relname as tabela, c.relrowsecurity as rls, p.policyname as politica
 from pg_class c
 left join pg_policies p on p.schemaname = 'public' and p.tablename = c.relname
 where c.relname = 'subtopicos';
+
+-- Metas por assunto (Painel de Estudos): a meta de questões de um assunto guarda o assunto.
+-- Sem esta coluna, o plano faz uma meta de questões por item, como antes.
+alter table public.metas add column if not exists subtopico_id text;
