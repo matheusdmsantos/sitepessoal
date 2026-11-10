@@ -771,10 +771,11 @@ window.OB_OBRA = function (n) {
     const o = obraDe(p.id) || {};
     const rels = relatoriosDe(p.id).map(lerRelatorio).filter(Boolean);
     const numero = salvo ? salvo.numero : Math.max(0, ...rels.map(r => r.numero || 0)) + 1;
-    const ultimoAte = rels.map(r => r.ate).sort().pop();
+    // Padrão: semana corrente, de segunda a domingo (antes o início era cortado na data de início da obra e escondia visitas)
     const hoje = n.hoje();
-    const de = salvo ? salvo.de : ultimoAte && ultimoAte < hoje ? addDias(ultimoAte, 1) : [addDias(hoje, -6), o.inicio || ''].sort().pop();
-    const ate = salvo ? salvo.ate : hoje;
+    const segunda = addDias(hoje, -((new Date(hoje + 'T12:00:00').getDay() + 6) % 7));
+    const de = salvo ? salvo.de : segunda;
+    const ate = salvo ? salvo.ate : addDias(segunda, 6);
     let escolhidas = salvo ? new Set((salvo.fotos || []).map(f => f.caminho)) : null;   // null = todas
     const visitasNoPeriodo = (a, b) => visitasDe(p.id).filter(v => v.data >= a && v.data <= b).reverse();
     const resumoPadrao = vs => vs.filter(v => v.atividades).map(v => `${fmtData(v.data).slice(0, 5)}: ${v.atividades}`).join('\n');
@@ -798,9 +799,11 @@ window.OB_OBRA = function (n) {
     const atualizar = () => {
       const a = form.querySelector('[name=de]').value, b = form.querySelector('[name=ate]').value;
       const vs = a && b ? visitasNoPeriodo(a, b) : [];
-      form.querySelector('[data-visitas]').textContent = vs.length
+      // O campo de data aparece no formato do idioma do navegador (em inglês, mês/dia); o texto abaixo é sempre dd/mm/aaaa
+      const periodo = a && b ? `Período: ${diaSemana(a)}, ${fmtData(a)} a ${diaSemana(b)}, ${fmtData(b)}. ` : '';
+      form.querySelector('[data-visitas]').textContent = periodo + (vs.length
         ? `${vs.length} visita${vs.length > 1 ? 's' : ''} no período: ${vs.map(v => fmtData(v.data).slice(0, 5)).join(', ')}.`
-        : 'Nenhuma visita registrada neste período.';
+        : 'Nenhuma visita registrada neste período.');
       if (resumoAuto) resumo.value = resumoPadrao(vs);
       const fotos = vs.flatMap(v => (v.fotos || []).map(f => ({ ...f, data: v.data })));
       form.querySelector('[data-fotos]').innerHTML = fotos.map(f => `<label class="ob-rel-foto">
