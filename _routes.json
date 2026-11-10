@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "include": ["/api/*", "/agenda/*", "/supabase/*", "/netlify/*", "/functions/*", "/ferramentas/*", "/editais/*",
+  "include": ["/api/*", "/agenda/*", "/supabase/*", "/netlify/*", "/functions/*", "/ferramentas/*", "/editais/*", "/docs/*",
     "/README.md", "/CLAUDE.md", "/netlify.toml", "/_routes.json", "/.gitignore"],
   "exclude": []
 }

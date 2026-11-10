@@ -1942,6 +1942,15 @@
         <div class="est-plano-kpi"><span>Revisões</span><strong>${revFeitas} <small>/ ${revFeitas + revSemana.length}</small></strong>${barra(revFeitas + revSemana.length ? revFeitas / (revFeitas + revSemana.length) * 100 : 0, 'amber')}</div>`}
       </div>
 
+      ${temMotor && editalPorPdf(e) && !migracaoPendente(e) ? `
+      <div class="est-plano-cta">
+        <div>
+          <strong>Motor de estudos (prévia)</strong>
+          <p>Veja a semana que o novo motor geraria com os seus dados de hoje: leitura linear dos PDFs, questões por PDF e revisão de erros. Nada é gravado.</p>
+        </div>
+        <button class="est-btn-register" onclick="estPlano.verSemanaDoMotor()">Ver a semana do motor</button>
+      </div>` : ''}
+
       ${migracaoPendente(e) ? `
       <div class="est-plano-cta">
         <div>
@@ -2741,6 +2750,109 @@
     aviso(falhas.length ? `A migração terminou com falha em: ${[...new Set(falhas)].join(', ')}. Rode de novo.` : 'Migração aplicada. As metas e revisões continuam como estavam.');
   }
 
+  /* =============================================
+     MOTOR DE ESTUDOS — SEMANA SIMULADA (etapas 2 a 5; motor em estudos.motor.*.js)
+     Monta a entrada do motor com os dados reais e mostra a semana que ele geraria. Não grava nada:
+     a troca do agendamento acontece só na publicação (docs/motor-estudos.md).
+  ============================================= */
+  async function entradaDoMotor(e) {
+    const plano = planoDe(e.id);
+    const semana = segundaDe(hoje());
+    const dias = [];
+    for (let i = 0; i < 7; i++) {
+      const dia = somarDias(semana, i);
+      if (dia >= hoje() && plano.dias_semana.includes(diaDaSemana(dia))) dias.push({ dia, minutos: Math.round(minutosPorDia(plano)) });
+    }
+    const todosSubs = window.estSub ? e.disciplinas.flatMap(d => d.topicos.flatMap(t => window.estSub.doTopico(t.id))) : [];
+    const subtopicos = {}, stats = {};
+    const disciplinas = e.disciplinas.map(d => ({
+      id: d.id, nome: d.nome, peso: configDisc(plano, d.id).peso,
+      pdfs: motorPdfs.filter(x => x.disciplina_id === d.id).sort((a, b) => a.ordem - b.ordem).map(x => {
+        const m = materiais.find(y => y.id === x.id) || {};
+        const item = ((m.topicos || [])[0] || {}).topico_id;
+        const subs = todosSubs.filter(s => s.material_id === x.id).map(s => ({ id: s.id, nome: s.nome, pag_ini: s.pag_ini, pag_fim: s.pag_fim, nao_cai: !!s.nao_cai, estudado_em: s.estudado_em || null }));
+        subtopicos[x.id] = subs;
+        if (item && window.estSub) window.estSub.numerosDe(item).assuntos.forEach(n => { stats[n.s.id] = { total: n.q, acertos: n.c, ultimo: null }; });
+        return { id: x.id, nome: m.nome || x.id, ordem: x.ordem, paginas: m.paginas || 0, lidas: item ? Math.round(paginasLidas(item)) : 0, peso: x.peso, subtopicos: subs };
+      })
+    })).filter(d => d.pdfs.length);
+    // Subtópicos estudados sem bloco de 1º contato ainda
+    const comBloco = new Set(motorBlocos.flatMap(b => (b.itens || []).map(i => i.subtopico_id)));
+    const primeiros = [];
+    Object.entries(subtopicos).forEach(([pdf, subs]) => {
+      const pend = subs.filter(s => s.estudado_em && !s.nao_cai && !comBloco.has(s.id));
+      [...new Set(pend.map(s => s.estudado_em))].forEach(dia => primeiros.push({ material_id: pdf,
+        disciplina_id: (motorPdfs.find(x => x.id === pdf) || {}).disciplina_id, subtopicos: pend.filter(s => s.estudado_em === dia).map(s => s.id), depoisDe: dia }));
+    });
+    // Erros: como ficariam na agenda nova (a conversão é feita só na publicação)
+    const r = await sb.from('erros').select('id, edital_id, motivo, etapa, proxima, dominado_em, ultima_revisao, criado_em, recorrencias');
+    const erros = (r.error ? [] : r.data).filter(x => x.edital_id === e.id);
+    const conv = window.estMotorErros.converter(erros);
+    const errosNovos = erros.map(x => { const c = conv.find(y => y.id === x.id); return c ? { ...x, ...c.para } : x; });
+    return { dias, dataProva: plano.data_prova || (typeof getTargetDate === 'function' ? getTargetDate() : null), disciplinas,
+      modelos: motorPdfs.map(x => ({ ...x })), subtopicos, stats, erros: errosNovos, primeiros, atraso: 0, _conv: conv, _erros: erros };
+  }
+
+  async function verSemanaDoMotor() {
+    const e = editalAtivo();
+    if (!temMotor || !editalPorPdf(e) || !planoDe(e.id)) { aviso('Vale para o edital por PDF com o plano configurado e o supabase/motor.sql rodado.'); return; }
+    const ent = await entradaDoMotor(e);
+    const g = window.estMotorSemana.gerarSemana(ent);
+    const L = window.estMotorLeitura;
+    const pdfs = ent.disciplinas.flatMap(d => d.pdfs);
+    const total = pdfs.reduce((a, p) => a + L.totalALer(p), 0), faltam = pdfs.reduce((a, p) => a + L.faltam(p), 0);
+    const pj = window.estMotorSemana.projetar({ faltam, total, minutosSemana: g.orcamento.total || 1, dataProva: ent.dataProva, hoje: hoje() });
+    const nomePdf = id => (pdfs.find(p => p.id === id) || {}).nome || id;
+    const nomeSub = id => { for (const l of Object.values(ent.subtopicos)) { const s = l.find(x => x.id === id); if (s) return s.nome; } return id; };
+    const nomeDisc = id => (e.disciplinas.find(d => d.id === id) || {}).nome || '';
+    const TIPOS = { primeiro: '1º contato', revisao: 'revisão do PDF', manutencao: 'manutenção' };
+    const linha = m => m.tipo === 'leitura'
+      ? `Leitura · ${fmtMin(m.minutos)} · ${nomeDisc(m.disciplina_id)} · ${nomePdf(m.material_id)}, p. ${m.pag_ini}–${m.pag_fim}${m.concluidos.length ? ` (termina: ${m.concluidos.map(nomeSub).join(', ')})` : ''}`
+      : m.tipo === 'erros' ? `Revisão de erros · ${m.itens.length} questão(ões) · ${fmtMin(m.minutos)}`
+      : `Questões (${TIPOS[m.tipo_bloco]}) · ${fmtMin(m.minutos)} · ${nomeDisc(m.disciplina_id)} · ${m.tipo_bloco === 'manutencao'
+        ? m.alvos.map(a => `${nomePdf(a.material_id)} (${a.questoes})`).join(', ')
+        : `${nomePdf(m.material_id)}: ${m.alvos.map(a => (a.subtopico_id ? `${nomeSub(a.subtopico_id)} (${a.questoes})` : `PDF inteiro (${a.questoes})`)).join(', ')}`}`;
+    const T = [];
+    T.push(`ORÇAMENTO DA SEMANA: ${fmtMin(g.orcamento.total)} · questões ${Math.round(g.fracao * 100)}% (${fmtMin(g.orcamento.questoes)}) · leitura ${fmtMin(g.orcamento.leitura)}`);
+    T.push(`Leitura: ${total - faltam} de ${total} páginas lidas (${total ? Math.round((total - faltam) / total * 100) : 0}%)${ent.dataProva ? ` · prova em ${fmtData(ent.dataProva)}` : ' · sem data da prova'}`);
+    g.avisos.forEach(a => T.push('⚠ ' + a));
+    T.push('');
+    ent.dias.forEach(({ dia }) => {
+      const doDia = g.metas.filter(m => m.dia === dia);
+      T.push(`${DIAS_CURTOS[diaDaSemana(dia)]} ${fmtData(dia)} · ${fmtMin(doDia.reduce((a, m) => a + m.minutos, 0))}`);
+      doDia.forEach(m => T.push('  • ' + linha(m)));
+      if (!doDia.length) T.push('  —');
+    });
+    if (g.adiados.length) { T.push('', 'ADIADO PARA A SEMANA SEGUINTE'); g.adiados.forEach(a => T.push(`  • ${a.tipo === 'erros' ? `${a.itens.length} erro(s)` : `${TIPOS[a.tipo_bloco]} de ${nomePdf(a.material_id)}`}`)); }
+    T.push('', 'PROJEÇÃO (8 semanas)', `Término previsto da leitura: ${pj.terminoLeitura ? fmtData(pj.terminoLeitura) : 'depois de 3 anos no ritmo atual'}`);
+    pj.semanas.forEach(w => T.push(`  ${fmtData(w.inicio)}: questões ${fmtMin(w.minutosQuestoes)} (${Math.round(w.fracao * 100)}%), leitura ${w.paginas} p.`));
+    const naAgenda = ent._erros.filter(window.estMotorErros.naAgenda);
+    T.push('', 'ERROS DO CADERNO NA AGENDA NOVA (2/7/21; a conversão é feita só na publicação)',
+      `${naAgenda.length} na agenda; ${ent._conv.length} mudariam de data ou de estado (${ent._conv.filter(c => c.para.dominado_em).length} virariam dominados).`);
+    T.push('', 'Nada foi gravado: isto é só a simulação do motor com os seus dados de hoje.');
+    await mostrarRelatorio('Semana que o motor geraria', T.join('\n'), '');
+  }
+
+  /* Conversão da agenda dos erros já registrados (1/7/30/90 → 2/7/21). Só na publicação do motor na main
+     (docs/motor-estudos.md): no console do painel, rode estPlano.converterAgendaErros(). Mostra quantos mudam
+     e só grava com confirmação. */
+  async function converterAgendaErros() {
+    const r = await sb.from('erros').select('id, motivo, etapa, proxima, dominado_em, ultima_revisao, criado_em');
+    if (r.error) { aviso('Não foi possível ler os erros.'); return; }
+    const conv = window.estMotorErros.converter(r.data || []);
+    const dom = conv.filter(c => c.para.dominado_em).length;
+    const T = [`${(r.data || []).filter(window.estMotorErros.naAgenda).length} erro(s) na agenda; ${conv.length} mudam (${dom} viram dominados).`, ''];
+    conv.forEach(c => T.push(`${c.id}: etapa ${c.de.etapa}, próxima ${c.de.proxima || '—'} → ${c.para.dominado_em ? `dominado em ${c.para.dominado_em}` : `próxima ${c.para.proxima}`}`));
+    if (!(await mostrarRelatorio('Conversão da agenda dos erros para 2/7/21', T.join('\n'), conv.length ? 'Converter' : ''))) return conv.length;
+    let falhas = 0;
+    for (const c of conv) {
+      const { error } = await sb.from('erros').update({ etapa: c.para.etapa, proxima: c.para.proxima, dominado_em: c.para.dominado_em }).eq('id', c.id);
+      if (error) { falhas++; console.error('Conversão do erro', c.id, error); }
+    }
+    aviso(falhas ? `${falhas} erro(s) não foram convertidos; rode de novo.` : `${conv.length} erro(s) convertidos para a agenda 2/7/21.`);
+    return conv.length;
+  }
+
   /* O plano acompanha o edital escolhido em "Edital Verticalizado" */
   function editalTrocado() {
     semanaVista = null;
@@ -2757,7 +2869,7 @@
     agendarReforco, mudarSemana, irParaSemana, alternarConfig, editalTrocado, projetar,
     incidenciaDaDisciplina, pctIncidencia, salvarIncidencias,
     materiaisDaDisciplina, paginasDoTopico, prioridadeDosTopicos, salvarMateriais, ordemPdfDe, porPdfDe, criarEditalPorPdf, juntarTopicos,
-    migrarMotor, temMotor: () => temMotor, motorPdfs: () => motorPdfs,
+    migrarMotor, verSemanaDoMotor, converterAgendaErros, temMotor: () => temMotor, motorPdfs: () => motorPdfs,
     renderTudo, fmtMin, aviso, revisoesDoTopico, paginasLidas, aproveitarDe
   };
 })();

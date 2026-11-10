@@ -9,7 +9,12 @@
 <h1>Motor de estudos: testes</h1>
 <p>Abra pelo servidor local (por exemplo, http://127.0.0.1:8765/ferramentas/testes/motor.html). Só contas, com dados fictícios: nada vai para o banco.</p>
 <div id="saida"></div>
+<script src="../../js/estudos.config.js"></script>
 <script src="../../js/estudos.motor.migracao.js"></script>
+<script src="../../js/estudos.motor.leitura.js"></script>
+<script src="../../js/estudos.motor.erros.js"></script>
+<script src="../../js/estudos.motor.questoes.js"></script>
+<script src="../../js/estudos.motor.semana.js"></script>
 <script>
 (function () {
   const saida = document.getElementById('saida');
@@ -118,6 +123,8 @@
   const txt = Mig.relatorio(p);
   teste('relatório: mostra a lista de decisão e o que não converteu', /Pontuação/.test(txt) && /vários itens sem faixa/.test(txt) && /Aula 03/.test(txt));
 
+  window.__teste = { grupo, teste, falhas: () => falhas };
+  return;
   const fim = document.createElement('p');
   fim.id = 'resultado';
   fim.className = falhas ? 'falha' : 'ok';
@@ -125,5 +132,6 @@
   document.body.appendChild(fim);
 })();
 </script>
+<script src="motor-etapas.js"></script>
 </body>
 </html>
