@@ -327,6 +327,19 @@
     $('est-sessao-folha').hidden = false;
   }
 
+  // "⛶ Tela cheia" do quadro do TEC: pede a tela inteira ao navegador e o CSS (.tela-cheia) faz o TEC
+  // cobrir a janela. Continua valendo no resumo, para alternar com "Voltar ao resumo" e o botão TEC.
+  const emTelaCheia = () => $('est-modal-sessao').classList.contains('tela-cheia');
+  function telaCheia(ligar) {
+    $('est-modal-sessao').classList.toggle('tela-cheia', ligar);
+    const b = $('est-sessao-tec-cheia');
+    b.textContent = ligar ? '⛶ Sair da tela cheia' : '⛶ Tela cheia';
+    b.setAttribute('aria-pressed', ligar);
+    const raiz = document.documentElement;   // a página inteira: as outras janelas (erro, conclusão) continuam visíveis
+    if (ligar && !document.fullscreenElement && raiz.requestFullscreen) raiz.requestFullscreen().catch(() => {});   // recusado: fica só a janela inteira
+    if (!ligar && document.fullscreenElement) document.exitFullscreen().catch(() => {});
+  }
+
   // "+ Assunto": escolhe um assunto do item (liga ao PDF da meta) ou cria um novo
   function abrirNovoAssunto() {
     const caixa = $('est-sessao-novo');
@@ -1112,6 +1125,7 @@
     await salvar();
     clearInterval(tick);
     mostrarResumo();
+    telaCheia(false);
     const frame = $('est-sessao-tec-frame');
     if (frame.dataset.url) { frame.src = 'about:blank'; delete frame.dataset.url; }   // para o TEC de rodar escondido
     $('est-modal-sessao').classList.remove('active');
@@ -1286,6 +1300,8 @@
     });
     $('est-sessao-fechar').addEventListener('click', fechar);
     $('est-sessao-tec-voltar').addEventListener('click', mostrarResumo);
+    $('est-sessao-tec-cheia').addEventListener('click', () => telaCheia(!emTelaCheia()));
+    document.addEventListener('fullscreenchange', () => { if (!document.fullscreenElement && emTelaCheia()) telaCheia(false); });   // Esc do navegador
     $('est-sessao-concluir').addEventListener('click', concluir);
     $('est-sessao-play').addEventListener('click', alternarPlay);
     $('est-sessao-zerar').addEventListener('click', zerar);
@@ -1306,7 +1322,8 @@
     titulo.addEventListener('keydown', ev => { if (ev.key === 'Enter') { ev.preventDefault(); quill.focus(); } });
     document.addEventListener('keydown', ev => {
       if (ev.key !== 'Escape' || !ctx || document.querySelector('#est-modal-confirm.active')) return;
-      if (alca && alca.img) esconderAlca(); else fechar();
+      if (emTelaCheia()) telaCheia(false);   // Esc sai primeiro da tela cheia
+      else if (alca && alca.img) esconderAlca(); else fechar();
     });
     window.addEventListener('beforeunload', () => { if (ctx) salvar(); });
   }

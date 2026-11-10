@@ -2713,6 +2713,11 @@ html, body {
 .est-sessao-tecbar { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 12px; border-bottom: 1px solid #e5e7eb; background: #f9fafb; }
 .page-estudos .est-sessao-tecbar .est-plano-btn { color: #1d4ed8; white-space: nowrap; }
 .est-sessao-tecbox iframe { flex: 1; width: 100%; min-height: 0; border: 0; }
+/* "⛶ Tela cheia": a janela ocupa a tela toda e o TEC cobre a janela (o resumo continua em tela cheia) */
+#est-sessao-tec-cheia { margin-left: auto; }
+#est-modal-sessao.tela-cheia { padding: 0; }
+#est-modal-sessao.tela-cheia .est-modal.est-sessao { position: relative; width: 100%; max-width: none; height: 100%; max-height: none; border: 0; border-radius: 0; }
+#est-modal-sessao.tela-cheia .est-sessao-tecbox { position: absolute; inset: 0; z-index: 2; border-radius: 0; }
 
 /* Concluir meta/revisão: divisão por assunto */
 .est-concluir-assuntos { margin: 0 0 14px; padding: 10px 12px; border: 1px solid var(--est-border); border-radius: 10px; background: var(--est-bg-glass); }
