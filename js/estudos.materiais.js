@@ -140,7 +140,7 @@
         const r = await lerPdf(arquivos[i]);
         const ja = ctx.lista.find(m => m.nome === r.nome && m.paginas === r.paginas);
         if (ja) { repetidos.push({ m: ja, topicos: r.topicos }); continue; }
-        const m = { id: novoId(), nome: r.nome, paginas: r.paginas, topicos: ligacoes(r.topicos) };
+        const m = { id: novoId(), nome: r.nome, paginas: r.paginas, topicos: ctx.porPdf ? [] : ligacoes(r.topicos) };
         ctx.lista.push(m);
         novos.push(m);
       } catch (e) {
@@ -151,7 +151,7 @@
       }
     }
     // PDF já na lista: troca as ligações pela nova sugestão, se o usuário quiser
-    const mudam = repetidos.filter(x => x.topicos.length &&
+    const mudam = ctx.porPdf ? [] : repetidos.filter(x => x.topicos.length &&
       x.topicos.join() !== x.m.topicos.map(l => l.topico_id).join());
     let trocados = 0;
     if (mudam.length && confirm(`${mudam.length} PDF${mudam.length > 1 ? 's' : ''} já estava${mudam.length > 1 ? 'm' : ''} na lista com outros tópicos.
@@ -163,7 +163,8 @@
     }
     const ligados = novos.filter(m => m.topicos.length).length;
     status(`${novos.length} PDF${novos.length === 1 ? '' : 's'} adicionado${novos.length === 1 ? '' : 's'}` +
-      (novos.length ? `, ${ligados} ligado${ligados === 1 ? '' : 's'} automaticamente a tópicos: confira abaixo.` : '.') +
+      (!novos.length ? '.' : ctx.porPdf ? `: cada um vira um item ao salvar.`
+        : `, ${ligados} ligado${ligados === 1 ? '' : 's'} automaticamente a tópicos: confira abaixo.`) +
       (repetidos.length ? ` ${repetidos.length} já estava${repetidos.length === 1 ? '' : 'm'} na lista` +
         (trocados ? ` (${trocados} com os tópicos trocados).` : '.') : ''));
     $('est-mat-salvar').disabled = !(novos.length || trocados) && $('est-mat-salvar').disabled;
@@ -176,11 +177,11 @@
     const nome = $('est-mat-manual-nome').value.trim();
     const paginas = parseInt($('est-mat-manual-pag').value, 10);
     if (!nome || !(paginas > 0)) return;
-    const topico = $('est-mat-manual-topico').value || ctx.comparar(nome);
+    const topico = $('est-mat-manual-topico').value || (ctx.porPdf ? '' : ctx.comparar(nome));
     ctx.lista.push({ id: novoId(), nome, paginas, topicos: topico ? [{ topico_id: topico, de: null, ate: null }] : [] });
     $('est-mat-manual').reset();
     $('est-mat-manual-nome').focus();
-    status(`"${nome}" adicionado${topico ? '' : '. Ligue-o a um tópico abaixo'}.`);
+    status(`"${nome}" adicionado${topico ? '' : ctx.porPdf ? ': vira um item ao salvar' : '. Ligue-o a um tópico abaixo'}.`);
     $('est-mat-salvar').disabled = false;
     render();
   }
@@ -196,6 +197,7 @@
       edital, disc,
       lista: JSON.parse(JSON.stringify(window.estPlano.materiaisDaDisciplina(discId))),
       ordemPdf: window.estPlano.ordemPdfDe(editalId, discId),
+      porPdf: window.estPlano.porPdfDe(editalId, discId),   // edital por PDF: cada PDF é um item
       comparar: window.estIncidencia.montarComparador(disc.topicos)
     };
     $('est-mat-titulo').textContent = `Material de estudo — ${disc.nome}`;
@@ -205,7 +207,8 @@
     $('est-mat-manual-topico').innerHTML = '<option value="">Tópico (sugerido pelo nome)</option>' +
       disc.topicos.map(t => `<option value="${t.id}">${escapeHtml(nomeCurto(t, 60))}</option>`).join('');
     $('est-mat-salvar').disabled = true;
-    status(ctx.lista.length
+    status(ctx.porPdf ? 'Cada PDF é um item de estudo desta disciplina. PDF novo vira item ao salvar, no fim da lista.'
+      : ctx.lista.length
       ? `${ctx.lista.length} PDF${ctx.lista.length > 1 ? 's' : ''} nesta disciplina. Adicione mais ou ajuste as ligações.`
       : 'Escolha todos os PDFs da disciplina de uma vez. Depois ligue cada um aos tópicos que ele cobre.');
     render();
@@ -253,7 +256,7 @@
     const opcoes = ['<option value="">— Escolha o tópico —</option>']
       .concat(ctx.disc.topicos.map(t => `<option value="${t.id}">${escapeHtml(nomeCurto(t, 60))}</option>`)).join('');
     $('est-mat-lista').innerHTML = ctx.lista.length ? ctx.lista.map((m, i) => `
-      <div class="est-mat-item ${m.topicos.some(l => l.topico_id) ? '' : 'solto'}">
+      <div class="est-mat-item ${m.topicos.some(l => l.topico_id) || ctx.porPdf ? '' : 'solto'}">
         <div class="est-mat-cab">
           <span class="est-mat-nome" title="${escapeHtml(m.nome)}">📄 ${escapeHtml(m.nome)}</span>
           <span class="est-mat-pag"><input type="number" class="est-form-input" min="1" value="${m.paginas}" data-m="${i}" data-campo="paginas" aria-label="Páginas de ${escapeHtml(m.nome)}" title="Número de páginas" /> p.</span>

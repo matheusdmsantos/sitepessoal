@@ -402,7 +402,33 @@
     if (planoDe(edital.id) && ativo && ativo.id === edital.id) await regerarSemana();
   }
 
+  /* Edital por PDF: cada PDF da disciplina é um item de estudo. Fica na configuração da
+     disciplina no plano, como o ordemPdf. */
+  const porPdfDe = (editalId, discId) => !!configDisc(planoDe(editalId), discId).porPdf;
+  const linhaDoTopico = (t, discId) => ({ id: t.id, disciplina_id: discId, nome: t.nome, estudado: false,
+    questoes_feitas: 0, questoes_certas: 0, tec_link: '', tempo_gasto: 0 });
+  const itemDoPdf = (id, m) => ({ id, nome: m.nome, estudado: false, questoesFeitas: 0, questoesCertas: 0, tecLink: '', tempoGasto: 0 });
+
+  // PDF que entrou na lista de uma disciplina por PDF ganha o próprio item, no fim (o id ordena depois dos outros)
+  async function itensDosPdfsSoltos(disc, lista) {
+    const soltos = lista.filter(m => !(m.topicos || []).some(l => l.topico_id));
+    if (!soltos.length) return;
+    const base = Date.now();
+    const novos = soltos.map((m, i) => itemDoPdf(`t_${base}_${String(i).padStart(5, '0')}`, m));
+    const { error } = await sb.from('topicos').insert(novos.map(t => linhaDoTopico(t, disc.id)));
+    if (error) {
+      console.error('Erro ao criar os itens dos PDFs:', error);
+      aviso('Não foi possível criar os itens dos PDFs novos. Abra a lista de PDFs e salve de novo.');
+      return;
+    }
+    soltos.forEach((m, i) => { m.topicos = [{ topico_id: novos[i].id, de: null, ate: null }]; });
+    disc.topicos.push(...novos);
+    saveEditais();
+    renderEdital();
+  }
+
   async function salvarMateriais(edital, disc, lista, ordemPdf) {
+    if (porPdfDe(edital.id, disc.id)) await itensDosPdfsSoltos(disc, lista);
     const plano = planoDe(edital.id);
     if (ordemPdf !== undefined && ordemPdf !== ordemPdfDe(edital.id, disc.id)) {
       if (plano) {
@@ -689,9 +715,11 @@
       const x = fila[0];
       const t = x.pendentes[0];
       const p = proximaParte(ctx, x, t);
-      // Partes do mesmo tópico ficam em ordem: nunca antes do dia da parte anterior
+      // Partes do mesmo tópico ficam em ordem: nunca antes do dia da parte anterior.
+      // Seguindo a ordem dos PDFs, o tópico seguinte também não passa na frente do anterior (o mesmo dia pode)
       const depoisDe = p.parte > 1 ? (novas.filter(m => m.topico_id === t.id).pop() || {}).dia : null;
-      const dia = dias.find(d => (!depoisDe || d > depoisDe) && cabe(d, p.minutos));
+      const desde = x.cfg.ordemPdf ? (novas.filter(m => m.disciplina_id === x.d.id && m.tipo === 'estudo').pop() || {}).dia : null;
+      const dia = dias.find(d => (!depoisDe || d > depoisDe) && (!desde || d >= desde) && cabe(d, p.minutos));
       if (!dia) { fila.shift(); continue; }   // não cabe mais nesta semana
       usado[dia] = (usado[dia] || 0) + p.minutos;
       ctx.alocado[x.d.id] = (ctx.alocado[x.d.id] || 0) + p.minutos;
@@ -1281,6 +1309,8 @@
   }
 
   function initModal() {
+    const porPdf = document.getElementById('est-btn-por-pdf');
+    if (porPdf) porPdf.addEventListener('click', perguntarEditalPorPdf);
     const overlay = document.getElementById('est-modal-concluir');
     if (!overlay) return;
     document.getElementById('est-modal-concluir-close').addEventListener('click', fecharConclusao);
@@ -1566,6 +1596,7 @@
     form.querySelectorAll('tr[data-disc]').forEach(tr => {
       disciplinas[tr.dataset.disc] = {
         ordemPdf: ordemPdfDe(e.id, tr.dataset.disc) || undefined,
+        porPdf: porPdfDe(e.id, tr.dataset.disc) || undefined,
         peso: Number(tr.querySelector('[name="peso"]').value),
         nivel: Number(tr.querySelector('[name="nivel"]').value),
         ativa: tr.querySelector('[name="ativa"]').checked
@@ -2349,6 +2380,87 @@
     return { revisoes: revNovas.length, pdfs, plano: planoMudou };
   }
 
+  /* =============================================
+     EDITAL POR PDF (botão ao lado do seletor de editais)
+     Um edital novo com as mesmas disciplinas e um item por PDF, na ordem da lista de PDFs;
+     o plano segue essa ordem, um PDF de cada vez. O edital de origem é desativado sem mudar
+     nada nele (os números, resumos, assuntos e revisões dele ficam lá).
+  ============================================= */
+  async function perguntarEditalPorPdf() {
+    const e = editalAtivo();
+    if (!e || !e.disciplinas.length) { aviso('Escolha um edital com disciplinas.'); return; }
+    if (e.disciplinas.every(d => porPdfDe(e.id, d.id))) {
+      aviso('Este edital já é por PDF: cada PDF novo vira item quando você salva a lista de PDFs da disciplina.');
+      return;
+    }
+    const n = e.disciplinas.reduce((a, d) => a + materiaisDaDisciplina(d.id).length, 0);
+    const ok = await window.customConfirm(`Criar um edital novo a partir de “${e.titulo}”, com as mesmas disciplinas e um item para cada PDF ` +
+      `(${n} PDF${n === 1 ? '' : 's'} hoje)? O plano passa a seguir os PDFs na ordem da lista, um de cada vez. ` +
+      `“${e.titulo}” será desativado sem mudar nada nele, e dá para reativá-lo na lista de editais.`);
+    if (ok) await criarEditalPorPdf(e);
+  }
+
+  async function criarEditalPorPdf(antigo) {
+    const base = Date.now();
+    let n = 0;
+    const discs = antigo.disciplinas.map((d, i) => {
+      const pdfs = materiaisDaDisciplina(d.id);
+      const topicos = pdfs.map(m => itemDoPdf(`t_${base}_${String(n++).padStart(5, '0')}`, m));
+      return { antiga: d, pdfs, nova: { id: `d_${base}_${String(i).padStart(4, '0')}`, nome: d.nome, ordem: null, topicos } };
+    });
+    const novo = { id: 'e_' + base.toString(36), titulo: `${antigo.titulo} — por PDF`, status: 'aberto', disciplinas: discs.map(x => x.nova) };
+    try {
+      const r1 = await sb.from('editais').insert({ id: novo.id, cargo: novo.titulo, orgao: 'Por PDF', status: 'aberto' });
+      if (r1.error) throw r1.error;
+      const r2 = await sb.from('disciplinas').insert(discs.map(x => ({ id: x.nova.id, edital_id: novo.id, nome: x.nova.nome })));
+      if (r2.error) throw r2.error;
+      const linhas = discs.flatMap(x => x.nova.topicos.map(t => linhaDoTopico(t, x.nova.id)));
+      for (let i = 0; i < linhas.length; i += 500) {
+        const r3 = await sb.from('topicos').insert(linhas.slice(i, i + 500));
+        if (r3.error) throw r3.error;
+      }
+    } catch (err) {
+      console.error('Erro ao criar o edital por PDF:', err);
+      aviso('Não foi possível criar o edital no servidor. Detalhe: ' + (err.message || err));
+      return;
+    }
+    editaisData.push(novo);
+
+    // A mesma lista de PDFs, cada um ligado inteiro ao seu item (ids na ordem da lista)
+    let k = 0;
+    for (const x of discs) {
+      if (!x.pdfs.length) continue;
+      const linhasMat = x.pdfs.map((m, i) => ({
+        id: `mat_${base.toString(36)}_${String(k++).padStart(4, '0')}`, edital_id: novo.id, disciplina_id: x.nova.id,
+        nome: m.nome, paginas: m.paginas || 0, topicos: [{ topico_id: x.nova.topicos[i].id, de: null, ate: null }],
+        criado_em: new Date().toISOString()
+      }));
+      materiais = materiais.concat(linhasMat);
+      await gravarDaDisciplina('materiais', 'id', remotoMat, x.nova.id, linhasMat, materiais);
+    }
+    pagPorTopico = contarPaginas(materiais);
+
+    // Plano: as mesmas horas, dias e peso/nível; cada disciplina segue a ordem dos PDFs
+    const velho = planoDe(antigo.id);
+    const linha = {
+      edital_id: novo.id,
+      horas_semana: velho ? velho.horas_semana : 20,
+      dias_semana: velho ? velho.dias_semana : [1, 2, 3, 4, 5, 6],
+      disciplinas: Object.fromEntries(discs.map(x => [x.nova.id, { ...configDisc(velho, x.antiga.id), ordemPdf: true, porPdf: true }])),
+      atualizado_em: new Date().toISOString()
+    };
+    planos = planos.filter(p => p.edital_id !== novo.id).concat(linha);
+    await gravar('plano_estudos', linha);
+
+    currentEditalId = novo.id;
+    saveEditais();
+    if (window.estAproveitar) await window.estAproveitar.desativar(antigo, true);   // já redesenha e gera a semana
+    if (antigo.status !== 'desativado') { renderEditalSelect(); renderEdital(); editalTrocado(); }
+    const pdfs = discs.reduce((a, x) => a + x.pdfs.length, 0);
+    aviso(`“${novo.titulo}” criado: ${pdfs} PDF${pdfs === 1 ? ' virou item' : 's viraram itens'}. ` +
+      'Disciplina sem PDF fica vazia até você importar os PDFs dela; cada PDF novo vira item ao salvar a lista.');
+  }
+
   /* O plano acompanha o edital escolhido em "Edital Verticalizado" */
   function editalTrocado() {
     semanaVista = null;
@@ -2364,7 +2476,7 @@
     abrirConclusao, abrirEstudo, adiarRevisao, removerMeta, regerarSemana, adiantar, reiniciarPlanejamento, metasDoTopico, agendarEstudados,
     agendarReforco, mudarSemana, irParaSemana, alternarConfig, editalTrocado, projetar,
     incidenciaDaDisciplina, pctIncidencia, salvarIncidencias,
-    materiaisDaDisciplina, paginasDoTopico, prioridadeDosTopicos, salvarMateriais, ordemPdfDe, juntarTopicos,
+    materiaisDaDisciplina, paginasDoTopico, prioridadeDosTopicos, salvarMateriais, ordemPdfDe, porPdfDe, criarEditalPorPdf, juntarTopicos,
     renderTudo, fmtMin, aviso, revisoesDoTopico, paginasLidas, aproveitarDe
   };
 })();
