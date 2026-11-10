@@ -2859,3 +2859,29 @@ html, body {
 .est-motor-param { display: flex; align-items: center; gap: 8px; }
 .est-motor-param .est-form-input { width: 110px; padding: 5px 8px; }
 .est-motor-param small { color: var(--est-accent-muted); }
+
+/* Estatísticas do motor (estudos.estatisticas.js, interface etapa 5) */
+.est-stat { display: flex; flex-direction: column; gap: 10px; margin-top: 18px; }
+.est-stat-titulo { margin: 0; font-size: 1rem; color: var(--est-silver-bright); }
+.est-stat h4 { margin: 10px 0 0; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--est-accent); }
+.est-stat-tab { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
+.est-stat-tab th { text-align: left; font-size: 0.7rem; color: var(--est-accent); padding: 4px 6px; border-bottom: 1px solid var(--est-border); }
+.est-stat-tab td { padding: 5px 6px; border-bottom: 1px solid var(--est-border); color: var(--est-silver-bright); }
+.est-stat-tab small { color: var(--est-silver); }
+.est-stat-tab tr.falta td { color: var(--est-amber); }
+.est-stat-det { font-size: 0.82rem; color: var(--est-silver-bright); }
+.est-stat-det summary { cursor: pointer; padding: 4px 0; }
+.est-stat-graficos { display: flex; flex-wrap: wrap; gap: 16px; margin: 6px 0; }
+.est-stat-graficos figure { margin: 0; }
+.est-stat-graficos figcaption { font-size: 0.72rem; color: var(--est-silver); margin-bottom: 4px; }
+.est-stat-svg { width: 260px; height: 150px; }
+.est-stat-svg .eixo { stroke: var(--est-border); stroke-width: 1; }
+.est-stat-svg .meta { stroke: var(--est-silver); stroke-width: 1; stroke-dasharray: 3 3; opacity: 0.6; }
+.est-stat-svg text { font-size: 9px; fill: var(--est-silver); }
+.est-stat-ic { position: relative; display: inline-block; width: 120px; height: 8px; border-radius: 4px; background: #3a4055; vertical-align: middle; margin-right: 6px; }
+.est-stat-ic i { position: absolute; top: 0; height: 100%; border-radius: 4px; background: #6da7ec; }
+.est-stat-ic b { position: absolute; top: -2px; width: 2px; height: 12px; background: var(--est-silver-bright); }
+.est-stat-insuf { font-size: 0.74rem; color: var(--est-silver); font-style: italic; }
+.est-stat-carga { display: flex; flex-direction: column; gap: 4px; }
+.est-stat-carga-barras { display: flex; flex-direction: column; gap: 2px; }
+.est-stat-carga-barras i { display: block; height: 6px; border-radius: 3px; }

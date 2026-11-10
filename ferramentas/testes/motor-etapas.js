@@ -202,6 +202,55 @@
     teste('texto sem sumário: nenhuma sugestão', !Cd.lerSumario(['Aula 01', 'Nesta aula veremos 3 temas', 'Bons estudos 2'], 60).length);
   }
 
+  /* ---------- Interface, etapa 5: estatísticas (T2, T3) ---------- */
+  grupo('Interface 5 — estatísticas (T2, T3)');
+  const St = window.estStats;
+  {
+    const w = St.wilson(8, 10);
+    teste('Wilson 95%: 8 de 10 → 49,0% a 94,3%', perto(w.p, 0.8) && perto(w.lo, 0.4902, 1e-3) && perto(w.hi, 0.9433, 1e-3), `${w.lo.toFixed(4)}–${w.hi.toFixed(4)}`);
+    const z0 = St.wilson(0, 10), z1 = St.wilson(30, 30);
+    teste('Wilson nos extremos: 0 de 10 e 30 de 30 ficam dentro de [0, 1]', z0.lo === 0 && perto(z0.hi, 0.2775, 1e-3) && z1.hi === 1 && perto(z1.lo, 0.8865, 1e-3), `${z0.hi.toFixed(4)} · ${z1.lo.toFixed(4)}`);
+    teste('Wilson sem questões: sem valor', St.wilson(0, 0).p === null);
+    teste('amostra insuficiente abaixo de 30 questões', !St.suficiente(29) && St.suficiente(30));
+    const bl = [
+      { id: 'b1', tipo_bloco: 'primeiro', total: 10, acertos: 8, dias: 1, previsto: 0.7, intervalo: 2, material_id: 'P', data: '2026-11-01', itens: [{ subtopico_id: 's1', total: 10, acertos: 8 }], certeza: 6, chute: 1 },
+      { id: 'b2', tipo_bloco: 'fixacao', total: 15, acertos: 15, dias: 0, material_id: 'P', data: '2026-11-01', itens: [{ subtopico_id: 's1', total: 15, acertos: 15 }] },
+      { id: 'b3', tipo_bloco: 'revisao', total: 20, acertos: 10, dias: 3, previsto: 0.8, intervalo: 2, material_id: 'P', data: '2026-11-04', itens: [{ subtopico_id: 's1', total: 5, acertos: 2 }, { subtopico_id: 's2', total: 15, acertos: 8 }], certeza: 10, chute: 5 },
+      { id: 'b4', tipo_bloco: 'revisao', total: 10, acertos: 7, dias: 2, previsto: 0.75, intervalo: 4, material_id: 'P', data: '2026-11-06', itens: [{ subtopico_id: 's2', total: 10, acertos: 7 }] }];
+    const er = [
+      { id: 'e1', motivo: 'conteudo', bloco_id: 'b1', confianca: 'certeza', recorrencias: 1, revisoes_log: [{ acertou: false }, { acertou: true }] },
+      { id: 'e2', motivo: 'leitura', bloco_id: 'b1', confianca: 'duvida', revisoes_log: [{ acertou: true }], dominado_em: '2026-11-10' },
+      { id: 'e3', motivo: 'gabarito', bloco_id: 'b3', confianca: 'certeza', recorrencias: 3, revisoes_log: [{ acertou: false }, { acertou: false }] },
+      { id: 'e4', motivo: 'pressa', bloco_id: 'b3', confianca: 'chute', revisoes_log: [] }];
+    const sep = St.separar(bl, er);
+    teste('inéditas: fixação fora (10+20+10 questões, 25 certas)', sep.ineditas.total === 40 && sep.ineditas.acertos === 25 && sep.ineditas.blocos === 3, `${sep.ineditas.acertos}/${sep.ineditas.total}`);
+    teste('refeitos: "Gabarito discutível" fora (3 respostas, 2 certas)', sep.refeitos.respostas === 3 && sep.refeitos.acertos === 2, `${sep.refeitos.acertos}/${sep.refeitos.respostas}`);
+    teste('as duas taxas ficam separadas, nunca somadas', perto(sep.ineditas.taxa, 0.625) && perto(sep.refeitos.taxa, 2 / 3) && !('total' in sep));
+    const ps = St.porSubtopico(bl);
+    teste('por subtópico: só inéditas (fixação fora)', ps.s1.total === 15 && ps.s1.acertos === 10 && ps.s2.total === 25 && !ps.s1.suficiente, `s1 ${ps.s1.acertos}/${ps.s1.total}`);
+    const pp = St.porPdf(bl).P;
+    teste('por PDF: pontos, intervalos e previsto × real sem a fixação', pp.pontos.length === 3 && pp.intervalos.map(i => i.intervalo).join() === '2,2,4' && pp.calibracao.length === 3);
+    const rs = St.errosResumo(er, e => e.motivo === 'conteudo' ? 'D1' : 'D2');
+    teste('erros: causas e recorrência sem "Gabarito discutível"; dominados × abertos',
+      !rs.porCausa.gabarito && rs.porCausa.conteudo.taxa === 1 && rs.porCausa.pressa.taxa === 0 && rs.dominados === 1 && rs.abertos === 2);
+    const cal = St.calibracao(bl, er);
+    // b1: 2 erros registrados = 2 errados → entra; b3: 10 errados e só 1 válido registrado → fora; b4: sem certeza/chute → fora
+    teste('calibração: entram só blocos com confiança e todos os erros registrados', cal.entraram === 1 && cal.fora === 2, `${cal.entraram} entraram, ${cal.fora} fora`);
+    teste('calibração: acerto por nível = (questões − erros do nível) / questões',
+      cal.niveis.certeza.q === 6 && perto(cal.niveis.certeza.acerto, 5 / 6) && cal.niveis.duvida.q === 3 && perto(cal.niveis.duvida.acerto, 2 / 3) && cal.niveis.chute.q === 1 && cal.niveis.chute.acerto === 1);
+    teste('correção dos refeitos por confiança original (sem gabarito discutível)', perto(cal.correcao.certeza.taxa, 0.5) && cal.correcao.duvida.taxa === 1 && cal.correcao.certeza.respostas === 2);
+    teste('nota líquida: peso × (2p − 1) em Certo/Errado; regra configurável',
+      perto(St.notaLiquida([{ peso: 2, previsto: 0.8 }, { previsto: 0.5 }]), 1.2) && perto(St.notaLiquida([{ peso: 1, previsto: 0.8 }], { acerto: 1, erro: 0 }), 0.8));
+    St.comEstudo({ s1: '2026-10-30', s2: '2026-11-04' });   // s2 estudado no dia do b3: fora do b3
+    const sepE = St.separar(bl, er), psE = St.porSubtopico(bl);
+    teste('subtópico estudado no dia do bloco (ou não lido) fica fora, como no modelo', sepE.ineditas.total === 25 && psE.s2.total === 10 && psE.s1.total === 15,
+      `inéditas ${sepE.ineditas.acertos}/${sepE.ineditas.total}; s2 ${psE.s2.acertos}/${psE.s2.total}`);
+    St.comEstudo(null);
+    const ed = St.edital([{ id: 'i1', nome: 'Item 1' }, { id: 'i2', nome: 'Item 2' }, { id: 'i3', nome: 'Item 3' }],
+      [{ id: 's1', itens_edital: ['i1'], estudado_em: '2026-11-01' }, { id: 's2', itens_edital: ['i1', 'i2'] }], ps);
+    teste('edital: cobertura, acerto por item e itens sem subtópico', perto(ed.cobertura, 1 / 3) && ed.itens[0].total === 40 && ed.semSubtopico.map(x => x.id).join() === 'i3');
+  }
+
   const falhas = window.__teste.falhas();
   const fim = document.createElement('p');
   fim.id = 'resultado';

@@ -2518,8 +2518,23 @@
             </div>`).join('') : '<p class="est-plano-vazio">Nenhum ponto fraco por enquanto.</p>'}
         </div>
       </div>` : ''}
+      <div id="est-stat-motor"></div>
     `;
     ajustarRotulos(el);
+    // Estatísticas do motor de estudos (edital por PDF), no fim da seção
+    const box = document.getElementById('est-stat-motor');
+    if (box && window.estStats && usarMotor(e) && plano) {
+      aplicarConfigMotor(plano);
+      const subs = window.estSub ? e.disciplinas.flatMap(d => d.topicos.flatMap(t => window.estSub.doTopico(t.id))).filter(s => s.material_id) : [];
+      const itensEdital = {};
+      e.disciplinas.forEach(d => { itensEdital[d.id] = itensDoEditalDeOrigem(e, d.nome); });
+      window.estStats.render(box, {
+        edital: e, plano, motorPdfs, materiais, blocos: motorBlocos.filter(b => b.edital_id === e.id || motorPdfs.some(p => p.id === b.material_id)),
+        erros: window.estErros ? window.estErros.todos().filter(x => x.edital_id === e.id) : [], subtopicos: subs, itensEdital,
+        metas: metas.filter(m => m.edital_id === e.id), sessoes: studyData.filter(s => s.editalId === e.id), hoje: hoje(), semanaAtual: atual,
+        dataProva: motorDataProva(plano), minutosSemana: Math.round(Number(plano.horas_semana) * 60)
+      });
+    }
   }
 
   /* =============================================
@@ -3033,6 +3048,8 @@
       ['questoes', 'maxPdfsManutencao', 'PDFs por bloco de manutenção'], ['questoes', 'pesoBloco', 'Peso do bloco: n ÷ (n + este número)']]],
     ['Agenda de erros', [['erros', 'passos', 'Passos (dias, separados por vírgula)', 'lista'], ['erros', 'segundosPorItem', 'Segundos por erro na revisão'],
       ['erros', 'minReleitura', 'Releitura (min)']]],
+    ['Estatísticas', [['estatisticas', 'pontosAcerto', 'Pontos por acerto (nota líquida)'], ['estatisticas', 'pontosErro', 'Pontos por erro (nota líquida; negativo desconta)', 'neg'],
+      ['estatisticas', 'amostraMin', 'Questões para o subtópico ter amostra suficiente']]],
     ['Semana', [['semana', 'fracaoBase', 'Questões no início da leitura (%)', 'pct'], ['semana', 'fracaoRampa', 'Rampa até o fim da leitura (+%)', 'pct'],
       ['semana', 'fracaoAtraso', 'A mais por semana de atraso (%)', 'pct'], ['semana', 'fracaoMaxLeitura', 'Máximo enquanto há leitura (%)', 'pct'],
       ['semana', 'retaFinalSemanas', 'Reta final (semanas antes da prova)'], ['semana', 'semanasProjecao', 'Semanas na projeção']]]
@@ -3041,7 +3058,7 @@
   const daTela = (txt, t) => {
     if (t === 'lista') { const l = String(txt).split(/[,;\s]+/).filter(Boolean).map(Number); return l.length && l.every((x, i) => x > 0 && Number.isInteger(x) && (!i || x > l[i - 1])) ? l : null; }
     const n = Number(String(txt).replace(',', '.'));
-    if (!(n >= 0) || txt === '') return null;
+    if (txt === '' || Number.isNaN(n) || (t !== 'neg' && n < 0)) return null;
     const r = t === 'pct' ? n / 100 : t === 'ce' ? (n / 100 - 0.5) / 0.5 : n;
     return Math.round(r * 1e6) / 1e6;   // 80% → 0,6 exato (sem 0,6000000000000001)
   };

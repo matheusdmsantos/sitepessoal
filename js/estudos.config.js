@@ -33,6 +33,13 @@ window.estConfig = {
     pesoBloco: 10,           // peso do bloco = n / (n + pesoBloco)
     chute: { ce: 0.5, me: 0.2 }
   },
+  // F. Estatísticas (só leitura; não mudam o agendamento)
+  estatisticas: {
+    amostraMin: 30,          // F3: menos questões que isso no subtópico = "amostra insuficiente"
+    z: 1.96,                 // F3: intervalo de confiança de Wilson de 95%
+    pontosAcerto: 1,         // F6: nota líquida = peso × (pontosAcerto × p + pontosErro × (1 − p)); Cebraspe: +1 e −1
+    pontosErro: -1
+  },
   // E. Orçamento semanal e rampa
   semana: {
     fracaoBase: 0.30,        // E1: fração de questões = base + rampa × (páginas lidas / total)
