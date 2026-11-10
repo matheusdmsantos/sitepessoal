@@ -1,6 +1,6 @@
 # Site Pessoal — Matheus Miranda
 
-Site estático publicado no Netlify (matheusmirandaeng.com.br).
+Site estático publicado no Cloudflare Pages (matheusmirandaeng.com.br).
 Login e dados ficam no Supabase.
 
 ## Estrutura

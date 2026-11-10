@@ -6,10 +6,10 @@ Instruções e contexto para o Claude Code neste repositório. Leia este arquivo
 
 Site pessoal que funciona como **repositório de aplicações próprias**. Ele tem uma página pública (o portfólio de engenheiro civil) e uma área privada, protegida por login, com um hub de apps.
 
-- **Domínio:** https://matheusmirandaeng.com.br
+- **Domínio:** https://matheusmirandaeng.com.br. O DNS está no Cloudflare desde 10/11/2026 (servidores `ernest` e `zelda.ns.cloudflare.com`, trocados no registro.br; antes era o Netlify DNS). O `www` redireciona para o endereço sem `www` (Redirect Rule do Cloudflare) e o http vai para https. O domínio não tem e-mail (nenhum MX).
 - **Repositório:** github.com/matheusdmsantos/sitepessoal, branch `main`. ⚠️ Hoje está **público**; a ideia é passar para privado.
-- **Deploy:** Netlify, projeto `shiny-moxie-5ef02b`, ligado ao GitHub. **Todo push na `main` publica em produção automaticamente** (em cerca de 30 s).
-- **Mudança para o Cloudflare Pages** (branch `cloudflare`, novembro de 2026; os créditos de deploy do Netlify acabaram): publica a própria pasta, sem build. `_headers` faz o papel dos headers do `netlify.toml`; as funções ficam em `functions/` (`api/ia-resumo.js`, `api/usuarios.js`, `agenda/[[caminho]].js`) e só repassam para `tratar(req, env)` dos módulos de `netlify/functions/`, que servem às duas hospedagens (no Netlify, `/api/*` é redirecionado para `/.netlify/functions/*`). As chaves vêm de `context.env` (painel do Pages: Settings > Variables and Secrets). `functions/_middleware.js` dá 404 em `supabase/`, `netlify/`, `functions/`, `ferramentas/`, `CLAUDE.md` etc.; `_routes.json` limita as funções a esses caminhos e a `/api/*` e `/agenda/*` (o resto é estático e não gasta a cota de 100 mil chamadas/dia do plano gratuito).
+- **Deploy:** Cloudflare Pages, projeto `matheusmirandaeng`, ligado ao GitHub. **Todo push na `main` publica em produção automaticamente.** Cada branch enviada ao GitHub ganha uma prévia em `<branch>.matheusmirandaeng.pages.dev` (barras viram hífen). `matheusmirandaeng.pages.dev` também serve a produção, mas é outra origem: login e dados do navegador (localStorage, IndexedDB) ficam separados, então use o domínio. O Netlify (projeto `shiny-moxie-5ef02b`) não é mais usado: os créditos de deploy acabaram em novembro de 2026.
+- **Como funciona no Cloudflare Pages:** publica a própria pasta, sem build. `_headers` faz o papel dos headers do `netlify.toml`; as funções ficam em `functions/` (`api/ia-resumo.js`, `api/usuarios.js`, `agenda/[[caminho]].js`) e só repassam para `tratar(req, env)` dos módulos de `netlify/functions/`, que servem às duas hospedagens (no Netlify, `/api/*` é redirecionado para `/.netlify/functions/*`). As chaves vêm de `context.env` (painel do Pages: Settings > Variables and Secrets; `SUPABASE_SERVICE_ROLE_KEY` e `ANTHROPIC_API_KEY` conferidas em 10/11/2026). `functions/_middleware.js` dá 404 em `supabase/`, `netlify/`, `functions/`, `ferramentas/`, `CLAUDE.md` etc.; `_routes.json` limita as funções a esses caminhos e a `/api/*` e `/agenda/*` (o resto é estático e não gasta a cota de 100 mil chamadas/dia do plano gratuito).
 - **Login e banco:** Supabase, projeto `https://smbvlquqqhtgmvgddjlq.supabase.co`.
 - **Editor:** VS Code com a extensão Claude Code, em Windows.
 - **Idioma:** a interface, os comentários, as mensagens de commit e as respostas ao usuário são em **português (pt-BR)**.
@@ -26,7 +26,7 @@ Site pessoal que funciona como **repositório de aplicações próprias**. Ele t
   - pdf.js 3.11.174 (cdnjs), carregado sob demanda na importação de edital; o worker roda na própria página
   - SheetJS (xlsx) 0.18.5 (cdnjs), carregado sob demanda na importação de incidência do TEC
 - Fontes do Google carregadas por `<link>` no `<head>`, **nunca** por `@import` no CSS.
-- O `netlify.toml` define `publish = "."`, os headers de segurança e o cache de `/assets/*` por 30 dias. Por causa desse cache, ao trocar uma imagem é preciso **trocar o nome do arquivo**.
+- O `_headers` define os headers de segurança e o cache de `/assets/*` por 30 dias (o `netlify.toml` faz o mesmo no Netlify). Por causa desse cache, ao trocar uma imagem é preciso **trocar o nome do arquivo**.
 
 ## Estrutura
 
@@ -80,7 +80,7 @@ supabase/agenda.sql   tabela agenda_links (link secreto da agenda iCal), já com
 supabase/financeiro.sql  tabela recebimentos (financeiro), já com dono e RLS; copia as mensalidades de obra_honorarios
 ```
 
-`/supabase/*`, `/netlify/*` e `/README.md` retornam 404 no site, por regra no `netlify.toml`.
+`/supabase/*`, `/netlify/*`, `/functions/*`, `/README.md`, `/CLAUDE.md` etc. retornam 404 no site, pelo `functions/_middleware.js` (no Netlify, por regra no `netlify.toml`).
 
 ## Autenticação: `js/auth.js`
 
@@ -139,14 +139,14 @@ A página usa `<body class="auth-pending">` (com `visibility: hidden`) e remove 
 - Sem as tabelas do plano, o `estudos.plano.js` guarda tudo no `localStorage` e mostra um aviso; quando elas aparecem, envia esses dados uma vez (flag `est_plano_migrado`).
 - **Vários usuários** (`supabase/multiusuario.sql`): as tabelas do Painel de Estudos e do Controle de Obras têm a coluna `dono uuid default auth.uid()` (o front não envia; o banco preenche). Regras e índices de valor único passam a incluir o dono (ex.: `processos_numero_idx`). Arquivos do bucket `obras-docs`: a política `obras_docs_dono` libera o caminho cujo 1º segmento é um processo do usuário. O dono do site tem `app_metadata.papel = 'dono'` e vê todos os apps. Os outros veem só os de `app_metadata.apps` (ids do `apps.json`), escolhidos no app Usuários; sem essa lista (contas antigas), só `estudos`. `canUseApp(id, user)`/`userApps(user)` no `auth.js` fazem a conta; o hub filtra por eles e cada app manda quem não tem acesso de volta ao hub. `"soDono": true` no `apps.json` tira o app da lista de escolha. A Escala de Louvor não tem login (dados no navegador), então liberar só mostra o card. Novos usuários são criados no app Usuários (cadastro público desligado). Tabela nova de um app precisa da coluna `dono` (inclua-a na lista do `multiusuario.sql`) antes de rodar o `rls.sql`.
 - O `rls.sql` liga o RLS em todas as tabelas de `public` e **apaga todas as políticas existentes**. Nas tabelas com coluna `dono`, cria `cada_um_o_seu` (`dono = auth.uid()`); nas demais, `dono_acesso_total`, que só libera para `auth.jwt()->>'email' = 'ecivilmatheus@gmail.com'`.
-- A chave `anon` pode ficar no front-end. A chave `service_role` **nunca** pode aparecer no código: ela fica só na variável de ambiente `SUPABASE_SERVICE_ROLE_KEY` do Netlify, usada pela `netlify/functions/usuarios.mjs` (sem dependências; chama a API admin do Auth com `fetch`). A função confirma o token de quem chama em `/auth/v1/user` e só atende `app_metadata.papel = 'dono'`; não exclui a conta do dono. Não roda no `python -m http.server`: teste na prévia da branch do Netlify.
+- A chave `anon` pode ficar no front-end. A chave `service_role` **nunca** pode aparecer no código: ela fica só na variável de ambiente `SUPABASE_SERVICE_ROLE_KEY` da hospedagem (Cloudflare Pages), usada pela `netlify/functions/usuarios.mjs` (sem dependências; chama a API admin do Auth com `fetch`). A função confirma o token de quem chama em `/auth/v1/user` e só atende `app_metadata.papel = 'dono'`; não exclui a conta do dono. Não roda no `python -m http.server`: teste na prévia da branch (`<branch>.matheusmirandaeng.pages.dev`).
 
 ## Fluxo de trabalho
 
 1. Edite localmente.
 2. Teste com um servidor local, porque abrir o arquivo direto não funciona: use o Live Server ou `npx serve .`. ⚠️ Mesmo local, o login e os dados são os **reais** do Supabase.
 3. Faça commits pequenos e frequentes, com mensagens em português (ex.: `perf: otimiza imagem do portfólio`, `feat: app conversor de unidades`).
-4. **Só faça push para a `main` quando o usuário confirmar**, porque push publica em produção. Para mudanças grandes, prefira uma branch: o Netlify gera um endereço de prévia para ela.
+4. **Só faça push para a `main` quando o usuário confirmar**, porque push publica em produção. Para mudanças grandes, prefira uma branch: o Cloudflare Pages gera a prévia `<branch>.matheusmirandaeng.pages.dev`.
 
 ## Regras para o Claude Code
 
@@ -256,7 +256,7 @@ A página usa `<body class="auth-pending">` (com `visibility: hidden`) e remove 
   - No processo: card "💰 Financeiro" (resumo e tabela; "Gerar mensalidades" se `p.mensal`; "Parcelas da proposta": entrada (% da proposta) hoje e saldo na entrega, em dias úteis, sobre o valor dos projetos com o desconto; itens em meses ficam de fora).
   - Visão geral `#/financeiro` (botão na lista e aviso de vencidos/notas): KPIs do mês, "Mês a mês" (previsto pelo vencimento × recebido, 2 meses atrás a 5 à frente; clicar filtra), filtros A receber / Vencidos / NF a emitir (sem NF e vence em até 7 dias, vencido ou recebido) / NF a enviar / Recebidos / Todos, mês e busca.
   - Marcar recebido, emitir ou enviar NF entram no andamento (tipo `financeiro`). "💬" cobra por WhatsApp com os dados de pagamento do proponente.
-- *Google Agenda* (link iCal assinado em "Outras agendas → Do URL"): botão "📅 Google Agenda" na lista (`formAgenda` no `app.js`) cria, copia, troca ou desativa o link e escolhe os itens (`agenda_links.itens`: prazos em aberto, recebimentos não pagos, prazos das pendências de obra). Token de 48 hex gerado no navegador; a `netlify/functions/agenda.mjs` acha o dono pelo token com a service_role e lê só os dados dele (eventos de dia inteiro, `TRANSP:TRANSPARENT`, UID estável por item). O `netlify.toml` redireciona `/agenda/*` para a função. Só leitura; o Google relê o link algumas vezes por dia. Só funciona no Netlify (não no servidor local).
+- *Google Agenda* (link iCal assinado em "Outras agendas → Do URL"): botão "📅 Google Agenda" na lista (`formAgenda` no `app.js`) cria, copia, troca ou desativa o link e escolhe os itens (`agenda_links.itens`: prazos em aberto, recebimentos não pagos, prazos das pendências de obra). Token de 48 hex gerado no navegador; a `netlify/functions/agenda.mjs` acha o dono pelo token com a service_role e lê só os dados dele (eventos de dia inteiro, `TRANSP:TRANSPARENT`, UID estável por item). No Cloudflare, `functions/agenda/[[caminho]].js` atende `/agenda/*` (no Netlify, o `netlify.toml` redireciona para a função). Só leitura; o Google relê o link algumas vezes por dia. Só funciona hospedado (não no servidor local).
 - *Prazos* por processo (título curto; clicar edita em `formPrazo`). Podem levar uma mensagem pronta para WhatsApp e um destinatário próprio (`para_nome`/`para_telefone`, ex.: o arquiteto; sem eles, vai para o contato do processo); "💬 Enviar" abre a mensagem e cumpre o prazo. Texto longo com ":" na linha rápida abre o formulário já separado em título e mensagem (`separarPrazo`). Sem as colunas (`temPrazoMsg`), o prazo fica só com título e data; a lista mostra os vencidos e os dos próximos 7 dias. KPIs: ativos, propostas em aberto (R$), contratados/em execução (R$) e % de propostas aceitas.
 - Ficou para depois: cronograma físico, medições e pendências com fotos (escolhidos antes, adiados quando o escopo virou "estilo SEI").
 
