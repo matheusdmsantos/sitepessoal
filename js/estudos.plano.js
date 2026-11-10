@@ -31,7 +31,7 @@
   const MIN_REFORCO = 40;
   const LIMITE_REVISAO_DIA = 0.5;                // revisões ocupam no máximo metade do tempo do dia
   const PAGINAS_POR_HORA = 20;                   // ritmo de leitura dos PDFs ligados aos tópicos
-  const PARTE_MAX = 120;                         // tópico com PDF longo é dividido em partes de até 2h
+  const PARTE_MAX = 70;                          // nenhuma meta de estudo passa de 1h10: o tópico maior vira partes
   // Depois do estudo de cada tópico entra uma meta de questões, pela relevância do tópico:
   // incidência do TEC (≥ 10% da disciplina = alta, < 2% = baixa) ou, sem ela, o peso da disciplina
   const QUESTOES_POR_RELEVANCIA = { 3: 20, 2: 15, 1: 10 };
@@ -636,22 +636,25 @@
      Com PDF: o tempo de leitura das páginas que faltam (PAGINAS_POR_HORA), menos o que já
      está planejado. O tópico só sai do plano quando o usuário marca "Terminei este PDF"
      (fica estudado); se as páginas acabaram sem essa marcação, entra uma meta curta para fechar.
-     Sem PDF: qualquer meta já cobre o tópico inteiro. */
+     Sem PDF: o bloco do nível em partes iguais de até PARTE_MAX, menos as partes já feitas ou
+     planejadas; o tópico fica estudado na última. */
   function faltaDoTopico(ctx, x, t) {
     if (t.estudado) return 0;
     const pags = Math.round(paginasDoTopico(t.id));
-    if (!pags) return ctx.partesFeitas[t.id] ? 0 : blocoDoTopico(x, t);
+    if (!pags) {
+      const bloco = blocoDoTopico(x, t), partes = Math.ceil(bloco / PARTE_MAX);
+      return Math.round(bloco / partes) * Math.max(0, partes - (ctx.partesFeitas[t.id] || 0));
+    }
     const restantes = Math.max(0, pags - paginasLidas(t.id));
     const leitura = Math.max(15, Math.ceil((restantes / PAGINAS_POR_HORA) * 60 / 15) * 15);
     const falta = leitura - (ctx.planejado[t.id] || 0);
     return falta >= 15 ? falta : 0;
   }
 
-  /* Próxima meta do tópico: { minutos, parte, partes }. Com PDF, o que falta é dividido por
-     igual em partes de até PARTE_MAX. */
+  /* Próxima meta do tópico: { minutos, parte, partes }. O que falta é dividido por igual em
+     partes de até PARTE_MAX. */
   function proximaParte(ctx, x, t) {
     const falta = faltaDoTopico(ctx, x, t);
-    if (!paginasDoTopico(t.id)) return { minutos: falta, parte: 1, partes: 1 };
     const parte = (ctx.partesFeitas[t.id] || 0) + 1;
     const resto = Math.ceil(falta / PARTE_MAX);
     return { minutos: resto <= 1 ? falta : Math.round(falta / resto), parte, partes: parte - 1 + resto };
@@ -1248,13 +1251,15 @@
     const comPdf = ctx.tipo === 'meta' && ctx.totalPags > 0 && ctx.trechos.length > 0;
     const terminou = !comPdf || document.getElementById('est-concluir-terminei').checked;
     const parcial = !terminou;
+    // Sem PDF, o tópico dividido em partes só fica estudado na última
+    const parteDoMeio = ctx.tipo === 'meta' && !comPdf && item.partes > 1 && item.parte < item.partes;
     if (comPdf) {
       const idx = parseInt(document.getElementById('est-concluir-pdf-sel').value, 10) || 0;
       const pag = val('est-concluir-pag');
       item.paginas_lidas = terminou ? ctx.totalPags : Math.min(ctx.totalPags, lidasAtePagina(ctx.trechos, idx, pag));
       if (terminou && pag) await ajustarFaixas(ctx.trechos[idx], pag);
     }
-    if (ctx.tipo === 'meta' && !parcial && !questoesMeta) { t.estudado = true; atualizacao.estudado = true; }
+    if (ctx.tipo === 'meta' && !parcial && !parteDoMeio && !questoesMeta) { t.estudado = true; atualizacao.estudado = true; }
     saveEditais();
     fecharConclusao();
     if (window.estSessao) window.estSessao.zerarCrono(ctx.id);
@@ -1264,7 +1269,7 @@
       id: novoId('s'), date: hoje(), timestamp: new Date().toISOString(),
       editalId: e.id, discId: d.id, topicId: t.id, discipline: d.nome, topic: t.nome,
       timeMinutes: minutos, questionsTotal: questoes, questionsCorrect: acertos,
-      tipo: ctx.tipo === 'meta' ? 'estudo' : item.tipo, metaDone: ctx.tipo === 'meta' && !parcial && !questoesMeta,
+      tipo: ctx.tipo === 'meta' ? 'estudo' : item.tipo, metaDone: ctx.tipo === 'meta' && !parcial && !parteDoMeio && !questoesMeta,
       ...(assuntos.length ? { assuntos } : {})
     };
     studyData.push(sessao);
@@ -1285,6 +1290,8 @@
         abertas.forEach(m => { m.partes = total; });
         if (abertas.length) gravar('metas', abertas);
         aviso(`Progresso salvo: ${item.paginas_lidas} de ${ctx.totalPags} páginas. O restante continua no plano.`);
+      } else if (parteDoMeio) {
+        aviso(`Parte ${item.parte} de ${item.partes} concluída. As outras continuam no plano.`);
       } else {
         // Terminou antes do previsto: as partes que sobraram saem do plano
         const sobras = metas.filter(m => m.topico_id === t.id && !m.concluida && m.id !== item.id && !ehQuestoes(m)).map(m => m.id);
@@ -1791,7 +1798,7 @@
         a partir de ${ACERTO_OTIMO}%. Abaixo de ${ACERTO_REFORCO}% entra um reforço. Quando o intervalo passaria de ${INTERVALO_MAX} dias,
         o tópico está dominado e sai do plano. Revisões ocupam no máximo ${LIMITE_REVISAO_DIA * 100}% do tempo de cada dia.
         Nas disciplinas com incidência do TEC, entra primeiro o tópico com mais questões por página de material.
-        Tópico com PDF ligado leva o tempo de leitura (${PAGINAS_POR_HORA} páginas por hora), em partes de até ${fmtMin(PARTE_MAX)}.</p>` : ''}
+        Tópico com PDF ligado leva o tempo de leitura (${PAGINAS_POR_HORA} páginas por hora). Nenhuma meta de estudo passa de ${fmtMin(PARTE_MAX)}: o tópico maior vira partes.</p>` : ''}
     `;
 
     const form = document.getElementById('est-plano-config-form');
