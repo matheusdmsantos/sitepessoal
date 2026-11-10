@@ -2075,16 +2075,10 @@ html, body {
 .page-estudos .est-sessao-trocar { margin-left: 8px; padding: 1px 8px; border: 1px solid var(--est-border); border-radius: 999px; font-size: 0.72rem; color: var(--est-accent); cursor: pointer; }
 #est-modal-confirm-msg { white-space: pre-line; }
 .page-estudos .est-sessao-trocar:hover { color: #fff; border-color: var(--est-accent); }
+/* Tópico escondido da tela (pedido do usuário); fica para leitor de tela, pois rotula a janela */
 .est-sessao-topico {
-  font-family: var(--est-font-display);
-  font-size: 1.3rem;
-  font-weight: 700;
-  color: var(--est-silver-bright);
-  line-height: 1.25;
-  overflow: hidden;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
+  position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden;
+  clip: rect(0 0 0 0); white-space: nowrap; border: 0;
 }
 .est-sessao-crono {
   display: flex;
