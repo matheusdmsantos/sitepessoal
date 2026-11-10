@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<title>Testes do motor de estudos</title>
+<style>body { font: 14px/1.5 system-ui, sans-serif; margin: 24px; } h2 { margin: 20px 0 6px; font-size: 16px; } .ok { color: #15803d; } .falha { color: #b91c1c; font-weight: 700; }</style>
+</head>
+<body>
+<h1>Motor de estudos: testes</h1>
+<p>Abra pelo servidor local (por exemplo, http://127.0.0.1:8765/ferramentas/testes/motor.html). Só contas, com dados fictícios: nada vai para o banco.</p>
+<div id="saida"></div>
+<script src="../../js/estudos.motor.migracao.js"></script>
+<script>
+(function () {
+  const saida = document.getElementById('saida');
+  let falhas = 0, lista = null;
+  function grupo(nome) {
+    const h = document.createElement('h2'); h.textContent = nome; saida.appendChild(h);
+    lista = document.createElement('ul'); saida.appendChild(lista);
+  }
+  function teste(nome, ok, detalhe) {
+    if (!ok) falhas++;
+    const li = document.createElement('li');
+    li.className = ok ? 'ok' : 'falha';
+    li.textContent = (ok ? '✓ ' : '✗ ') + nome + (detalhe ? ' — ' + detalhe : '');
+    lista.appendChild(li);
+  }
+  const copia = x => JSON.parse(JSON.stringify(x));
+
+  /* ---------- Etapa 1: migração ---------- */
+  grupo('Etapa 1 — migração');
+  const Mig = window.estMotorMigracao;
+  const T = (id, nome, extra) => ({ id, nome, estudado: false, tecLink: '', ...extra });
+  const base = () => ({
+    hoje: '2026-11-11',
+    // Edital por PDF: um item por PDF
+    edital: { id: 'eN', titulo: 'Auditor — por PDF', disciplinas: [
+      { id: 'dN1', nome: 'Português', topicos: [T('i1', 'Aula 01', { estudado: true, tecLink: 'https://tec/c1' }), T('i2', 'Aula 02'), T('i3', 'Aula 03')] },
+      { id: 'dN2', nome: 'Administrativo', topicos: [T('i4', 'Aula 01')] }] },
+    // Edital de origem: itens do edital, com os mesmos PDFs ligados a eles
+    origem: { id: 'eO', titulo: 'Auditor', disciplinas: [
+      { id: 'dO1', nome: 'Português', topicos: [T('o1', '1 Ortografia'), T('o2', '2 Acentuação'), T('o3', '3 Crase')] },
+      { id: 'dO2', nome: 'Administrativo', topicos: [T('o4', '1 Atos')] }] },
+    materiais: [
+      { id: 'p1', edital_id: 'eN', disciplina_id: 'dN1', nome: 'Aula 01', paginas: 40, topicos: [{ topico_id: 'i1', de: null, ate: null }] },
+      { id: 'p2', edital_id: 'eN', disciplina_id: 'dN1', nome: 'Aula 02', paginas: 30, topicos: [{ topico_id: 'i2', de: null, ate: null }] },
+      { id: 'p3', edital_id: 'eN', disciplina_id: 'dN1', nome: 'Aula 03', paginas: 20, topicos: [{ topico_id: 'i3', de: null, ate: null }] },
+      { id: 'p4', edital_id: 'eN', disciplina_id: 'dN2', nome: 'Aula 01', paginas: 50, topicos: [{ topico_id: 'i4', de: null, ate: null }] },
+      // os mesmos PDFs no edital de origem
+      { id: 'a1', edital_id: 'eO', disciplina_id: 'dO1', nome: 'Aula 01', paginas: 40, topicos: [{ topico_id: 'o1', de: 1, ate: 20 }, { topico_id: 'o2', de: 21, ate: 40 }] },
+      { id: 'a2', edital_id: 'eO', disciplina_id: 'dO1', nome: 'Aula 02', paginas: 30, topicos: [{ topico_id: 'o2', de: null, ate: null }, { topico_id: 'o3', de: null, ate: null }] },
+      { id: 'a4', edital_id: 'eO', disciplina_id: 'dO2', nome: 'Aula 01', paginas: 50, topicos: [{ topico_id: 'o4', de: null, ate: null }] }
+    ],
+    subtopicos: [
+      { id: 's1', topico_id: 'i1', nome: 'Hífen', pdfs: [{ material_id: 'p1', de: 1, ate: 12 }] },
+      { id: 's2', topico_id: 'i1', nome: 'Acentuação', pdfs: [{ material_id: 'p1', de: 18, ate: 40 }] },
+      { id: 's3', topico_id: 'i2', nome: 'Crase', pdfs: [{ material_id: 'p2', de: 1, ate: 10 }] },
+      { id: 's4', topico_id: 'i2', nome: 'Regência', pdfs: [{ material_id: 'p2', de: null, ate: null }] },
+      { id: 's5', topico_id: 'i3', nome: 'Pontuação', pdfs: [{ material_id: 'p3', de: 1, ate: 8 }, { material_id: 'p2', de: 25, ate: 30 }] },
+      { id: 's6', topico_id: 'i4', nome: 'Atos', pdfs: [] },
+      { id: 'sx', topico_id: 'o1', nome: 'De outro edital', pdfs: [{ material_id: 'a1', de: 1, ate: 5 }] }
+    ],
+    erros: [
+      { id: 'e1', edital_id: 'eN', topico_id: 'i1', subtopico_id: 's2', material_id: null },
+      { id: 'e2', edital_id: 'eN', topico_id: 'i4', subtopico_id: null, material_id: null },
+      { id: 'e3', edital_id: 'eO', topico_id: 'o1', subtopico_id: null, material_id: null }
+    ],
+    motorPdfs: [], paginasLidas: { i2: 12 }, ultimaSessao: { i1: '2026-11-05', i2: '2026-11-09' }
+  });
+  const p = Mig.planejar(base());
+  const sub = id => p.subs.find(s => s.id === id);
+  const pdf = id => p.pdfs.find(x => x.id === id);
+
+  teste('cada PDF do edital entra no motor, na ordem da lista de cada disciplina',
+    p.pdfs.length === 4 && pdf('p1').ordem === 0 && pdf('p2').ordem === 1 && pdf('p3').ordem === 2 && pdf('p4').ordem === 0);
+  teste('o PDF herda o caderno do TEC do item e a data de conclusão', pdf('p1').tec_link === 'https://tec/c1' && pdf('p1').concluido_em === '2026-11-05' && pdf('p2').concluido_em === null);
+  teste('subtópico com um PDF: ganha o PDF dono e as páginas', sub('s1').material_id === 'p1' && sub('s1').pag_ini === 1 && sub('s1').pag_fim === 12);
+  teste('subtópico de PDF concluído, ou já lido até a última página, fica estudado', sub('s1').estudado_em === '2026-11-05' && sub('s3').estudado_em === '2026-11-09' && sub('s4').estudado_em === null);
+  teste('subtópico em mais de um PDF: não ganha dono e vai para a lista de decisão',
+    !sub('s5') && p.pendencias.variosPdfs.length === 1 && p.pendencias.variosPdfs[0].subtopico === 'Pontuação' && p.pendencias.variosPdfs[0].pdfs.length === 2);
+  teste('subtópico sem páginas: ganha o PDF, sem faixa, e é listado', sub('s4').material_id === 'p2' && sub('s4').pag_ini === null && p.pendencias.semPaginas.some(x => x.subtopico === 'Regência'));
+  teste('subtópico sem ligação: vai para o PDF do item', sub('s6').material_id === 'p4');
+  teste('subtópicos de outros editais não são tocados', !sub('sx'));
+
+  teste('vínculo com faixa de páginas: vai para os subtópicos que caem na faixa',
+    JSON.stringify(sub('s1').itens_edital) === '["o1"]' && JSON.stringify(sub('s2').itens_edital) === '["o1","o2"]', `Hífen ${JSON.stringify(sub('s1').itens_edital)}, Acentuação ${JSON.stringify(sub('s2').itens_edital)}`);
+  teste('PDF ligado a um item só, sem faixa: todos os subtópicos recebem', JSON.stringify(sub('s6').itens_edital) === '["o4"]');
+  teste('PDF ligado a vários itens sem faixa: não converte e lista o motivo',
+    sub('s3').itens_edital.length === 0 && p.pendencias.vinculos.filter(v => v.pdf === 'Aula 02').length === 2);
+  teste('PDF que não existia no edital de origem: listado', p.pendencias.semOrigem.length === 1 && p.pendencias.semOrigem[0].pdf === 'Aula 03');
+  teste('erro ganha o PDF do subtópico ou do item; os de outro edital ficam',
+    p.erros.length === 2 && p.erros.find(e => e.id === 'e1').material_id === 'p1' && p.erros.find(e => e.id === 'e2').material_id === 'p4');
+
+  // Sem edital de origem
+  const semOrigem = Mig.planejar({ ...base(), origem: null });
+  teste('sem edital de origem: nada de vínculo é convertido, e o resto migra', semOrigem.subs.every(s => s.itens_edital.length === 0) && semOrigem.pdfs.length === 4 && semOrigem.pendencias.origem === null);
+
+  // PDF sem subtópicos: o vínculo fica no PDF
+  const d2 = base(); d2.subtopicos = d2.subtopicos.filter(s => s.topico_id !== 'i4');
+  teste('PDF sem subtópicos: o vínculo com o edital fica no PDF', JSON.stringify(Mig.planejar(d2).pdfs.find(x => x.id === 'p4').itens_edital) === '["o4"]');
+
+  // Rodar de novo depois de aplicar: nada muda; página mudada no campo antigo é re-sincronizada
+  const aplicado = base();
+  aplicado.motorPdfs = p.pdfs.map(x => copia(x));
+  p.subs.forEach(n => Object.assign(aplicado.subtopicos.find(s => s.id === n.id), copia(n)));
+  p.erros.forEach(n => Object.assign(aplicado.erros.find(e => e.id === n.id), n));
+  const p2 = Mig.planejar(aplicado);
+  teste('rodar de novo depois de aplicar: nada a gravar', !Mig.temMudanca(p2), `${p2.pdfs.length} PDFs, ${p2.subs.length} subtópicos, ${p2.erros.length} erros`);
+  teste('rodar de novo: a lista de decisão continua lá', p2.pendencias.variosPdfs.length === 1);
+  aplicado.subtopicos.find(s => s.id === 's1').pdfs[0].ate = 15;
+  const p3 = Mig.planejar(aplicado);
+  teste('páginas mudadas no campo antigo (site publicado): re-sincroniza o campo novo', p3.subs.length === 1 && p3.subs[0].id === 's1' && p3.subs[0].pag_fim === 15);
+  // Dono decidido pelo usuário num subtópico de vários PDFs
+  const dec = base(); dec.subtopicos.find(s => s.id === 's5').material_id = 'p3';
+  const p4 = Mig.planejar(dec);
+  teste('subtópico de vários PDFs com dono já decidido: usa as páginas desse PDF e sai da lista',
+    p4.pendencias.variosPdfs.length === 0 && p4.subs.find(s => s.id === 's5').pag_fim === 8);
+  const txt = Mig.relatorio(p);
+  teste('relatório: mostra a lista de decisão e o que não converteu', /Pontuação/.test(txt) && /vários itens sem faixa/.test(txt) && /Aula 03/.test(txt));
+
+  const fim = document.createElement('p');
+  fim.id = 'resultado';
+  fim.className = falhas ? 'falha' : 'ok';
+  fim.textContent = falhas ? `${falhas} teste(s) falharam.` : 'Todos os testes passaram.';
+  document.body.appendChild(fim);
+})();
+</script>
+</body>
+</html>

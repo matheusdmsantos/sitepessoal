@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<title>Testes do modelo de memória</title>
+<style>body { font: 14px/1.5 system-ui, sans-serif; margin: 24px; } .ok { color: #15803d; } .falha { color: #b91c1c; font-weight: 700; }</style>
+</head>
+<body>
+<h1>Modelo de memória das questões: contas</h1>
+<p>Abra pelo servidor local (por exemplo, http://127.0.0.1:8765/ferramentas/testes/memoria.html). Os testes de agendamento ficam em <a href="agenda.html">agenda.html</a>.</p>
+<ul id="saida"></ul>
+<script src="../../js/estudos.memoria.js"></script>
+<script>
+(function () {
+  const M = window.estMemoria, C = M.CFG;
+  const saida = document.getElementById('saida');
+  let falhas = 0;
+  function teste(nome, ok, detalhe) {
+    if (!ok) falhas++;
+    const li = document.createElement('li');
+    li.className = ok ? 'ok' : 'falha';
+    li.textContent = (ok ? '✓ ' : '✗ ') + nome + (detalhe ? ' — ' + detalhe : '');
+    saida.appendChild(li);
+  }
+  const perto = (a, b, tol = 1e-6) => Math.abs(a - b) <= tol;
+  const base = { meiaVida: 4, n: 15, tipo: 'ce', dias: 4 };
+
+  // Correção de chute nos dois tipos
+  teste('chute: 80% em certo/errado = retenção 0,60', perto(M.corrigir(0.8, 'ce'), 0.6));
+  teste('chute: 68% em múltipla escolha = retenção 0,60', perto(M.corrigir(0.68, 'me'), 0.6));
+  teste('chute: acerto previsto volta do alvo (80% e 68%)', perto(M.acertoPrevisto(0.6, 'ce'), 0.8) && perto(M.acertoPrevisto(0.6, 'me'), 0.68));
+  teste('chute: limites 0,05 e 0,95', M.corrigir(1, 'ce') === 0.95 && M.corrigir(0, 'ce') === 0.05 && M.corrigir(0.4, 'ce') === 0.05);
+
+  // Meia-vida inicial: o 1º bloco cai em D+1
+  teste('meia-vida inicial ≈ 1,36 e intervalo de 1 dia', perto(C.meiaVidaInicial, 1.3569, 1e-3) && Math.round(M.intervaloDe(C.meiaVidaInicial)) === 1);
+
+  // Cresce acima da meta, encolhe abaixo
+  const acima = M.atualizar({ ...base, acertos: 14 }), abaixo = M.atualizar({ ...base, acertos: 10 });
+  teste('acerto acima da meta: intervalo cresce', acima.intervalo > 4 && acima.meiaVida > 4, `4 → ${acima.intervalo} dias`);
+  // Entre o limite do lapso e a meta o ganho ainda é aplicado (regra 5e): o intervalo cresce menos, e só encolhe no lapso
+  teste('acerto abaixo da meta: intervalo menor que o do acerto acima da meta', abaixo.intervalo < acima.intervalo, `${abaixo.intervalo} < ${acima.intervalo} dias`);
+  teste('acerto abaixo do limite do lapso: intervalo encolhe', M.atualizar({ ...base, acertos: 8 }).intervalo < 4, `4 → ${M.atualizar({ ...base, acertos: 8 }).intervalo} dias`);
+
+  // Lapso: sem ganho
+  const lapso = M.atualizar({ ...base, acertos: 8 });
+  teste('lapso (53% em certo/errado): marca lapso e não aplica o ganho', lapso.lapso && perto(lapso.meiaVida, lapso.estimada), `meia-vida ${lapso.meiaVida.toFixed(2)}`);
+  teste('sem lapso: meia-vida = estimada × ganho', !acima.lapso && perto(acima.meiaVida, acima.estimada * C.ganho));
+  teste('limite do lapso: 62,5% em certo/errado ainda não é lapso; 60% é', !M.atualizar({ ...base, n: 40, acertos: 25 }).lapso && M.atualizar({ ...base, n: 40, acertos: 24 }).lapso);
+
+  // Peso do bloco
+  const pequeno = M.atualizar({ ...base, n: 2, acertos: 2 }), grande = M.atualizar({ ...base, n: 40, acertos: 40 });
+  teste('bloco pequeno pesa menos que o grande', pequeno.estimada < grande.estimada);
+
+  // Limites
+  teste('crescimento: no máximo 3× os dias desde o último contato', M.atualizar({ meiaVida: 30, n: 30, acertos: 30, tipo: 'ce', dias: 2 }).intervalo === 6);
+  teste('redução: no mínimo metade dos dias', M.atualizar({ meiaVida: 1, n: 30, acertos: 15, tipo: 'ce', dias: 20 }).intervalo === 10);
+  teste('teto da prova: no máximo 20% dos dias que faltam', M.atualizar({ meiaVida: 30, n: 30, acertos: 30, tipo: 'ce', dias: 20, diasAteProva: 25 }).intervalo === 5);
+  teste('nunca menos de 1 dia', M.atualizar({ meiaVida: 1, n: 15, acertos: 0, tipo: 'ce', dias: 1, diasAteProva: 2 }).intervalo === 1);
+
+  // 100% e 0% sem erro de cálculo
+  const cem = M.atualizar({ ...base, acertos: 15 }), zero = M.atualizar({ ...base, acertos: 0 }), vazio = M.atualizar({ ...base, n: 0, acertos: 0 });
+  teste('acerto de 100%: números finitos', [cem.meiaVida, cem.intervalo, cem.observada].every(Number.isFinite), `intervalo ${cem.intervalo}`);
+  teste('acerto de 0%: números finitos', [zero.meiaVida, zero.intervalo, zero.observada].every(Number.isFinite) && zero.lapso, `intervalo ${zero.intervalo}`);
+  teste('bloco sem questões: não quebra', Number.isFinite(vazio.meiaVida) && Number.isFinite(vazio.intervalo));
+  teste('múltipla escolha: 100% e 0% finitos', [M.atualizar({ ...base, tipo: 'me', acertos: 15 }), M.atualizar({ ...base, tipo: 'me', acertos: 0 })].every(u => Number.isFinite(u.meiaVida) && u.intervalo >= 1));
+
+  // Histórico: fixação e ordem
+  const r = M.reprocessar('2026-01-10', [
+    { data: '2026-01-13', n: 15, acertos: 13, tipo: 'ce' },
+    { data: '2026-01-10', n: 10, acertos: 10, tipo: 'ce' },   // mesmo dia do estudo: fixação
+    { data: '2026-01-11', n: 15, acertos: 12, tipo: 'ce' }
+  ]);
+  teste('histórico: questões no dia do estudo são fixação e não contam', r.blocos === 2 && r.historico[0].fixacao && !r.historico[1].fixacao);
+  teste('histórico: processa em ordem de data e marca a próxima', r.ultimoContato === '2026-01-13' && r.proxima > '2026-01-13', `próxima ${r.proxima}`);
+  teste('histórico: guarda previsto e meia-vida antes e depois', r.historico[1].previsto > 0 && r.historico[1].mvAntes > 0 && r.historico[1].mvDepois > 0);
+  teste('tópico sem blocos: 1º bloco em D+1', M.reprocessar('2026-01-10', []).proxima === '2026-01-11');
+
+  const fim = document.createElement('p');
+  fim.id = 'resultado';
+  fim.className = falhas ? 'falha' : 'ok';
+  fim.textContent = falhas ? `${falhas} teste(s) falharam.` : 'Todos os testes passaram.';
+  document.body.appendChild(fim);
+})();
+</script>
+</body>
+</html>

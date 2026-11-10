@@ -62,6 +62,10 @@
   let materiais = [];         // PDFs de estudo ligados aos tópicos (ver MATERIAL)
   let pagPorTopico = {};
   let remotoMat = false;
+  // Motor de estudos (PDF como espinha; supabase/motor.sql). Sem as tabelas, nada do motor aparece.
+  let motorPdfs = [];         // linhas de motor_pdfs (uma por PDF)
+  let motorBlocos = [];       // histórico dos blocos de questões
+  let temMotor = false;
 
   const TABELAS = { metas: () => metas, revisoes: () => revisoes, plano_estudos: () => planos };
 
@@ -274,6 +278,18 @@
     indexarIncidencias();
     pagPorTopico = contarPaginas(materiais);
     if (window.estSub) await window.estSub.carregar();
+    await carregarMotor();
+  }
+
+  async function carregarMotor() {
+    temMotor = false;
+    if (!remoto || !window.estMotorMigracao) return;
+    const [a, b, c] = await Promise.all([sb.from('motor_pdfs').select('*'), sb.from('motor_blocos').select('*'),
+      sb.from('subtopicos').select('material_id').limit(1)]);
+    if (a.error || b.error || c.error) return;
+    motorPdfs = a.data || [];
+    motorBlocos = b.data || [];
+    temMotor = true;
   }
 
   /* =============================================
@@ -1926,6 +1942,15 @@
         <div class="est-plano-kpi"><span>Revisões</span><strong>${revFeitas} <small>/ ${revFeitas + revSemana.length}</small></strong>${barra(revFeitas + revSemana.length ? revFeitas / (revFeitas + revSemana.length) * 100 : 0, 'amber')}</div>`}
       </div>
 
+      ${migracaoPendente(e) ? `
+      <div class="est-plano-cta">
+        <div>
+          <strong>Motor de estudos: falta trazer os dados deste edital</strong>
+          <p>Cada PDF e cada subtópico ganha os campos novos (PDF dono, páginas, vínculo com o edital). Você vê o relatório antes de aplicar; as metas de hoje não mudam.</p>
+        </div>
+        <button class="est-btn-register" onclick="estPlano.migrarMotor()">Ver o que muda</button>
+      </div>` : ''}
+
       ${semRevisao.length ? `
       <div class="est-plano-cta">
         <div>
@@ -2642,6 +2667,80 @@
       'Disciplina sem PDF fica vazia até você importar os PDFs dela; cada PDF novo vira item ao salvar a lista.');
   }
 
+  /* =============================================
+     MOTOR DE ESTUDOS — MIGRAÇÃO (etapa 1; contas em estudos.motor.migracao.js)
+     Vale para o edital por PDF. Só grava campos novos: motor_pdfs, as colunas novas de subtopicos
+     e erros.material_id. As metas e revisões não mudam aqui.
+  ============================================= */
+  const editalPorPdf = e => !!e && e.disciplinas.length > 0 && e.disciplinas.every(d => porPdfDe(e.id, d.id));
+
+  function dadosDaMigracao(e, erros) {
+    const titulo = e.titulo.replace(/\s*—\s*por PDF\s*$/i, '');
+    const ultimaSessao = {}, lidas = {};
+    studyData.forEach(x => { if (x.topicId && x.date && !(ultimaSessao[x.topicId] >= x.date)) ultimaSessao[x.topicId] = x.date; });
+    e.disciplinas.forEach(d => d.topicos.forEach(t => { lidas[t.id] = paginasLidas(t.id); }));
+    return {
+      edital: e, origem: editaisData.find(x => x !== e && x.titulo === titulo) || null, materiais,
+      subtopicos: window.estSub ? editaisData.flatMap(x => x.disciplinas.flatMap(d => d.topicos.flatMap(t => window.estSub.doTopico(t.id)))) : [],
+      erros: erros || [], motorPdfs, paginasLidas: lidas, ultimaSessao, hoje: hoje()
+    };
+  }
+  // Para o aviso do Planejamento (sem os erros, que são lidos só na hora de migrar)
+  function migracaoPendente(e) {
+    if (!temMotor || !editalPorPdf(e)) return false;
+    const p = window.estMotorMigracao.planejar(dadosDaMigracao(e));
+    return p.pdfs.length + p.subs.length > 0;
+  }
+
+  // Janela com o relatório; devolve true se o usuário mandar aplicar
+  function mostrarRelatorio(titulo, texto, rotuloAplicar) {
+    return new Promise(resolve => {
+      const ov = document.createElement('div');
+      ov.className = 'est-modal-overlay active';
+      ov.style.zIndex = '1060';
+      ov.innerHTML = `<div class="est-modal" role="dialog" aria-modal="true" aria-label="${escapeHtml(titulo)}" style="max-width: 760px;">
+        <h2 class="est-modal-title" style="margin-bottom: 12px;">${escapeHtml(titulo)}</h2>
+        <pre style="white-space: pre-wrap; font: inherit; font-size: 0.82rem; line-height: 1.5; max-height: 55vh; overflow-y: auto; margin: 0 0 16px; color: var(--est-silver-bright);">${escapeHtml(texto)}</pre>
+        <div style="display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap;">
+          <button type="button" class="est-plano-btn" data-a="copiar">Copiar relatório</button>
+          <button type="button" class="est-btn-cancelar" data-a="nao">${rotuloAplicar ? 'Cancelar' : 'Fechar'}</button>
+          ${rotuloAplicar ? `<button type="button" class="est-btn-register" data-a="sim">${escapeHtml(rotuloAplicar)}</button>` : ''}
+        </div></div>`;
+      ov.addEventListener('click', ev => {
+        const a = ev.target.dataset && ev.target.dataset.a;
+        if (a === 'copiar') { navigator.clipboard.writeText(texto).then(() => aviso('Relatório copiado.'), () => aviso('Não foi possível copiar.')); return; }
+        if (a === 'sim' || a === 'nao' || ev.target === ov) { ov.remove(); resolve(a === 'sim'); }
+      });
+      document.body.appendChild(ov);
+    });
+  }
+
+  async function migrarMotor() {
+    const e = editalAtivo();
+    if (!temMotor || !editalPorPdf(e)) { aviso('A migração vale para o edital por PDF, com o supabase/motor.sql já rodado.'); return; }
+    const r = await sb.from('erros').select('id, edital_id, topico_id, subtopico_id, material_id');
+    const plano = window.estMotorMigracao.planejar(dadosDaMigracao(e, r.error ? [] : r.data));
+    const mudou = window.estMotorMigracao.temMudanca(plano);
+    const ok = await mostrarRelatorio(`Motor de estudos: o que muda em “${e.titulo}”`, window.estMotorMigracao.relatorio(plano), mudou ? 'Aplicar' : '');
+    if (!ok || !mudou) return;
+    const falhas = [];
+    const conferir = (res, oque) => { if (res.error) { console.error('Migração do motor:', oque, res.error); falhas.push(oque); } };
+    const novos = plano.pdfs.filter(x => 'ordem' in x).map(({ nome, ...x }) => x);
+    if (novos.length) conferir(await sb.from('motor_pdfs').upsert(novos, { onConflict: 'id' }), 'PDFs');
+    for (const x of plano.pdfs.filter(x => !('ordem' in x))) conferir(await sb.from('motor_pdfs').update({ itens_edital: x.itens_edital }).eq('id', x.id), 'vínculos dos PDFs');
+    for (const { id, nome, ...campos } of plano.subs) {
+      conferir(await sb.from('subtopicos').update(campos).eq('id', id), 'subtópicos');
+      const s = window.estSub.porId(id);
+      if (s) Object.assign(s, campos);
+    }
+    const porPdf = {};
+    plano.erros.forEach(x => (porPdf[x.material_id] = porPdf[x.material_id] || []).push(x.id));
+    for (const [material_id, ids] of Object.entries(porPdf)) conferir(await sb.from('erros').update({ material_id }).in('id', ids), 'erros');
+    await carregarMotor();
+    renderTudo();
+    aviso(falhas.length ? `A migração terminou com falha em: ${[...new Set(falhas)].join(', ')}. Rode de novo.` : 'Migração aplicada. As metas e revisões continuam como estavam.');
+  }
+
   /* O plano acompanha o edital escolhido em "Edital Verticalizado" */
   function editalTrocado() {
     semanaVista = null;
@@ -2658,6 +2757,7 @@
     agendarReforco, mudarSemana, irParaSemana, alternarConfig, editalTrocado, projetar,
     incidenciaDaDisciplina, pctIncidencia, salvarIncidencias,
     materiaisDaDisciplina, paginasDoTopico, prioridadeDosTopicos, salvarMateriais, ordemPdfDe, porPdfDe, criarEditalPorPdf, juntarTopicos,
+    migrarMotor, temMotor: () => temMotor, motorPdfs: () => motorPdfs,
     renderTudo, fmtMin, aviso, revisoesDoTopico, paginasLidas, aproveitarDe
   };
 })();
