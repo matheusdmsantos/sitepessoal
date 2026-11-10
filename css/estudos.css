@@ -2822,3 +2822,22 @@ html, body {
 .est-pdf-rodape { display: flex; align-items: center; justify-content: flex-end; gap: 10px; flex-wrap: wrap; padding-top: 6px; border-top: 1px solid var(--est-border); }
 .est-pdf-rodape .est-pdf-sub { margin-right: auto; }
 @media (max-width: 700px) { .est-pdf-cab { grid-template-columns: 1fr; } }
+
+/* Motor de estudos: cards e conclusões (estudos.plano.js, interface etapa 3) */
+.est-plano-item-subs { display: block; margin-top: 3px; font-size: 0.76rem; line-height: 1.45; color: var(--est-silver); }
+.est-plano-item-subs small { color: var(--est-accent-muted); }
+.est-plano-item-subs a { color: var(--est-blue); }
+.est-modal.est-motor-concluir { max-width: 560px; }
+.est-motor-corpo { display: flex; flex-direction: column; gap: 12px; font-size: 0.84rem; color: var(--est-silver-bright); }
+.est-motor-linha { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
+.est-motor-linha label, .est-motor-campo { display: flex; flex-direction: column; gap: 4px; color: var(--est-silver); font-size: 0.8rem; }
+.est-motor-linha label { flex-direction: row; align-items: center; gap: 6px; }
+.est-motor-linha .est-form-input { width: 72px; }
+.est-motor-campo small { color: var(--est-accent-muted); }
+.est-motor-tabela { width: 100%; border-collapse: collapse; }
+.est-motor-tabela th { text-align: left; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--est-accent); padding: 4px 6px; border-bottom: 1px solid var(--est-border); }
+.est-motor-tabela td { padding: 5px 6px; border-bottom: 1px solid var(--est-border); }
+.est-motor-tabela .est-form-input { width: 80px; padding: 5px 8px; }
+.est-motor-erro { margin: 0; color: var(--est-red); font-size: 0.8rem; }
+.est-motor-resultado p { margin: 0 0 6px; padding: 10px 12px; border-radius: 10px; background: var(--est-bg-glass); border: 1px solid var(--est-border); }
+.est-motor-acoes { display: flex; gap: 10px; justify-content: flex-end; flex-wrap: wrap; }

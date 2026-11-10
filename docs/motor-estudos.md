@@ -214,6 +214,14 @@ Formatos de cada meta:
 
 ## 5. Eventos que a interface precisa disparar
 
+> **Estado (interface, etapa 3):** os cinco eventos estão ligados no `js/estudos.plano.js` para o edital por PDF: `gerarSemanaMotor`, `concluirLeituraMotor`, `concluirBlocoMotor`, o formulário de erro do `js/estudos.erros.js` e `revisarErrosDaMeta`/`criarReleitura`.
+>
+> **Colunas a mais** (`supabase/motor-interface.sql`):
+> - `erros.revisoes_log` (`[{ data, acertou, passo }]`) e `erros.bloco_id`;
+> - `motor_blocos.certeza` e `motor_blocos.chute` (opcionais, no nível do bloco; dúvida = total − certeza − chute);
+> - `motor_pdfs.lidas`;
+> - `plano_estudos.motor` (`{ atraso, ...parâmetros }`).
+
 Hoje nenhum destes eventos é disparado: a interface atual continua com o agendamento antigo. A publicação troca o agendamento por estes.
 
 ### 5.1 Gerar semana

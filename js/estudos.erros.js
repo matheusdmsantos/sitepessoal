@@ -527,10 +527,11 @@
     return s && s.pag_ini ? ` (p. ${s.pag_ini}–${s.pag_fim})` : '';
   }
 
-  function revisar(ids) {
-    const lista = ids ? ids.map(id => erros.find(e => e.id === id)).filter(Boolean) : pendentes(filtrados());
-    if (!lista.length) { toast('Nenhuma questão para revisar agora.'); return; }
-    fila = { itens: lista, i: 0, respondida: null, certos: 0 };
+  // aoTerminar: chamado quando a fila acaba (meta "Revisão de erros" do plano)
+  function revisar(ids, aoTerminar) {
+    const lista = ids ? ids.map(id => erros.find(e => e.id === id)).filter(Boolean) : pendentes(aoTerminar ? doEdital() : filtrados());
+    if (!lista.length) { toast('Nenhuma questão para revisar agora.'); if (aoTerminar) aoTerminar(); return; }
+    fila = { itens: lista, i: 0, respondida: null, certos: 0, aoTerminar };
     renderCartao();
     $('est-modal-erro-rev').classList.add('active');
   }
@@ -586,6 +587,10 @@
     renderCartao();
     const { _releitura, ...linha } = er;
     await gravar(linha);
+    if (_releitura && window.estPlano && window.estPlano.criarReleitura) {
+      const r = window.estPlano.criarReleitura(er);
+      if (r) toast(`Releitura de ${fmtData(r.dia)} incluída no plano.`);
+    }
     if (window.estPlano && window.estPlano.renderTudo) window.estPlano.renderTudo();
     renderTudo();
   }
@@ -596,7 +601,9 @@
     if (fila.i >= fila.itens.length) {
       const n = fila.itens.length;
       toast(`Revisão concluída: ${fila.certos} de ${n} acerto${n === 1 ? '' : 's'}.`);
+      const fim = fila.aoTerminar;
       fecharRevisao();
+      if (fim) fim();
       return;
     }
     renderCartao();

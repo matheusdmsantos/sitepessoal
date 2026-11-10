@@ -66,6 +66,7 @@
   let motorPdfs = [];         // linhas de motor_pdfs (uma por PDF)
   let motorBlocos = [];       // histórico dos blocos de questões
   let temMotor = false;
+  let temLidas = false, temCfgMotor = false, temCertezaBloco = false;   // colunas do supabase/motor-interface.sql
 
   const TABELAS = { metas: () => metas, revisoes: () => revisoes, plano_estudos: () => planos };
 
@@ -290,6 +291,11 @@
     motorPdfs = a.data || [];
     motorBlocos = b.data || [];
     temMotor = true;
+    const [l, k, cb] = await Promise.all([sb.from('motor_pdfs').select('lidas').limit(1), sb.from('plano_estudos').select('motor').limit(1),
+      sb.from('motor_blocos').select('certeza').limit(1)]);
+    temLidas = !l.error;
+    temCfgMotor = !k.error;
+    temCertezaBloco = !cb.error;
   }
 
   /* =============================================
@@ -824,6 +830,7 @@
   /* Previsão das próximas semanas até cobrir todo o edital. Não é gravada: é refeita a cada
      tela, a partir do progresso real, então se ajusta sozinha a atrasos e adiantamentos. */
   function projetar(edital) {
+    if (usarMotor(edital)) return null;   // o motor tem a projeção própria (estMotorSemana.projetar)
     const plano = planoDe(edital.id);
     if (!plano || !plano.dias_semana || !plano.dias_semana.length) return null;
     const atual = segundaDe(hoje());
@@ -862,6 +869,7 @@
     const e = editalAtivo();
     if (!e || !planoDe(e.id)) return;
     const semana = segundaDe(hoje());
+    if (usarMotor(e)) { garantirSemanaMotor(e, semana); return; }
     if (metasDaSemana(e.id, semana).length) return;
     const novas = gerarSemana(e, semana);
     if (!novas.length) return;
@@ -916,7 +924,8 @@
     const ids = new Set(abertas.map(m => m.id));
     metas = metas.filter(m => !ids.has(m.id));
     await apagar('metas', [...ids]);
-    const novas = gerarSemana(e, semana);
+    if (usarMotor(e)) await limparMotorVelho(e, semana);
+    const novas = usarMotor(e) ? await gerarSemanaMotor(e, semana) : gerarSemana(e, semana);
     metas.push(...novas);
     await gravar('metas', novas);
     semanaVista = semana;
@@ -999,7 +1008,7 @@
     const abertas = metas.filter(m => m.topico_id === topicId && !m.concluida && !ehQuestoes(m));
     abertas.forEach(m => { m.concluida = true; });
     if (abertas.length) gravar('metas', abertas);
-    if (!revisaoPendente(topicId)) {
+    if (!usarMotor(ref.e) && !revisaoPendente(topicId)) {
       agendarRevisao(ref, null, pct === undefined || pct === null ? pctTopico(ref.t) : pct);
     }
     renderTudo();
@@ -1257,7 +1266,17 @@
     const rotulo = (item.previsto ? 'Previsto · ' : '') + (tipo !== 'meta' ? rotuloRevisao(item)
       : ehQuestoes(item) ? `Questões · ${questoesDaMeta(item)}${nomeDoAssunto(item)}`
       : 'Estudo' + (item.partes > 1 ? ` · parte ${item.parte}/${item.partes}` : ''));
-    const assMeta = tipo === 'meta' && !item.concluida ? assuntosDaMeta(item) : [];
+    const assMeta = tipo === 'meta' && !item.concluida && !ehMotor(item) ? assuntosDaMeta(item) : [];
+    if (tipo === 'meta' && ehMotor(item) && item.tipo_bloco !== 'erros') {
+      const leitura = item.pag_ini ? [{ id: item.material_id, nome: nomeDoPdf(item.material_id), de: item.pag_ini, ate: item.pag_fim, aprox: false }] : [];
+      const sub = (item.alvos || []).find(a => a.subtopico_id);
+      const qs = (item.alvos || []).reduce((a, x) => a + (x.questoes || 0), 0);
+      window.estSessao.abrir({ tipo, id, topicoId: ref.t.id, disc: ref.d.nome, topico: ref.t.nome,
+        rotulo: item.tipo === 'estudo' ? `${item.tipo_bloco === 'releitura' ? 'Releitura' : 'Leitura'} · p. ${item.pag_ini}–${item.pag_fim}` : `Questões · ${qs}`,
+        minutos: item.minutos, concluida: !!item.concluida, leitura, leituraParcial: false, questoes: item.tipo === 'questoes' ? qs : 0,
+        subtopicoId: sub ? sub.subtopico_id : undefined });
+      return;
+    }
     window.estSessao.abrir({
       tipo, id: item.previsto ? undefined : id, topicoId: ref.t.id, disc: ref.d.nome, topico: ref.t.nome, rotulo,
       minutos: tipo === 'meta' ? item.minutos : item.minutos || MIN_REVISAO,
@@ -1273,6 +1292,7 @@
   function abrirConclusao(tipo, id, minutosCrono = 0) {
     const item = tipo === 'meta' ? metas.find(m => m.id === id) : revisoes.find(r => r.id === id);
     if (!item) return;
+    if (tipo === 'meta' && ehMotor(item)) return abrirConclusaoMotor(item, minutosCrono);
     const ref = acharTopico(item.topico_id);
     if (!ref) { aviso('Este tópico não existe mais no edital.'); return; }
     contextoConclusao = { tipo, id };
@@ -1614,6 +1634,7 @@
   }
 
   function itemMeta(m, { compacto = false } = {}) {
+    if (ehMotor(m)) return itemMetaMotor(m, compacto);
     const ref = acharTopico(m.topico_id);
     const disc = ref ? ref.d.nome : 'Disciplina removida';
     const top = ref ? ref.t.nome : 'Tópico removido';
@@ -1700,7 +1721,7 @@
     const daSemana = metasDaSemana(e.id, semana);
     const metasHoje = daSemana.filter(m => m.dia === h || (m.dia < h && !m.concluida));
     const revHoje = revisoes
-      .filter(r => r.edital_id === e.id && !r.concluida_em && r.data_prevista <= h)
+      .filter(r => !usarMotor(e) && r.edital_id === e.id && !r.concluida_em && r.data_prevista <= h)
       .sort((a, b) => a.data_prevista.localeCompare(b.data_prevista));
     const estudado = minutosEstudados(semana, somarDias(semana, 6));
     const metaMin = Number(plano.horas_semana) * 60;
@@ -1895,7 +1916,7 @@
 
     // Revisões fazem parte do mesmo planejamento: as já agendadas e as previstas pela projeção
     const revisoesDoDia = dia => {
-      if (dia < h) return [];
+      if (dia < h || usarMotor(e)) return [];
       const reais = revisoes.filter(r => r.edital_id === e.id && !r.concluida_em &&
         (r.data_prevista === dia || (dia === h && r.data_prevista < h)));
       const previstas = projecao ? (projecao.itens[dia] || []) : [];
@@ -1908,7 +1929,7 @@
     const minPrevistos = lista.filter(m => !m.concluida).reduce((a, m) => a + m.minutos, 0) +
       revSemana.reduce((a, r) => a + (r.minutos || MIN_REVISAO), 0);
     const estudado = prevista ? minPrevistos : minutosEstudados(semanaVista, fim);
-    const semRevisao = plano ? topicosSemRevisao(e) : [];
+    const semRevisao = plano && !usarMotor(e) ? topicosSemRevisao(e) : [];
 
     el.innerHTML = `
       ${bannerLocal()}
@@ -1943,7 +1964,8 @@
         <div class="est-plano-kpi"><span>Revisões</span><strong>${revFeitas} <small>/ ${revFeitas + revSemana.length}</small></strong>${barra(revFeitas + revSemana.length ? revFeitas / (revFeitas + revSemana.length) * 100 : 0, 'amber')}</div>`}
       </div>
 
-      ${temMotor && editalPorPdf(e) && !migracaoPendente(e) ? `
+      ${usarMotor(e) && ultimosAvisos.length ? `<div class="est-pdf-avisos">${ultimosAvisos.map(a => `<p>⚠ ${escapeHtml(a)}</p>`).join('')}</div>` : ''}
+      ${false ? `
       <div class="est-plano-cta">
         <div>
           <strong>Motor de estudos (prévia)</strong>
@@ -2741,7 +2763,7 @@
   function cardRevisaoErros() {
     if (!editalAtivoPorPdf() || !window.estErros || !window.estMotorErros) return '';
     const itens = window.estErros.vencidosHoje();
-    if (!itens.length) return '';
+    if (!itens.length || metas.some(m => m.tipo_bloco === 'erros' && m.dia === hoje())) return '';
     return `
       <div class="est-plano-item tipo-questoes">
         <div class="est-plano-item-info" role="button" tabindex="0" onclick="estErros.revisar()" onkeydown="if (event.key === 'Enter') estErros.revisar()">
@@ -2823,12 +2845,20 @@
         const item = ((m.topicos || [])[0] || {}).topico_id;
         const subs = todosSubs.filter(s => s.material_id === x.id).map(s => ({ id: s.id, nome: s.nome, pag_ini: s.pag_ini, pag_fim: s.pag_fim, nao_cai: !!s.nao_cai, estudado_em: s.estudado_em || null }));
         subtopicos[x.id] = subs;
-        if (item && window.estSub) window.estSub.numerosDe(item).assuntos.forEach(n => { stats[n.s.id] = { total: n.q, acertos: n.c, ultimo: null }; });
-        return { id: x.id, nome: m.nome || x.id, ordem: x.ordem, paginas: m.paginas || 0, lidas: item ? Math.round(paginasLidas(item)) : 0, peso: x.peso, subtopicos: subs };
+
+        return { id: x.id, nome: m.nome || x.id, ordem: x.ordem, paginas: m.paginas || 0, lidas: lidasDoPdf(x.id), peso: x.peso, subtopicos: subs };
       })
     })).filter(d => d.pdfs.length);
-    // Subtópicos estudados sem bloco de 1º contato ainda
-    const comBloco = new Set(motorBlocos.flatMap(b => (b.itens || []).map(i => i.subtopico_id)));
+    // Acerto acumulado em inéditas e último contato: o mais recente entre o estudo e o último bloco (sem fixação)
+    Object.assign(stats, statsDosSubtopicos());
+    Object.values(subtopicos).flat().forEach(s => {
+      if (!s.estudado_em) return;
+      const x = stats[s.id] = stats[s.id] || { total: 0, acertos: 0, ultimo: null };
+      if (!x.ultimo || s.estudado_em > x.ultimo) x.ultimo = s.estudado_em;
+    });
+    // Subtópicos estudados sem bloco de 1º contato ainda (nem meta aberta dele)
+    const comBloco = new Set([...motorBlocos.flatMap(b => (b.itens || []).map(i => i.subtopico_id)),
+      ...metas.filter(m => m.tipo_bloco === 'primeiro' && !m.concluida).flatMap(m => (m.alvos || []).map(a => a.subtopico_id))]);
     const primeiros = [];
     Object.entries(subtopicos).forEach(([pdf, subs]) => {
       const pend = subs.filter(s => s.estudado_em && !s.nao_cai && !comBloco.has(s.id));
@@ -2840,8 +2870,14 @@
     const erros = (r.error ? [] : r.data).filter(x => x.edital_id === e.id);
     const conv = window.estMotorErros.converter(erros);
     const errosNovos = erros.map(x => { const c = conv.find(y => y.id === x.id); return c ? { ...x, ...c.para } : x; });
-    return { dias, dataProva: plano.data_prova || (typeof getTargetDate === 'function' ? getTargetDate() : null), disciplinas,
-      modelos: motorPdfs.map(x => ({ ...x })), subtopicos, stats, erros: errosNovos, primeiros, atraso: 0, _conv: conv, _erros: erros };
+    // PDF sem subtópicos já concluído e sem bloco nenhum: 1º contato do PDF inteiro
+    motorPdfs.filter(x => x.concluido_em && !(subtopicos[x.id] || []).some(s => !s.nao_cai) && !motorBlocos.some(b => b.material_id === x.id) &&
+      !metas.some(m => m.tipo_bloco === 'primeiro' && !m.concluida && m.material_id === x.id))
+      .forEach(x => primeiros.push({ material_id: x.id, disciplina_id: x.disciplina_id, subtopicos: [], depoisDe: x.concluido_em }));
+    // Com a agenda nova ligada, os erros já estão nela; antes disso, simula a conversão
+    const errosUsados = usarMotor(e) ? erros : errosNovos;
+    return { dias, dataProva: motorDataProva(plano), disciplinas,
+      modelos: motorPdfs.map(x => ({ ...x })), subtopicos, stats, erros: errosUsados, primeiros, atraso: Number((plano.motor || {}).atraso) || 0, _conv: conv, _erros: erros };
   }
 
   async function verSemanaDoMotor() {
@@ -2904,6 +2940,416 @@
     return conv.length;
   }
 
+  /* =============================================
+     MOTOR DE ESTUDOS — METAS (interface, etapa 3; docs/motor-estudos.md, seção 5)
+     No edital por PDF com o motor ligado, a semana vem do estMotorSemana.gerarSemana e as metas
+     levam tipo_bloco: leitura | primeiro | revisao | manutencao | erros | releitura. Os cards, as
+     conclusões e os encaixes abaixo só chamam as funções públicas do motor.
+  ============================================= */
+  const ehMotor = m => !!(m && m.tipo_bloco);
+  const usarMotor = e => !!(temMotor && e && editalPorPdf(e));
+  const motorDataProva = plano => (plano && plano.data_prova) || (typeof getTargetDate === 'function' ? getTargetDate() : null) || null;
+  const motorDe = id => motorPdfs.find(x => x.id === id);
+  const itemIdDoPdf = id => (((materiais.find(m => m.id === id) || {}).topicos || [])[0] || {}).topico_id || null;
+  const nomeDoPdf = id => (materiais.find(m => m.id === id) || {}).nome || 'PDF';
+  const subtopicosDoPdf = id => { const t = itemIdDoPdf(id); return t && window.estSub ? window.estSub.doTopico(t).filter(s => s.material_id === id) : []; };
+  // Página lida: a da linha do motor ou, antes dela existir, a que as metas antigas registraram
+  const lidasDoPdf = id => { const t = itemIdDoPdf(id); return Math.max(Number((motorDe(id) || {}).lidas) || 0, t ? Math.round(paginasLidas(t)) : 0); };
+  const tipoQuestaoLembrado = () => { try { return localStorage.getItem('est_tipo_questao') || 'ce'; } catch { return 'ce'; } };
+
+  // Dias de estudo da semana a partir de hoje, com o tempo que ainda resta em cada um
+  function diasDoMotor(e, plano, semana) {
+    const r = [];
+    for (let i = 0; i < 7; i++) {
+      const dia = somarDias(semana, i);
+      if (dia < hoje() || !plano.dias_semana.includes(diaDaSemana(dia))) continue;
+      const feito = metas.filter(m => m.edital_id === e.id && m.dia === dia && m.concluida).reduce((a, m) => a + m.minutos, 0);
+      r.push({ dia, minutos: Math.max(0, Math.round(minutosPorDia(plano)) - feito) });
+    }
+    return r;
+  }
+
+  // Acerto acumulado de cada subtópico em questões inéditas (sem fixação) e o último contato com ele
+  function statsDosSubtopicos() {
+    const st = {};
+    motorBlocos.filter(b => b.tipo_bloco !== 'fixacao').forEach(b => (b.itens || []).forEach(i => {
+      if (!i.subtopico_id) return;
+      const x = st[i.subtopico_id] = st[i.subtopico_id] || { total: 0, acertos: 0, ultimo: null };
+      x.total += i.total || 0; x.acertos += i.acertos || 0;
+      if (!x.ultimo || b.data > x.ultimo) x.ultimo = b.data;
+    }));
+    return st;
+  }
+
+  async function gerarSemanaMotor(e, semana) {
+    const plano = planoDe(e.id);
+    const ent = await entradaDoMotor(e);
+    ent.dias = diasDoMotor(e, plano, semana);
+    const g = window.estMotorSemana.gerarSemana(ent);
+    const porDia = {};
+    const novas = g.metas.map(m => {
+      const ordem = porDia[m.dia] = (porDia[m.dia] ?? -1) + 1;
+      const base = { id: novoId('m'), edital_id: e.id, semana, dia: m.dia, minutos: m.minutos, concluida: false, ordem };
+      if (m.tipo === 'erros') return { ...base, tipo: 'erros', tipo_bloco: 'erros', disciplina_id: null, topico_id: null, alvos: m.itens.map(id => ({ erro_id: id })) };
+      const comum = { ...base, disciplina_id: m.disciplina_id, topico_id: itemIdDoPdf(m.material_id), material_id: m.material_id };
+      if (m.tipo === 'leitura') return { ...comum, tipo: 'estudo', tipo_bloco: 'leitura', pag_ini: m.pag_ini, pag_fim: m.pag_fim, alvos: m.concluidos.map(id => ({ subtopico_id: id })) };
+      return { ...comum, tipo: 'questoes', tipo_bloco: m.tipo_bloco, alvos: m.alvos };
+    });
+    // Semanas seguidas com revisões acumuladas (E3), para a próxima geração
+    if (plano && temCfgMotor) {
+      plano.motor = { ...(plano.motor || {}), atraso: g.atrasoProxima ? (Number((plano.motor || {}).atraso) || 0) + 1 : 0 };
+      gravar('plano_estudos', plano);
+    }
+    ultimosAvisos = g.avisos;
+    return novas;
+  }
+  let ultimosAvisos = [];
+  let gerandoMotor = false;
+
+  // Metas do motor em aberto de semanas que já passaram saem: o motor as refaz pelo progresso real
+  async function limparMotorVelho(e, semana) {
+    const velhas = metas.filter(m => m.edital_id === e.id && ehMotor(m) && !m.concluida && m.semana < semana).map(m => m.id);
+    if (!velhas.length) return;
+    metas = metas.filter(m => !velhas.includes(m.id));
+    await apagar('metas', velhas);
+  }
+
+  async function garantirSemanaMotor(e, semana) {
+    if (gerandoMotor) return;
+    gerandoMotor = true;
+    try {
+      await limparMotorVelho(e, semana);
+      if (metasDaSemana(e.id, semana).length) return;
+      const novas = await gerarSemanaMotor(e, semana);
+      if (!novas.length) return;
+      metas.push(...novas);
+      await gravar('metas', novas);
+      renderTudo();
+    } finally { gerandoMotor = false; }
+  }
+
+  /* E5: põe uma meta nova na semana já gerada, a partir de "desde", no dia com folga (função do motor).
+     As de questões entram antes do estudo do dia. Devolve a meta ou null (fica para a semana seguinte). */
+  function encaixarMeta(e, campos, desde) {
+    const plano = planoDe(e.id);
+    if (!plano) return null;
+    const semana = segundaDe(hoje());
+    const dias = diasDoMotor(e, plano, semana).map(d => ({ ...d, minutos: Math.round(minutosPorDia(plano)) }));
+    const daSemana = metasDaSemana(e.id, semana);
+    const dia = window.estMotorSemana.encaixar(daSemana, dias, desde, campos.minutos);
+    if (!dia) return null;
+    const doDia = daSemana.filter(m => m.dia === dia).map(m => m.ordem || 0);
+    const antes = campos.tipo !== 'estudo';
+    const nova = { id: novoId('m'), edital_id: e.id, semana, dia, concluida: false,
+      ordem: doDia.length ? (antes ? Math.min(...doDia) - 1 : Math.max(...doDia) + 1) : 0, ...campos };
+    metas.push(nova);
+    gravar('metas', nova);
+    return nova;
+  }
+
+  // C4: releitura curta das páginas do subtópico, quando um erro de conteúdo se repete
+  function criarReleitura(er) {
+    const e = editalAtivo();
+    const s = er.subtopico_id && window.estSub && window.estSub.porId(er.subtopico_id);
+    if (!usarMotor(e) || !s || !s.pag_ini || !s.material_id) return null;
+    if (metas.some(m => m.tipo_bloco === 'releitura' && !m.concluida && (m.alvos || []).some(a => a.subtopico_id === s.id))) return null;
+    const nova = encaixarMeta(e, { tipo: 'estudo', tipo_bloco: 'releitura', minutos: window.estConfig.erros.minReleitura,
+      disciplina_id: er.disciplina_id, topico_id: itemIdDoPdf(s.material_id), material_id: s.material_id, pag_ini: s.pag_ini, pag_fim: s.pag_fim,
+      alvos: [{ subtopico_id: s.id }] }, hoje());
+    renderTudo();
+    return nova;
+  }
+
+  /* ---- Cards (D1, D2, C2) ---- */
+  function infoBloco(m) {
+    const Q = window.estMotorQuestoes, est = motorDe(m.material_id) || {};
+    const subs = subtopicosDoPdf(m.material_id).filter(s => (m.alvos || []).some(a => a.subtopico_id === s.id));
+    const estudo = subs.map(s => s.estudado_em).filter(Boolean).sort()[0];
+    const ref = m.dia < hoje() ? hoje() : m.dia;
+    const dias = Math.max(1, est.ultimo_contato ? diasEntre(est.ultimo_contato, ref) : estudo ? diasEntre(estudo, ref) : 1);
+    const prev = Q.acertoPrevisto(Q.retencao(dias, est.meia_vida || Q.meiaVidaInicial()), tipoQuestaoLembrado());
+    return { n: (est.blocos || 0) + 1, dias, prev: Math.round(prev * 100) };
+  }
+  const TIPO_BLOCO = { primeiro: '1º contato', revisao: 'revisão', manutencao: 'manutenção' };
+
+  function itemMetaMotor(m, compacto) {
+    const e = editalAtivo();
+    const disc = ((e && e.disciplinas.find(d => d.id === m.disciplina_id)) || {}).nome || '';
+    const pdf = m.material_id ? nomeDoPdf(m.material_id) : '';
+    const atrasada = !m.concluida && !m.previsto && m.dia < hoje();
+    const estado = m.concluida ? '✓ Feito · ' : atrasada ? 'Atrasada · ' : '';
+    let tag = '', corpo = '', acoes = '';
+    const concluir = `<button class="est-plano-btn primario" onclick="estPlano.abrirConclusao('meta', '${m.id}')">Concluir</button>`;
+    if (m.tipo_bloco === 'erros') {
+      const n = (m.alvos || []).length;
+      tag = `Revisão de erros · ${n} ite${n === 1 ? 'm' : 'ns'} · ~${fmtMin(m.minutos)}`;
+      corpo = '<span class="est-plano-item-top">Refaça as questões que você errou, sem ver o gabarito. Três acertos seguidos e ela sai da fila.</span>';
+      acoes = `<button class="est-plano-btn primario" onclick="estPlano.revisarErrosDaMeta('${m.id}')">▶ Revisar</button>`;
+    } else if (m.tipo_bloco === 'leitura' || m.tipo_bloco === 'releitura') {
+      const subs = subtopicosDoPdf(m.material_id).filter(s => s.pag_ini && s.pag_ini <= m.pag_fim && s.pag_fim >= m.pag_ini && !s.nao_cai)
+        .sort((a, b) => a.pag_ini - b.pag_ini);
+      tag = `${m.tipo_bloco === 'releitura' ? 'Releitura' : 'Leitura'} · ${fmtMin(m.minutos)} · ${pdf}`;
+      corpo = `<span class="est-plano-item-top">📄 ${escapeHtml(pdf)}, p. ${m.pag_ini}–${m.pag_fim}</span>` +
+        (subs.length ? `<span class="est-plano-item-subs">${subs.map(s => `${escapeHtml(s.nome)} <small>(p. ${s.pag_ini}–${s.pag_fim})</small>`).join(' · ')}</span>` : '');
+      acoes = concluir;
+    } else {
+      const i = m.tipo_bloco === 'manutencao' ? null : infoBloco(m);
+      const q = (m.alvos || []).reduce((a, x) => a + (x.questoes || 0), 0);
+      tag = m.tipo_bloco === 'manutencao' ? `Questões · manutenção · ${disc} · ${q} questões · ${fmtMin(m.minutos)}`
+        : `Questões · ${pdf} · Bloco ${i.n} · D+${i.dias} · Previsto ${i.prev}% · ${q} questões · ${fmtMin(m.minutos)}`;
+      const pdfTec = (motorDe(m.material_id) || {}).tec_link || '';
+      const alvos = (m.alvos || []).map(a => {
+        if (a.material_id) { const t = (motorDe(a.material_id) || {}).tec_link; return `${escapeHtml(nomeDoPdf(a.material_id))} (${a.questoes})${t ? ` <a href="${attr(t)}" target="_blank" rel="noopener">TEC ↗</a>` : ''}`; }
+        const s = a.subtopico_id && window.estSub && window.estSub.porId(a.subtopico_id);
+        const link = (s && s.tec_link) || pdfTec;
+        const naoLido = s && !s.estudado_em ? ' <small>(leia antes)</small>' : '';
+        return `${escapeHtml(s ? s.nome : 'PDF inteiro')} (${a.questoes})${naoLido}${link ? ` <a href="${attr(link)}" target="_blank" rel="noopener">TEC ↗</a>` : ' <small>sem caderno</small>'}`;
+      });
+      corpo = `<span class="est-plano-item-subs">${alvos.join(' · ')}</span>
+        <span class="est-plano-item-top">Registre os erros e as dificuldades no Caderno de Erros.</span>`;
+      acoes = concluir;
+    }
+    return `
+      <div class="est-plano-item tipo-${m.tipo === 'estudo' ? 'estudo' : 'questoes'} ${m.concluida ? 'feito' : ''}">
+        <div class="est-plano-item-info"${m.tipo_bloco === 'erros' ? '' : abreEstudo('meta', m.id)}>
+          <span class="est-plano-tag">${estado}${escapeHtml(tag)}${seloCrono(m)}</span>
+          <span class="est-plano-item-disc">${escapeHtml(disc)}</span>
+          ${corpo}
+        </div>
+        ${m.concluida ? '' : `<div class="est-plano-item-acoes">
+          ${compacto || m.tipo_bloco === 'erros' ? '' : `<button class="est-plano-btn sutil" onclick="estPlano.removerMeta('${m.id}')" title="Remover meta" aria-label="Remover meta">✕</button>`}
+          ${acoes}
+        </div>`}
+      </div>`;
+  }
+
+  // C3 a partir da meta do dia: revisa os vencidos e conclui a meta quando a fila acaba
+  function revisarErrosDaMeta(id) {
+    const m = metas.find(x => x.id === id);
+    if (!window.estErros) return;
+    window.estErros.revisar(null, async () => {
+      if (!m || m.concluida) return;
+      m.concluida = true;
+      await gravar('metas', m);
+      renderTudo();
+    });
+  }
+
+  /* ---- Conclusões (eventos 5.2 e 5.3) ---- */
+  function janelaMotor(titulo, html, aoLigar) {
+    const ov = document.createElement('div');
+    ov.className = 'est-modal-overlay active';
+    ov.style.zIndex = '1040';
+    ov.innerHTML = `<div class="est-modal est-motor-concluir" role="dialog" aria-modal="true" aria-label="${attr(titulo)}">
+      <div class="est-modal-header"><h2 class="est-modal-title">${escapeHtml(titulo)}</h2>
+      <button type="button" class="est-modal-close" data-a="fechar" aria-label="Fechar">✕</button></div>
+      <div class="est-motor-corpo">${html}</div></div>`;
+    const fechar = () => ov.remove();
+    ov.addEventListener('click', ev => { if (ev.target === ov || (ev.target.dataset && ev.target.dataset.a === 'fechar')) fechar(); });
+    document.body.appendChild(ov);
+    aoLigar(ov.querySelector('.est-motor-corpo'), fechar);
+  }
+  const campoTempo = min => `<div class="est-motor-linha"><label>Tempo <input type="number" class="est-form-input" data-k="h" min="0" max="24" value="${Math.floor(min / 60) || ''}" placeholder="0" aria-label="Horas" /> h</label>
+    <label><input type="number" class="est-form-input" data-k="m" min="0" max="59" value="${min % 60 || ''}" placeholder="0" aria-label="Minutos" /> min</label></div>`;
+  const lerTempo = c => (parseInt(c.querySelector('[data-k="h"]').value, 10) || 0) * 60 + (parseInt(c.querySelector('[data-k="m"]').value, 10) || 0);
+
+  // Sessão no histórico e totais do item (como a conclusão de sempre)
+  async function registrarSessao(m, { minutos, questoes = 0, acertos = 0, assuntos = [], tipo = 'estudo' }) {
+    const ref = acharTopico(m.topico_id);
+    if (!ref) return;
+    const { e, d, t } = ref;
+    t.tempoGasto = (t.tempoGasto || 0) + minutos;
+    t.questoesFeitas = (t.questoesFeitas || 0) + questoes;
+    t.questoesCertas = (t.questoesCertas || 0) + acertos;
+    const comAss = assuntos.length && window.estSub && window.estSub.temSessoes();
+    const sessao = { id: novoId('s'), date: hoje(), timestamp: new Date().toISOString(), editalId: e.id, discId: d.id, topicId: t.id,
+      discipline: d.nome, topic: t.nome, timeMinutes: minutos, questionsTotal: questoes, questionsCorrect: acertos, tipo, metaDone: false,
+      ...(comAss ? { assuntos } : {}) };
+    studyData.push(sessao);
+    saveData();
+    sessaoCriada(sessao);
+    const upd = { tempo_gasto: t.tempoGasto, questoes_feitas: t.questoesFeitas, questoes_certas: t.questoesCertas, ...(t.estudado ? { estudado: true } : {}) };
+    const { error } = await sb.from('topicos').update(upd).eq('id', t.id);
+    if (error) console.error('Erro ao atualizar o item:', error);
+    saveEditais();
+  }
+
+  function abrirConclusaoMotor(m, minutosCrono) {
+    const min = minutosCrono || (window.estSessao && window.estSessao.minutosDe(m.id)) || m.minutos;
+    if (m.tipo_bloco === 'erros') { revisarErrosDaMeta(m.id); return; }
+    if (m.tipo_bloco === 'leitura' || m.tipo_bloco === 'releitura') return concluirLeituraMotor(m, min);
+    return concluirBlocoMotor(m, min);
+  }
+
+  // 5.2: concluir meta de leitura (B4, D7)
+  function concluirLeituraMotor(m, min) {
+    const releitura = m.tipo_bloco === 'releitura';
+    const html = `${campoTempo(min)}
+      ${releitura ? `<p class="est-plano-sub">Releitura de p. ${m.pag_ini}–${m.pag_fim} de ${escapeHtml(nomeDoPdf(m.material_id))}. Ela não muda as páginas lidas nem o plano.</p>`
+        : `<label class="est-motor-campo">Parei na página <input type="number" class="est-form-input" data-k="pag" min="${m.pag_ini - 1}" max="${(materiais.find(x => x.id === m.material_id) || {}).paginas || ''}" value="${m.pag_fim}" />
+          <small>de ${escapeHtml(nomeDoPdf(m.material_id))} (a meta ia até a ${m.pag_fim}). Os subtópicos que acabam até essa página ficam estudados.</small></label>`}
+      <div class="est-motor-acoes"><button type="button" class="est-btn-cancelar" data-a="fechar">Cancelar</button><button type="button" class="est-btn-register" data-a="salvar">Salvar</button></div>`;
+    janelaMotor(releitura ? 'Concluir releitura' : 'Concluir leitura', html, (c, fechar) => {
+      c.querySelector('[data-a="salvar"]').addEventListener('click', async () => {
+        const minutos = lerTempo(c);
+        const e = editalAtivo(), plano = planoDe(e.id);
+        let msg = 'Releitura concluída.';
+        if (!releitura) {
+          const pdfId = m.material_id, mat = materiais.find(x => x.id === pdfId) || {};
+          const antes = lidasDoPdf(pdfId);
+          const pag = Math.max(antes, Math.min(mat.paginas || m.pag_fim, parseInt(c.querySelector('[data-k="pag"]').value, 10) || m.pag_fim));
+          const subs = subtopicosDoPdf(pdfId);
+          const pdfLeitura = { id: pdfId, paginas: mat.paginas || 0, lidas: pag, subtopicos: subs };
+          const prontos = window.estMotorLeitura.concluidos(pdfLeitura, antes, pag);
+          for (const id of prontos) await window.estSub.atualizarCampos(id, { estudado_em: hoje() });
+          m.paginas_lidas = pag;   // também na meta: sem a coluna motor_pdfs.lidas, o progresso vem daqui
+          let est = { ...(motorDe(pdfId) || {}), lidas: pag };
+          const fimPdf = window.estMotorLeitura.faltam(pdfLeitura) === 0;
+          if (fimPdf && !est.concluido_em) {
+            est = window.estMotorQuestoes.concluirPdf(est, hoje(), motorDataProva(plano));
+            const ref = acharTopico(m.topico_id);
+            if (ref) ref.t.estudado = true;
+          }
+          const { id: _x, ...campos } = est;
+          await salvarMotorPdf(pdfId, temLidas ? campos : (({ lidas, ...r }) => r)(campos));
+          // D2: 1º contato no dia de estudo seguinte, só com os subtópicos que acabaram (o PDF sem subtópicos vale como um)
+          // Subtópico que já tem 1º contato previsto na semana não ganha outro
+          const abertosPrim = metas.filter(x => x.tipo_bloco === 'primeiro' && !x.concluida && x.material_id === pdfId && x.dia > hoje());
+          const cobertos = new Set(abertosPrim.flatMap(x => (x.alvos || []).map(a => a.subtopico_id)));
+          const novosIds = prontos.filter(id => !cobertos.has(id));
+          const semSubs = fimPdf && !subs.some(s => !s.nao_cai);
+          const alvosIds = novosIds.length ? novosIds : (semSubs && !abertosPrim.length ? [] : null);
+          if (prontos.length && !alvosIds) msg = `Leitura salva até a p. ${pag}. ${prontos.length} subtópico(s) estudado(s); o 1º contato já está no plano.`;
+          if (alvosIds) {
+            const nova = encaixarMeta(e, { tipo: 'questoes', tipo_bloco: 'primeiro', minutos: window.estMotorQuestoes.minutosDoBloco(),
+              disciplina_id: m.disciplina_id, topico_id: m.topico_id, material_id: pdfId,
+              alvos: alvosIds.length ? window.estMotorQuestoes.dividir(window.estConfig.questoes.porBloco, alvosIds).map(x => ({ subtopico_id: x.id, questoes: x.questoes }))
+                : [{ subtopico_id: null, questoes: window.estConfig.questoes.porBloco }] }, somarDias(hoje(), 1));
+            msg = `Leitura salva até a p. ${pag}.` + (prontos.length ? ` ${prontos.length} subtópico(s) estudado(s).` : '') +
+              (nova ? ` Questões de 1º contato em ${fmtData(nova.dia)}.` : ' As questões de 1º contato entram na próxima semana.');
+          } else if (!prontos.length) msg = `Leitura salva até a p. ${pag}.`;
+          if (fimPdf) msg += ' PDF concluído: a fila de revisão dele começou.';
+        }
+        await registrarSessao(m, { minutos, tipo: 'estudo' });
+        m.concluida = true;
+        await gravar('metas', m);
+        if (window.estSessao) window.estSessao.zerarCrono(m.id);
+        fechar();
+        renderTudo();
+        if (typeof renderEdital === 'function') renderEdital();
+        aviso(msg);
+      });
+    });
+  }
+
+  // 5.3: registrar bloco de questões (D3, D4, D5, E5; confiança leve para a calibração)
+  function concluirBlocoMotor(m, min) {
+    const manut = m.tipo_bloco === 'manutencao';
+    const alvos = m.alvos || [];
+    const nomeAlvo = a => (a.material_id ? nomeDoPdf(a.material_id) : (a.subtopico_id && window.estSub.porId(a.subtopico_id) || {}).nome || 'PDF inteiro');
+    const tipo = tipoQuestaoLembrado();
+    const html = `${campoTempo(min)}
+      <label class="est-motor-campo">Tipo de questão <select class="est-form-select" data-k="tipo">
+        <option value="ce" ${tipo === 'ce' ? 'selected' : ''}>Certo/Errado</option><option value="me" ${tipo === 'me' ? 'selected' : ''}>Múltipla escolha (5)</option></select></label>
+      <table class="est-motor-tabela"><thead><tr><th>${manut ? 'PDF' : 'Subtópico'}</th><th>Feitas</th><th>Certas</th></tr></thead><tbody>
+      ${alvos.map((a, i) => `<tr><td>${escapeHtml(nomeAlvo(a))}</td>
+        <td><input type="number" class="est-form-input" data-t="${i}" min="0" value="${a.questoes || 0}" aria-label="Feitas" /></td>
+        <td><input type="number" class="est-form-input" data-c="${i}" min="0" placeholder="0" aria-label="Certas" /></td></tr>`).join('')}
+      </tbody></table>
+      <details class="est-motor-campo"><summary>Confiança (opcional, para a calibração)</summary>
+        <div class="est-motor-linha"><label>Marquei com certeza <input type="number" class="est-form-input" data-k="certeza" min="0" /></label>
+        <label>Chutei <input type="number" class="est-form-input" data-k="chute" min="0" /></label></div>
+        <small>Dúvida = o total menos as duas.</small></details>
+      <p class="est-motor-erro" role="alert" hidden></p>
+      <div class="est-motor-acoes"><button type="button" class="est-btn-cancelar" data-a="fechar">Cancelar</button><button type="button" class="est-btn-register" data-a="salvar">Salvar</button></div>`;
+    janelaMotor(manut ? 'Resultado da manutenção' : 'Resultado do bloco de questões', html, (c, fechar) => {
+      const erro = t => { const p = c.querySelector('.est-motor-erro'); p.textContent = t; p.hidden = !t; };
+      c.querySelector('[data-a="salvar"]').addEventListener('click', async () => {
+        const v = sel => Math.max(0, parseInt((c.querySelector(sel) || {}).value, 10) || 0);
+        const res = alvos.map((a, i) => ({ a, total: v(`[data-t="${i}"]`), acertos: v(`[data-c="${i}"]`) }));
+        if (res.some(r => r.acertos > r.total)) return erro('As certas não podem passar das feitas.');
+        const total = res.reduce((s, r) => s + r.total, 0), acertos = res.reduce((s, r) => s + r.acertos, 0);
+        const certezaTxt = c.querySelector('[data-k="certeza"]').value, chuteTxt = c.querySelector('[data-k="chute"]').value;
+        const certeza = certezaTxt === '' ? null : v('[data-k="certeza"]'), chute = chuteTxt === '' ? null : v('[data-k="chute"]');
+        if ((certeza || 0) + (chute || 0) > total) return erro('Certeza + chute não podem passar do total de questões.');
+        const tipoQ = c.querySelector('[data-k="tipo"]').value;
+        try { localStorage.setItem('est_tipo_questao', tipoQ); } catch { /* só conveniência */ }
+        const e = editalAtivo(), plano = planoDe(e.id), prova = motorDataProva(plano);
+        const frases = [], blocosNovos = [];
+        const grupos = manut ? res.map(r => ({ pdf: r.a.material_id, itens: [{ subtopico_id: null, total: r.total, acertos: r.acertos }] }))
+          : [{ pdf: m.material_id, itens: res.map(r => ({ subtopico_id: r.a.subtopico_id || null, total: r.total, acertos: r.acertos })) }];
+        for (const gr of grupos) {
+          const antes = motorDe(gr.pdf) || { id: gr.pdf, blocos: 0 };
+          const subs = subtopicosDoPdf(gr.pdf);
+          const estudados = subs.filter(s => gr.itens.some(i => i.subtopico_id === s.id) && s.estudado_em).map(s => s.estudado_em).sort();
+          const bloco = { tipo_bloco: m.tipo_bloco, tipo_questao: tipoQ, itens: gr.itens,
+            // Estudado hoje é fixação; ainda não lido também fica fora do modelo (o bloco veio da previsão da semana)
+            estudadosHoje: subs.filter(s => !s.estudado_em || s.estudado_em >= hoje()).map(s => s.id),
+            diasDesdeEstudo: estudados.length ? diasEntre(estudados[0], hoje()) : 1 };
+          const r = window.estMotorQuestoes.registrarBloco(antes, bloco, hoje(), prova);
+          const intAntes = antes.ultimo_contato && antes.proxima_data ? diasEntre(antes.ultimo_contato, antes.proxima_data) : null;
+          const reg = r.registro;
+          if (reg.tipo_bloco !== 'fixacao') {
+            const { id: _x, ...campos } = r.estado;
+            await salvarMotorPdf(gr.pdf, temLidas ? campos : (({ lidas, ...x }) => x)(campos));
+          }
+          const linha = { id: novoId('b'), edital_id: e.id, disciplina_id: m.disciplina_id, material_id: gr.pdf, meta_id: m.id, data: hoje(),
+            tipo_bloco: reg.tipo_bloco, tipo_questao: reg.tipo_questao, itens: reg.itens, total: reg.total, acertos: reg.acertos, dias: reg.dias,
+            previsto: reg.previsto, mv_antes: reg.mv_antes, mv_depois: reg.mv_depois, intervalo: reg.intervalo,
+            ...(temCertezaBloco && !manut ? { certeza, chute } : {}) };
+          blocosNovos.push(linha);
+          const contam = gr.itens.filter(i => !bloco.estudadosHoje.includes(i.subtopico_id));
+          const tc = contam.reduce((s2, i) => s2 + i.total, 0), ac = contam.reduce((s2, i) => s2 + i.acertos, 0);
+          frases.push(fraseDoBloco(nomeDoPdf(gr.pdf), reg, intAntes, r.estado, tc ? ac / tc : 0) +
+            (contam.length < gr.itens.length && reg.tipo_bloco !== 'fixacao' ? ' Subtópicos lidos hoje ou ainda não lidos ficaram fora da conta.' : ''));
+          // E5: o próximo bloco cai nesta semana? Entra no dia (ou no próximo com folga)
+          if (reg.tipo_bloco !== 'fixacao' && r.estado.proxima_data && r.estado.proxima_data <= somarDias(segundaDe(hoje()), 6) && !r.estado.graduado) {
+            const ids = window.estMotorQuestoes.escolherSubtopicos(subs, statsDosSubtopicos(), r.estado.proxima_data);
+            encaixarMeta(e, { tipo: 'questoes', tipo_bloco: 'revisao', minutos: window.estMotorQuestoes.minutosDoBloco(), disciplina_id: m.disciplina_id,
+              topico_id: itemIdDoPdf(gr.pdf), material_id: gr.pdf,
+              alvos: ids.length ? window.estMotorQuestoes.dividir(window.estConfig.questoes.porBloco, ids).map(x => ({ subtopico_id: x.id, questoes: x.questoes }))
+                : [{ subtopico_id: null, questoes: window.estConfig.questoes.porBloco }] }, r.estado.proxima_data);
+          }
+        }
+        const { error } = await sb.from('motor_blocos').insert(blocosNovos);
+        if (error) { console.error('Erro ao salvar o bloco:', error); aviso('Não foi possível salvar o bloco no servidor.'); }
+        else motorBlocos.push(...blocosNovos);
+        const assuntos = manut ? [] : res.filter(r => r.a.subtopico_id && r.total).map(r => ({ subtopico_id: r.a.subtopico_id, minutos: 0, questoes: r.total, acertos: r.acertos }));
+        await registrarSessao(m, { minutos: lerTempo(c), questoes: total, acertos, assuntos, tipo: 'questoes' });
+        m.concluida = true;
+        await gravar('metas', m);
+        if (window.estSessao) window.estSessao.zerarCrono(m.id);
+        renderTudo();
+        // D4: resultado e atalho para registrar os erros deste bloco
+        const blocoId = blocosNovos[0] && blocosNovos[0].id;
+        const primeiroSub = (alvos.find(a => a.subtopico_id) || {}).subtopico_id || '';
+        c.innerHTML = `<div class="est-motor-resultado">${frases.map(f => `<p>${escapeHtml(f)}</p>`).join('')}</div>
+          ${total > acertos ? `<p class="est-plano-sub">Errou ${total - acertos} questão(ões). Registre cada uma no Caderno de Erros, com a regra certa em uma frase.</p>` : ''}
+          <div class="est-motor-acoes">
+            ${total > acertos && window.estErros ? `<button type="button" class="est-plano-btn primario" data-a="erro">＋ Registrar questão errada deste bloco</button>` : ''}
+            <button type="button" class="est-btn-register" data-a="fechar">Fechar</button></div>`;
+        const be = c.querySelector('[data-a="erro"]');
+        if (be) be.addEventListener('click', () => window.estErros.novo({ discId: m.disciplina_id, materialId: manut ? (alvos[0] || {}).material_id : m.material_id,
+          subtopicoId: primeiroSub, blocoId }));
+      });
+    });
+  }
+
+  // D3: "acima do previsto, intervalo passou de 5 para 11 dias"
+  function fraseDoBloco(nome, reg, intAntes, estado, real) {
+    if (reg.tipo_bloco === 'fixacao') return `${nome}: questões no mesmo dia do estudo contam como fixação e não mudam o intervalo.`;
+    const pct = x => `${Math.round(x * 100)}%`;
+    const dif = real - reg.previsto;
+    const comp = dif > 0.05 ? 'acima do previsto' : dif < -0.05 ? 'abaixo do previsto' : 'dentro do previsto';
+    const base = `${nome}: ${pct(real)} (previsto ${pct(reg.previsto)}), ${comp}`;
+    if (!estado.concluido_em) return `${base}. A memória do PDF foi ajustada; a fila de revisão começa quando você terminar a leitura dele.`;
+    const dd = n => `${n} dia${n === 1 ? '' : 's'}`;
+    const intervalo = intAntes ? (reg.intervalo === intAntes ? `o intervalo continua em ${dd(intAntes)}` : `o intervalo passou de ${intAntes} para ${dd(reg.intervalo)}`)
+      : `próximo bloco em ${dd(reg.intervalo)}`;
+    return `${base}${reg.lapso ? ' e abaixo do limite (sem ganho)' : ''}, ${intervalo}` +
+      (estado.graduado ? '. Passou de 45 dias: o PDF foi para a manutenção da disciplina.' : '.');
+  }
+
   /* O plano acompanha o edital escolhido em "Edital Verticalizado" */
   function editalTrocado() {
     semanaVista = null;
@@ -2920,7 +3366,7 @@
     agendarReforco, mudarSemana, irParaSemana, alternarConfig, editalTrocado, projetar,
     incidenciaDaDisciplina, pctIncidencia, salvarIncidencias,
     materiaisDaDisciplina, paginasDoTopico, prioridadeDosTopicos, salvarMateriais, ordemPdfDe, porPdfDe, criarEditalPorPdf, juntarTopicos,
-    migrarMotor, verSemanaDoMotor, converterAgendaErros, salvarMotorPdf, itensDoEditalDeOrigem, editalAtivoPorPdf, pdfsDaDisciplina, temMotor: () => temMotor, motorPdfs: () => motorPdfs,
+    migrarMotor, verSemanaDoMotor, converterAgendaErros, criarReleitura, revisarErrosDaMeta, _recarregarMotor: carregarMotor, salvarMotorPdf, itensDoEditalDeOrigem, editalAtivoPorPdf, pdfsDaDisciplina, temMotor: () => temMotor, motorPdfs: () => motorPdfs,
     renderTudo, fmtMin, aviso, revisoesDoTopico, paginasLidas, aproveitarDe
   };
 })();
