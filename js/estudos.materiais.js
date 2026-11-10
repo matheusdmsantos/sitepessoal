@@ -132,6 +132,8 @@
 
   async function lerArquivos(arquivos) {
     if (!ctx || !arquivos.length) return;
+    // Na ordem dos nomes (Aula 00, Aula 01… Aula 10): o Windows entrega os escolhidos fora de ordem
+    arquivos = [...arquivos].sort((a, b) => a.name.localeCompare(b.name, 'pt-BR', { numeric: true }));
     const novos = [];
     const repetidos = [];
     for (let i = 0; i < arquivos.length; i++) {

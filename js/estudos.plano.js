@@ -264,7 +264,8 @@
     const [inc, mat] = await Promise.all([carregarOpcional('incidencias', 'topico_id'), carregarOpcional('materiais', 'id')]);
     incidencias = inc.linhas;
     remotoInc = inc.remoto;
-    materiais = mat.linhas;
+    // Ordem da lista de PDFs = ordem de criação (o id começa pelo horário); o banco não garante ordem
+    materiais = mat.linhas.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
     remotoMat = mat.remoto;
     indexarIncidencias();
     pagPorTopico = contarPaginas(materiais);
@@ -2395,7 +2396,7 @@
     }
     const n = e.disciplinas.reduce((a, d) => a + materiaisDaDisciplina(d.id).length, 0);
     const ok = await window.customConfirm(`Criar um edital novo a partir de “${e.titulo}”, com as mesmas disciplinas e um item para cada PDF ` +
-      `(${n} PDF${n === 1 ? '' : 's'} hoje)? O plano passa a seguir os PDFs na ordem da lista, um de cada vez. ` +
+      `(${n} PDF${n === 1 ? '' : 's'} hoje)? Os itens ficam na ordem dos nomes dos PDFs (Aula 00, Aula 01…) e o plano segue essa ordem, um PDF de cada vez. ` +
       `“${e.titulo}” será desativado sem mudar nada nele, e dá para reativá-lo na lista de editais.`);
     if (ok) await criarEditalPorPdf(e);
   }
@@ -2404,7 +2405,8 @@
     const base = Date.now();
     let n = 0;
     const discs = antigo.disciplinas.map((d, i) => {
-      const pdfs = materiaisDaDisciplina(d.id);
+      // Na ordem dos nomes (Aula 00, Aula 01… Aula 10): a da lista depende de como os PDFs foram escolhidos
+      const pdfs = materiaisDaDisciplina(d.id).slice().sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR', { numeric: true }));
       const topicos = pdfs.map(m => itemDoPdf(`t_${base}_${String(n++).padStart(5, '0')}`, m));
       return { antiga: d, pdfs, nova: { id: `d_${base}_${String(i).padStart(4, '0')}`, nome: d.nome, ordem: null, topicos } };
     });
