@@ -169,8 +169,8 @@ A página usa `<body class="auth-pending">` (com `visibility: hidden`) e remove 
 - [x] Variável `ANTHROPIC_API_KEY` criada no Netlify (secreta, valor de produção; 08/11/2026) e publicada no deploy seguinte: a função respondeu 401 sem login, ou seja, achou a chave. Se a chave vencer ou for trocada, é preciso um novo deploy.
 - [ ] Senha antiga trocada nos outros serviços onde era usada (ela ficou exposta no site antigo).
 - [ ] Repositório do GitHub passado para privado.
-- [ ] `supabase/erros.sql` executado (Caderno de Erros).
-- [ ] `supabase/subtopicos.sql` executado (assuntos/subtópicos do Painel de Estudos). Sem ele, os assuntos ficam no navegador e a divisão de questões/erros por assunto fica desligada.
+- [x] `supabase/erros.sql` executado (Caderno de Erros): tabela `erros` conferida em 10/11/2026.
+- [x] `supabase/subtopicos.sql` executado (assuntos/subtópicos do Painel de Estudos): tabela `subtopicos` e colunas `sessoes.assuntos` e `erros.subtopico_id` conferidas em 10/11/2026.
 - [x] `supabase/acompanhamento.sql` executado (Acompanhamento de Obra): tabelas `obras` e `obra_etapas` conferidas em 08/11/2026.
 - [x] `supabase/financeiro.sql` executado (Financeiro): tabela `recebimentos` conferida em 08/11/2026.
 - [ ] `supabase/agenda.sql` executado (Google Agenda).
