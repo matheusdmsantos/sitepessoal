@@ -66,7 +66,7 @@
   let motorPdfs = [];         // linhas de motor_pdfs (uma por PDF)
   let motorBlocos = [];       // histórico dos blocos de questões
   let temMotor = false;
-  let temLidas = false, temCfgMotor = false, temCertezaBloco = false;   // colunas do supabase/motor-interface.sql
+  let temLidas = false, temCfgMotor = false, temCertezaBloco = false, temDataProva = false;   // colunas do supabase/motor-interface.sql
 
   const TABELAS = { metas: () => metas, revisoes: () => revisoes, plano_estudos: () => planos };
 
@@ -291,8 +291,9 @@
     motorPdfs = a.data || [];
     motorBlocos = b.data || [];
     temMotor = true;
-    const [l, k, cb] = await Promise.all([sb.from('motor_pdfs').select('lidas').limit(1), sb.from('plano_estudos').select('motor').limit(1),
-      sb.from('motor_blocos').select('certeza').limit(1)]);
+    const [l, k, cb, dp] = await Promise.all([sb.from('motor_pdfs').select('lidas').limit(1), sb.from('plano_estudos').select('motor').limit(1),
+      sb.from('motor_blocos').select('certeza').limit(1), sb.from('plano_estudos').select('data_prova').limit(1)]);
+    temDataProva = !dp.error;
     temLidas = !l.error;
     temCfgMotor = !k.error;
     temCertezaBloco = !cb.error;
@@ -1954,6 +1955,7 @@
       ${!plano || configAberta ? htmlConfig(e, plano) : ''}
 
       ${plano ? `
+      ${usarMotor(e) ? htmlPainelMotor(e, plano) : `
       <div class="est-plano-kpis">
         ${prevista ? `
         <div class="est-plano-kpi"><span>Tempo previsto</span><strong>${fmtMin(estudado)} <small>/ ${fmtMin(metaMin)}</small></strong>${barra(metaMin ? estudado / metaMin * 100 : 0, 'blue')}</div>
@@ -1962,9 +1964,8 @@
         <div class="est-plano-kpi"><span>Horas na semana</span><strong>${fmtMin(estudado)} <small>/ ${fmtMin(metaMin)}</small></strong>${barra(metaMin ? estudado / metaMin * 100 : 0, 'blue')}</div>
         <div class="est-plano-kpi"><span>Tópicos novos</span><strong>${lista.filter(m => m.concluida).length} <small>/ ${lista.length}</small></strong>${barra(lista.length ? lista.filter(m => m.concluida).length / lista.length * 100 : 0)}</div>
         <div class="est-plano-kpi"><span>Revisões</span><strong>${revFeitas} <small>/ ${revFeitas + revSemana.length}</small></strong>${barra(revFeitas + revSemana.length ? revFeitas / (revFeitas + revSemana.length) * 100 : 0, 'amber')}</div>`}
-      </div>
+      </div>`}
 
-      ${usarMotor(e) && ultimosAvisos.length ? `<div class="est-pdf-avisos">${ultimosAvisos.map(a => `<p>⚠ ${escapeHtml(a)}</p>`).join('')}</div>` : ''}
       ${false ? `
       <div class="est-plano-cta">
         <div>
@@ -2023,16 +2024,18 @@
 
       ${htmlCronograma(e, plano, projecao, atual)}
 
-      <p class="est-plano-sub est-plano-regra">Como as revisões entram no plano: cada tópico estudado volta para revisão; o intervalo
+      ${usarMotor(e) ? '' : `<p class="est-plano-sub est-plano-regra">Como as revisões entram no plano: cada tópico estudado volta para revisão; o intervalo
         dobra com acerto de ${ACERTO_REFORCO}% a ${ACERTO_BOM - 1}%, triplica de ${ACERTO_BOM}% a ${ACERTO_OTIMO - 1}% e quadruplica
         a partir de ${ACERTO_OTIMO}%. Abaixo de ${ACERTO_REFORCO}% entra um reforço. Quando o intervalo passaria de ${INTERVALO_MAX} dias,
         o tópico está dominado e sai do plano. Revisões ocupam no máximo ${LIMITE_REVISAO_DIA * 100}% do tempo de cada dia.
         Nas disciplinas com incidência do TEC, entra primeiro o tópico com mais questões por página de material.
-        Tópico com PDF ligado leva o tempo de leitura (${PAGINAS_POR_HORA} páginas por hora). Nenhuma meta de estudo passa de ${fmtMin(PARTE_MAX)}: o tópico maior vira partes.</p>` : ''}
+        Tópico com PDF ligado leva o tempo de leitura (${PAGINAS_POR_HORA} páginas por hora). Nenhuma meta de estudo passa de ${fmtMin(PARTE_MAX)}: o tópico maior vira partes.</p>`}` : ''}
     `;
 
     const form = document.getElementById('est-plano-config-form');
     if (form) form.addEventListener('submit', ev => { ev.preventDefault(); salvarConfig(form, e); });
+    const proj = document.getElementById('est-motor-proj');
+    if (proj) ligarBalao(proj);
   }
 
   /* =============================================
@@ -2941,6 +2944,158 @@
   }
 
   /* =============================================
+     MOTOR DE ESTUDOS — PAINEL DE PROJEÇÃO E PARÂMETROS (interface, etapa 4)
+     Parâmetros mudados na tela ficam em plano_estudos.motor.config e valem por cima do
+     js/estudos.config.js (aplicarConfigMotor). A projeção é a do motor (estMotorSemana.projetar).
+  ============================================= */
+  const PADRAO_CFG = window.estConfig ? JSON.parse(JSON.stringify(window.estConfig)) : {};
+  function aplicarConfigMotor(plano) {
+    if (!window.estConfig) return;
+    const o = (plano && plano.motor && plano.motor.config) || {};
+    Object.keys(PADRAO_CFG).forEach(g => {
+      const base = JSON.parse(JSON.stringify(PADRAO_CFG[g]));
+      Object.keys(window.estConfig[g]).forEach(k => delete window.estConfig[g][k]);
+      Object.assign(window.estConfig[g], base, o[g] || {});
+    });
+  }
+
+  // Páginas a ler do edital por PDF (sem as "não cai") e quantas faltam
+  function paginasDoMotor(e) {
+    const L = window.estMotorLeitura;
+    const pdfs = motorPdfs.filter(x => e.disciplinas.some(d => d.id === x.disciplina_id))
+      .map(x => ({ paginas: (materiais.find(m => m.id === x.id) || {}).paginas || 0, lidas: lidasDoPdf(x.id), subtopicos: subtopicosDoPdf(x.id) }));
+    return { total: pdfs.reduce((a, p) => a + L.totalALer(p), 0), faltam: pdfs.reduce((a, p) => a + L.faltam(p), 0) };
+  }
+
+  function htmlPainelMotor(e, plano) {
+    aplicarConfigMotor(plano);
+    const S = window.estMotorSemana;
+    const { total, faltam } = paginasDoMotor(e);
+    const minSemana = Math.round(Number(plano.horas_semana) * 60);
+    const prova = motorDataProva(plano);
+    const atraso = Number((plano.motor || {}).atraso) || 0;
+    const pj = S.projetar({ faltam, total, minutosSemana: minSemana, dataProva: prova, hoje: segundaDe(hoje()) });
+    const fr = S.fracao(total - faltam, total, atraso);
+    const daSemana = metasDaSemana(e.id, segundaDe(hoje()));
+    const minQ = daSemana.filter(m => m.tipo !== 'estudo').reduce((a, m) => a + m.minutos, 0);
+    const minT = daSemana.reduce((a, m) => a + m.minutos, 0);
+    const retaFinal = prova ? somarDias(prova, -7 * window.estConfig.semana.retaFinalSemanas) : null;
+    // Avisos (E2): os da última geração da semana, revisões atrasadas e leitura que não acaba antes da reta final
+    const avisos = [];
+    const m = plano.motor || {};
+    if (m.avisosSemana === segundaDe(hoje())) avisos.push(...(m.avisos || []));
+    const atrasadas = metas.filter(x => x.edital_id === e.id && ehMotor(x) && x.tipo !== 'estudo' && !x.concluida && x.dia < hoje());
+    if (atrasadas.length) avisos.push(`${atrasadas.length} meta(s) de questões ou de revisão de erros atrasada(s) desde ${fmtData(atrasadas.map(x => x.dia).sort()[0])}.`);
+    if (atraso) avisos.push(`Revisões acumuladas em ${atraso} semana(s) seguida(s): a fração de questões desta semana subiu ${Math.round(atraso * window.estConfig.semana.fracaoAtraso * 100)} pontos.`);
+    if (retaFinal && faltam > 0 && (!pj.terminoLeitura || pj.terminoLeitura > retaFinal))
+      avisos.push(`No ritmo atual a leitura não acaba antes da reta final (${fmtData(retaFinal)}). Aumente as horas por semana ou marque o que não cai no edital.`);
+    if (!prova) avisos.push('Sem data da prova: o piso de leitura e o teto dos intervalos ficam desligados. Informe a data em ⚙ Parâmetros.');
+    const maxMin = Math.max(minSemana, ...pj.semanas.map(w => w.minutosQuestoes + w.minutosLeitura), 1);
+    const barras = pj.semanas.map(w => {
+      const q = w.minutosQuestoes, l = w.minutosLeitura;
+      return `<div class="est-motor-barra">
+        <span class="est-motor-barra-rot">${fmtData(w.inicio)}</span>
+        <div class="est-motor-barra-trilho">
+          <i style="width:${q / maxMin * 100}%;background:${RAMPA[0]}" data-v="${fmtMin(q)} de questões" data-l="Semana de ${fmtData(w.inicio)} · ${Math.round(w.fracao * 100)}% do tempo"></i>
+          <i style="width:${l / maxMin * 100}%;background:${RAMPA[3]}" data-v="${fmtMin(l)} de leitura" data-l="Semana de ${fmtData(w.inicio)} · ${w.paginas} páginas"></i>
+        </div>
+        <span class="est-motor-barra-val">${Math.round(w.fracao * 100)}%</span>
+      </div>`;
+    }).join('');
+    return `
+      <div class="est-plano-kpis">
+        <div class="est-plano-kpi"><span>Término da leitura</span><strong>${pj.terminoLeitura ? fmtData(pj.terminoLeitura) : faltam ? '—' : 'concluída'}</strong>
+          <small class="est-motor-kpi-sub">${faltam} de ${total} páginas por ler${retaFinal ? ` · reta final em ${fmtData(retaFinal)}` : ''}</small></div>
+        <div class="est-plano-kpi"><span>Questões nesta semana</span><strong>${Math.round(fr * 100)}% <small>do tempo</small></strong>
+          <small class="est-motor-kpi-sub">no plano: ${fmtMin(minQ)} de ${fmtMin(minT)}${atraso ? ` · +${Math.round(atraso * window.estConfig.semana.fracaoAtraso * 100)} pts por atraso` : ''}</small></div>
+        <div class="est-plano-kpi"><span>Prova</span><strong>${prova ? fmtData(prova) : '—'}</strong>
+          <small class="est-motor-kpi-sub">${prova ? `${Math.max(0, diasEntre(hoje(), prova))} dias` : 'sem data'} · <button type="button" class="est-ed-link" onclick="estPlano.abrirParametros()">⚙ Parâmetros</button></small></div>
+      </div>
+      ${avisos.length ? `<div class="est-pdf-avisos">${avisos.map(a => `<p>⚠ ${escapeHtml(a)}</p>`).join('')}</div>` : ''}
+      <div class="est-plano-card est-motor-proj" id="est-motor-proj">
+        <div class="est-motor-proj-cab"><strong>Próximas ${pj.semanas.length} semanas</strong>
+          <span class="est-motor-legenda"><i style="background:${RAMPA[0]}"></i>questões <i style="background:${RAMPA[3]}"></i>leitura</span></div>
+        ${barras}
+        <p class="est-plano-sub">Carga prevista de ${fmtMin(minSemana)} por semana. A fração de questões cresce com a leitura (30% no início, 100% quando ela acaba).</p>
+      </div>`;
+  }
+
+  /* E3: parâmetros do motor, com o padrão ao lado */
+  const CAMPOS_MOTOR = [
+    ['Leitura', [['leitura', 'paginasPorHora', 'Páginas por hora'], ['leitura', 'alvoMin', 'Tempo-alvo da meta de leitura (min)'],
+      ['leitura', 'maxMin', 'Máximo de uma meta de leitura (min)'], ['leitura', 'minMin', 'Menor sobra de dia que vira meta (min)'],
+      ['leitura', 'folgaCorte', 'Fechar no fim do subtópico até (% do alvo)', 'pct']]],
+    ['Questões', [['questoes', 'retencaoAlvo', 'Meta de acerto em Certo/Errado (%)', 'ce'], ['questoes', 'porBloco', 'Questões por bloco'],
+      ['questoes', 'minPorQuestao', 'Minutos por questão'], ['questoes', 'maxSubtopicos', 'Subtópicos por bloco de revisão'],
+      ['questoes', 'retencaoLapso', 'Lapso abaixo de (% de acerto em Certo/Errado)', 'ce'], ['questoes', 'ganho', 'Ganho da meia-vida'],
+      ['questoes', 'crescimentoMax', 'Crescimento máximo do intervalo (×)'], ['questoes', 'reducaoMax', 'Redução máxima do intervalo (×)'],
+      ['questoes', 'tetoProva', 'Teto do intervalo (% dos dias até a prova)', 'pct'], ['questoes', 'limiteGraduacao', 'Graduação depois de (dias)'],
+      ['questoes', 'maxPdfsManutencao', 'PDFs por bloco de manutenção'], ['questoes', 'pesoBloco', 'Peso do bloco: n ÷ (n + este número)']]],
+    ['Agenda de erros', [['erros', 'passos', 'Passos (dias, separados por vírgula)', 'lista'], ['erros', 'segundosPorItem', 'Segundos por erro na revisão'],
+      ['erros', 'minReleitura', 'Releitura (min)']]],
+    ['Semana', [['semana', 'fracaoBase', 'Questões no início da leitura (%)', 'pct'], ['semana', 'fracaoRampa', 'Rampa até o fim da leitura (+%)', 'pct'],
+      ['semana', 'fracaoAtraso', 'A mais por semana de atraso (%)', 'pct'], ['semana', 'fracaoMaxLeitura', 'Máximo enquanto há leitura (%)', 'pct'],
+      ['semana', 'retaFinalSemanas', 'Reta final (semanas antes da prova)'], ['semana', 'semanasProjecao', 'Semanas na projeção']]]
+  ];
+  const paraTela = (v, t) => (t === 'pct' ? +(v * 100).toFixed(1) : t === 'ce' ? +((0.5 + v * 0.5) * 100).toFixed(1) : t === 'lista' ? v.join(', ') : v);
+  const daTela = (txt, t) => {
+    if (t === 'lista') { const l = String(txt).split(/[,;\s]+/).filter(Boolean).map(Number); return l.length && l.every((x, i) => x > 0 && Number.isInteger(x) && (!i || x > l[i - 1])) ? l : null; }
+    const n = Number(String(txt).replace(',', '.'));
+    if (!(n >= 0) || txt === '') return null;
+    const r = t === 'pct' ? n / 100 : t === 'ce' ? (n / 100 - 0.5) / 0.5 : n;
+    return Math.round(r * 1e6) / 1e6;   // 80% → 0,6 exato (sem 0,6000000000000001)
+  };
+
+  function abrirParametros() {
+    const e = editalAtivo(), plano = planoDe(e.id);
+    if (!plano) return;
+    aplicarConfigMotor(plano);
+    const C = window.estConfig;
+    const html = `
+      <div class="est-motor-param-grupo"><h3>Plano</h3>
+        <label>Data da prova <input type="date" class="est-form-input" data-p="prova" value="${motorDataProva(plano) || ''}" /></label>
+        <label>Horas de estudo por semana <input type="number" class="est-form-input" data-p="horas" min="1" max="100" step="0.5" value="${plano.horas_semana}" /></label>
+      </div>
+      ${CAMPOS_MOTOR.map(([titulo, campos]) => `<div class="est-motor-param-grupo"><h3>${titulo}</h3>
+        ${campos.map(([g, k, rot, t]) => `<label>${rot}
+          <span class="est-motor-param"><input class="est-form-input" data-g="${g}" data-k="${k}" data-t="${t || ''}" value="${attr(paraTela(C[g][k], t))}" />
+          <small>padrão ${escapeHtml(String(paraTela(PADRAO_CFG[g][k], t)))}</small></span></label>`).join('')}</div>`).join('')}
+      <p class="est-motor-erro" role="alert" hidden></p>
+      <div class="est-motor-acoes">
+        <button type="button" class="est-plano-btn sutil" data-a="padrao">Voltar tudo ao padrão</button>
+        <button type="button" class="est-btn-cancelar" data-a="fechar">Cancelar</button>
+        <button type="button" class="est-btn-register" data-a="salvar">Salvar</button></div>`;
+    janelaMotor('Parâmetros do motor de estudos', html, (c, fechar) => {
+      c.closest('.est-motor-concluir').classList.add('est-motor-parametros');
+      c.querySelector('[data-a="padrao"]').addEventListener('click', () => c.querySelectorAll('[data-g]').forEach(i => { i.value = paraTela(PADRAO_CFG[i.dataset.g][i.dataset.k], i.dataset.t); }));
+      c.querySelector('[data-a="salvar"]').addEventListener('click', async () => {
+        const erro = t => { const p = c.querySelector('.est-motor-erro'); p.textContent = t; p.hidden = !t; };
+        const config = {};
+        for (const i of c.querySelectorAll('[data-g]')) {
+          const v = daTela(i.value, i.dataset.t);
+          if (v === null) return erro(`Valor inválido em “${i.closest('label').firstChild.textContent.trim()}”.`);
+          if (JSON.stringify(v) !== JSON.stringify(PADRAO_CFG[i.dataset.g][i.dataset.k])) (config[i.dataset.g] = config[i.dataset.g] || {})[i.dataset.k] = v;
+        }
+        const q = { ...PADRAO_CFG.questoes, ...(config.questoes || {}) };
+        if (!(q.retencaoAlvo > 0 && q.retencaoAlvo < 1)) return erro('A meta de acerto em Certo/Errado fica entre 50% e 100%.');
+        if (!(q.retencaoLapso < q.retencaoAlvo)) return erro('O lapso precisa ficar abaixo da meta de acerto.');
+        const horas = Number(c.querySelector('[data-p="horas"]').value);
+        if (!(horas > 0)) return erro('Informe as horas por semana.');
+        plano.horas_semana = horas;
+        const prova = c.querySelector('[data-p="prova"]').value;
+        if (temDataProva) plano.data_prova = prova || null;
+        if (prova && typeof setTargetDate === 'function') { setTargetDate(prova); if (typeof updateCountdown === 'function') updateCountdown(); }
+        if (temCfgMotor) plano.motor = { ...(plano.motor || {}), config };
+        await gravar('plano_estudos', plano);
+        aplicarConfigMotor(plano);
+        fechar();
+        renderTudo();
+        aviso(temCfgMotor ? 'Parâmetros salvos. Clique em ↻ Regerar para refazer a semana com eles.' : 'Horas e data salvas. Para guardar os outros parâmetros, rode o supabase/motor-interface.sql.');
+      });
+    });
+  }
+
+  /* =============================================
      MOTOR DE ESTUDOS — METAS (interface, etapa 3; docs/motor-estudos.md, seção 5)
      No edital por PDF com o motor ligado, a semana vem do estMotorSemana.gerarSemana e as metas
      levam tipo_bloco: leitura | primeiro | revisao | manutencao | erros | releitura. Os cards, as
@@ -2983,6 +3138,7 @@
 
   async function gerarSemanaMotor(e, semana) {
     const plano = planoDe(e.id);
+    aplicarConfigMotor(plano);
     const ent = await entradaDoMotor(e);
     ent.dias = diasDoMotor(e, plano, semana);
     const g = window.estMotorSemana.gerarSemana(ent);
@@ -2997,7 +3153,7 @@
     });
     // Semanas seguidas com revisões acumuladas (E3), para a próxima geração
     if (plano && temCfgMotor) {
-      plano.motor = { ...(plano.motor || {}), atraso: g.atrasoProxima ? (Number((plano.motor || {}).atraso) || 0) + 1 : 0 };
+      plano.motor = { ...(plano.motor || {}), atraso: g.atrasoProxima ? (Number((plano.motor || {}).atraso) || 0) + 1 : 0, avisos: g.avisos, avisosSemana: semana };
       gravar('plano_estudos', plano);
     }
     ultimosAvisos = g.avisos;
@@ -3366,7 +3522,7 @@
     agendarReforco, mudarSemana, irParaSemana, alternarConfig, editalTrocado, projetar,
     incidenciaDaDisciplina, pctIncidencia, salvarIncidencias,
     materiaisDaDisciplina, paginasDoTopico, prioridadeDosTopicos, salvarMateriais, ordemPdfDe, porPdfDe, criarEditalPorPdf, juntarTopicos,
-    migrarMotor, verSemanaDoMotor, converterAgendaErros, criarReleitura, revisarErrosDaMeta, _recarregarMotor: carregarMotor, salvarMotorPdf, itensDoEditalDeOrigem, editalAtivoPorPdf, pdfsDaDisciplina, temMotor: () => temMotor, motorPdfs: () => motorPdfs,
+    migrarMotor, verSemanaDoMotor, converterAgendaErros, abrirParametros, projecaoMotor: e => { const p = planoDe(e.id); aplicarConfigMotor(p); const x = paginasDoMotor(e); return window.estMotorSemana.projetar({ ...x, minutosSemana: Math.round(Number(p.horas_semana) * 60), dataProva: motorDataProva(p), hoje: segundaDe(hoje()) }); }, criarReleitura, revisarErrosDaMeta, _recarregarMotor: carregarMotor, salvarMotorPdf, itensDoEditalDeOrigem, editalAtivoPorPdf, pdfsDaDisciplina, temMotor: () => temMotor, motorPdfs: () => motorPdfs,
     renderTudo, fmtMin, aviso, revisoesDoTopico, paginasLidas, aproveitarDe
   };
 })();

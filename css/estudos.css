@@ -2841,3 +2841,21 @@ html, body {
 .est-motor-erro { margin: 0; color: var(--est-red); font-size: 0.8rem; }
 .est-motor-resultado p { margin: 0 0 6px; padding: 10px 12px; border-radius: 10px; background: var(--est-bg-glass); border: 1px solid var(--est-border); }
 .est-motor-acoes { display: flex; gap: 10px; justify-content: flex-end; flex-wrap: wrap; }
+
+/* Motor de estudos: painel de projeção e parâmetros (interface, etapa 4) */
+.est-motor-kpi-sub { display: block; margin-top: 4px; font-size: 0.72rem; color: var(--est-silver); font-weight: 400; }
+.est-motor-proj { display: flex; flex-direction: column; gap: 6px; }
+.est-motor-proj-cab { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; font-size: 0.86rem; color: var(--est-silver-bright); margin-bottom: 4px; }
+.est-motor-legenda { display: flex; align-items: center; gap: 6px; font-size: 0.74rem; color: var(--est-silver); }
+.est-motor-legenda i { width: 10px; height: 10px; border-radius: 3px; display: inline-block; margin-left: 6px; }
+.est-motor-barra { display: grid; grid-template-columns: 52px minmax(0, 1fr) 40px; align-items: center; gap: 8px; font-size: 0.74rem; color: var(--est-silver); }
+.est-motor-barra-trilho { display: flex; gap: 2px; height: 14px; }
+.est-motor-barra-trilho i { display: block; height: 100%; border-radius: 4px; min-width: 0; }
+.est-motor-barra-val { text-align: right; font-variant-numeric: tabular-nums; color: var(--est-silver-bright); }
+.est-modal.est-motor-concluir.est-motor-parametros { max-width: 760px; max-height: 90vh; overflow-y: auto; }
+.est-motor-param-grupo { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 8px 16px; }
+.est-motor-param-grupo h3 { grid-column: 1 / -1; margin: 6px 0 0; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--est-accent); }
+.est-motor-param-grupo label { display: flex; flex-direction: column; gap: 4px; font-size: 0.78rem; color: var(--est-silver); }
+.est-motor-param { display: flex; align-items: center; gap: 8px; }
+.est-motor-param .est-form-input { width: 110px; padding: 5px 8px; }
+.est-motor-param small { color: var(--est-accent-muted); }
