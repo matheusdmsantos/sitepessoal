@@ -6,6 +6,8 @@
    As páginas ficam no mesmo resumo de "Meus Resumos" (tabela resumos): cada página
    começa com <h1 class="est-pagina">Título</h1>. Conteúdo antes do primeiro título é a
    primeira página, por isso os resumos antigos continuam iguais.
+   Cada página com título é um ASSUNTO (subtópico) do item do edital (estudos.subtopicos.js):
+   a coluna "Assuntos" mostra primeiro os do PDF da meta e, recolhidos, os outros do item.
    Carregado depois do estudos.v5.js (usa resumosMap, makeResumoKey e salvarResumo).
 ============================================= */
 (function () {
@@ -120,6 +122,7 @@
   let ultimoSalvo = '';
   let timerSalvar = null;
   let tick = null;
+  let outrosAbertos = false;  // grupo "Outros assuntos do item" aberto na coluna
 
   const $ = id => document.getElementById(id);
   const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -145,9 +148,12 @@
     return lista;
   }
 
-  function juntarPaginas() {
-    if (paginas.length === 1 && paginas[0].semTitulo) return paginas[0].html;
-    return paginas.map((p, i) =>
+  /* Sem argumento, junta as páginas da janela. Assunto sem nada escrito não grava página vazia:
+     ele continua existindo pelo cadastro de assuntos (estudos.subtopicos.js). */
+  function juntarPaginas(lista = paginas) {
+    const pags = lista.filter(p => p.semTitulo || !p.sub || !vazio(p.html));
+    if (pags.length === 1 && pags[0].semTitulo) return pags[0].html;
+    return pags.map((p, i) =>
       (i === 0 && p.semTitulo ? '' : `<h1 class="est-pagina">${esc(p.titulo)}</h1>`) +
       (vazio(p.html) ? '<p><br></p>' : p.html)
     ).join('');
@@ -161,13 +167,20 @@
     esconderAlca();
     guardarPaginaAtual();
     atual = Math.max(0, Math.min(i, paginas.length - 1));
-    $('est-sessao-pag-titulo').value = paginas[atual].titulo;
-    quill.root.innerHTML = paginas[atual].html;
+    const p = paginas[atual];
+    const geral = comAssuntos() && p.semTitulo;
+    const titulo = $('est-sessao-pag-titulo');
+    titulo.value = geral ? 'Anotações gerais (sem assunto)' : p.titulo;
+    titulo.disabled = geral;
+    quill.root.innerHTML = p.html;
     quill.history.clear();
+    mostrarTecDoAssunto();
+    marcarAssuntoNoCrono();
     renderPaginas();
   }
 
   function renderPaginas() {
+    if (comAssuntos()) { renderAssuntos(); return; }
     $('est-sessao-lista').innerHTML = paginas.map((p, i) => `
       <li class="${i === atual ? 'ativa' : ''}">
         <button type="button" class="est-sessao-pag" onclick="estSessao.irPagina(${i})">${esc(p.titulo)}</button>
@@ -176,6 +189,7 @@
   }
 
   function novaPagina() {
+    if (comAssuntos()) { abrirNovoAssunto(); return; }
     guardarPaginaAtual();
     paginas.push({ titulo: `Página ${paginas.length + 1}`, html: '', semTitulo: false });
     mostrarPagina(paginas.length - 1);
@@ -199,12 +213,160 @@
   }
 
   function renomear() {
+    if (comAssuntos() && paginas[atual].semTitulo) return;
     const titulo = $('est-sessao-pag-titulo').value.trim() || TITULO_PADRAO;
     if (titulo === paginas[atual].titulo) return;
     paginas[atual].titulo = titulo;
     paginas[atual].semTitulo = false;
     renderPaginas();
     agendarSalvar();
+  }
+
+  /* =============================================
+     ASSUNTOS (subtópicos do item, estudos.subtopicos.js)
+     Sem item do edital (resumo de assunto que saiu do edital), as páginas funcionam como antes.
+  ============================================= */
+  const comAssuntos = () => !!(ctx && ctx.topicoId && window.estSub);
+  // PDFs da meta de estudo. Revisão e meta de questões valem para o item inteiro: todos os assuntos numa lista só
+  const pdfsDaSessao = () => (!ctx || ctx.tipo !== 'meta' || ctx.questoes > 0 ? []
+    : [...new Set((ctx.leitura || []).map(x => x.id).filter(Boolean))]);
+  const subAtual = () => (paginas[atual] && paginas[atual].sub) || '';
+  const nomeNaColuna = s => { const p = paginas.find(x => x.sub === s.id); return p ? p.titulo : s.nome; };
+
+  // Página do assunto; sem página ainda, cria uma vazia no lugar da ordem dos assuntos
+  function paginaDoAssunto(id) {
+    const i = paginas.findIndex(p => p.sub === id);
+    if (i >= 0) return i;
+    const s = window.estSub.porId(id);
+    if (!s) return 0;
+    guardarPaginaAtual();
+    const aberta = paginas[atual];
+    const ordem = new Map(window.estSub.doTopico(ctx.topicoId).map((x, k) => [x.id, k]));
+    const pos = p => (ordem.has(p.sub) ? ordem.get(p.sub) : 1e9);
+    const [geral, ...resto] = paginas;
+    paginas = [geral, ...[...resto, { titulo: s.nome, html: '', semTitulo: false, sub: s.id }].sort((a, b) => pos(a) - pos(b))];
+    atual = Math.max(0, paginas.indexOf(aberta));
+    return paginas.findIndex(p => p.sub === id);
+  }
+
+  function renderAssuntos() {
+    const mats = pdfsDaSessao();
+    const nums = new Map(window.estSub.numerosDe(ctx.topicoId).assuntos.map(n => [n.s.id, n]));
+    const acerto = s => { const n = nums.get(s.id); return n && n.q ? Math.round(n.c / n.q * 100) : null; };
+    let lista = window.estSub.doTopico(ctx.topicoId);
+    // Revisão e meta de questões: começa pelos sem questões e pelos de pior acerto
+    const priorizar = ctx.tipo === 'revisao' || ctx.questoes > 0;
+    if (priorizar) lista = lista.slice().sort((a, b) => (acerto(a) ?? -1) - (acerto(b) ?? -1));
+    const cotas = ctx.questoes > 0 ? window.estSub.distribuir(ctx.topicoId, ctx.questoes) : {};
+    const neste = mats.length ? lista.filter(s => s.pdfs.some(p => mats.includes(p.material_id))) : lista;
+    const outros = lista.filter(s => !neste.includes(s));
+    const sel = subAtual();
+    const item = (s, grupo) => {
+      const p = acerto(s);
+      const selos = (priorizar ? `<span class="est-sessao-ass-selo ${p === null ? '' : p < 70 ? 'ruim' : p < 85 ? 'medio' : 'bom'}">${p === null ? 'sem questões' : p + '%'}</span>` : '') +
+        (cotas[s.id] ? `<span class="est-sessao-ass-selo" title="Questões sugeridas para este assunto">≈${cotas[s.id]} q</span>` : '');
+      const acao = !mats.length ? ''
+        : grupo === 'neste'
+          ? `<button type="button" class="est-sessao-pag-x" onclick="estSessao.tirarDoPdf('${s.id}')" title="Tirar deste PDF (o assunto continua no item)" aria-label="Tirar ${esc(s.nome)} deste PDF">✕</button>`
+          : `<button type="button" class="est-sessao-pag-x" onclick="estSessao.usarNestePdf('${s.id}')" title="Usar neste PDF" aria-label="Usar ${esc(s.nome)} neste PDF">＋</button>`;
+      return `<li class="${s.id === sel ? 'ativa' : ''}">
+        <button type="button" class="est-sessao-pag" onclick="estSessao.irAssunto('${s.id}')">${esc(nomeNaColuna(s))}${selos ? `<span class="est-sessao-ass-selos">${selos}</span>` : ''}</button>${acao}</li>`;
+    };
+    $('est-sessao-lista').innerHTML = `
+      <li class="${atual === 0 ? 'ativa' : ''}"><button type="button" class="est-sessao-pag est-sessao-geral" onclick="estSessao.irPagina(0)">📝 Anotações gerais</button></li>
+      ${mats.length ? `<li class="est-sessao-grupo">Neste PDF</li>` : ''}
+      ${neste.map(s => item(s, 'neste')).join('')}
+      ${mats.length && !neste.length ? '<li class="est-sessao-grupo-vazio">Nenhum assunto neste PDF ainda. Use “+ Assunto”.</li>' : ''}
+      ${outros.length ? `<li class="est-sessao-outros"><details ${outrosAbertos || outros.some(s => s.id === sel) ? 'open' : ''} ontoggle="estSessao.outrosAbertos(this.open)">
+        <summary>Outros assuntos do item (${outros.length})</summary><ul>${outros.map(s => item(s, 'outros')).join('')}</ul></details></li>` : ''}`;
+  }
+
+  function mostrarTecDoAssunto() {
+    const s = comAssuntos() && subAtual() ? window.estSub.porId(subAtual()) : null;
+    $('est-sessao-tec-ass').hidden = !s;
+    if (s) {
+      $('est-sessao-tec-link').value = s.tec_link || '';
+      const a = $('est-sessao-tec-abrir');
+      a.hidden = !s.tec_link;
+      if (s.tec_link) a.href = s.tec_link;
+    }
+    const b = $('est-sessao-tec');
+    if (ctx && ctx.topicoId && window.estTec) {
+      b.textContent = s && s.tec_link ? 'TEC do assunto ↗' : window.estTec.rotulo(ctx.topicoId);
+      b.title = s && s.tec_link ? `Abre o caderno do TEC de “${s.nome}”` : 'Abre o caderno do TEC do item; se ainda não houver, cria pelo userscript';
+    }
+  }
+
+  async function gravarTecDoAssunto() {
+    const id = subAtual();
+    if (!id) return;
+    const v = $('est-sessao-tec-link').value.trim();
+    if (v && !/^https?:\/\//i.test(v)) { aviso('Cole o endereço completo do caderno (começa com https://).'); return; }
+    await window.estSub.definirTec(id, v);
+    mostrarTecDoAssunto();
+  }
+
+  // "+ Assunto": escolhe um assunto do item (liga ao PDF da meta) ou cria um novo
+  function abrirNovoAssunto() {
+    const caixa = $('est-sessao-novo');
+    caixa.hidden = !caixa.hidden;
+    if (caixa.hidden) return;
+    $('est-sessao-novo-nome').value = '';
+    $('est-sessao-novo-lista').innerHTML = window.estSub.doTopico(ctx.topicoId).map(s => `<option value="${esc(s.nome)}"></option>`).join('');
+    dicaNovoAssunto();
+    $('est-sessao-novo-nome').focus();
+  }
+
+  function dicaNovoAssunto() {
+    const txt = $('est-sessao-novo-nome').value.trim();
+    const { exato, parecido } = txt ? window.estSub.sugestao(ctx.topicoId, txt) : {};
+    const dica = $('est-sessao-novo-dica');
+    dica.textContent = !txt ? 'Escolha um assunto deste item ou digite um nome novo.'
+      : exato ? `Enter abre “${exato.nome}”${pdfsDaSessao().length ? ' e o liga a este PDF' : ''}.`
+      : parecido ? `⚠ Parecido com “${parecido.nome}”, que já existe. Escolha-o na lista para usar o mesmo assunto.`
+      : 'Enter cria o assunto.';
+    dica.classList.toggle('alerta', !exato && !!parecido);
+    const criar = $('est-sessao-novo-criar');
+    criar.hidden = !txt || !!exato;
+    criar.textContent = `Criar subtópico “${txt}”`;
+  }
+
+  async function confirmarNovoAssunto(peloBotao) {
+    const txt = $('est-sessao-novo-nome').value.trim();
+    if (!txt) return;
+    const { exato, parecido } = window.estSub.sugestao(ctx.topicoId, txt);
+    if (!exato && parecido && !peloBotao) { dicaNovoAssunto(); return; }   // parecido: só cria pelo botão
+    const mats = pdfsDaSessao();
+    let s = exato;
+    if (s) await window.estSub.vincular(s.id, mats);
+    else s = await window.estSub.criar(ctx.topicoId, txt, mats);
+    if (!s) return;
+    $('est-sessao-novo').hidden = true;
+    mostrarPagina(paginaDoAssunto(s.id));
+    quill.focus();
+  }
+
+  async function tirarDoPdf(id) {
+    await window.estSub.desvincular(id, pdfsDaSessao());
+    renderPaginas();
+  }
+
+  async function usarNestePdf(id) {
+    await window.estSub.vincular(id, pdfsDaSessao());
+    renderPaginas();
+  }
+
+  // Nome digitado no título da página vai para o assunto; se já é de outro assunto, volta ao antigo
+  async function sincronizarNomes() {
+    for (const p of paginas) {
+      const s = p.sub && window.estSub.porId(p.sub);
+      if (!s || p.titulo === s.nome) continue;
+      if (!(await window.estSub.renomear(s.id, p.titulo, false))) {
+        p.titulo = s.nome;
+        if (paginas[atual] === p) $('est-sessao-pag-titulo').value = s.nome;
+        renderPaginas();
+      }
+    }
   }
 
   /* =============================================
@@ -222,6 +384,7 @@
     clearTimeout(timerSalvar);
     if (!ctx) return;
     guardarPaginaAtual();
+    if (comAssuntos()) await sincronizarNomes();
     const html = juntarPaginas();
     if (html === ultimoSalvo) { status('Salvo'); return; }
     status('Salvando…');
@@ -267,7 +430,12 @@
     if (c.rodando) {
       const agora = Date.now();
       const d = agora - c.desde;
-      if (c.fase === 'foco') c.acum += d;
+      if (c.fase === 'foco') {
+        c.acum += d;
+        // Tempo de cada assunto: o que estava selecionado enquanto o cronômetro rodava ('' = anotações gerais)
+        const k = c.assunto || '';
+        c.porAssunto = { ...(c.porAssunto || {}), [k]: ((c.porAssunto || {})[k] || 0) + d };
+      }
       c.faseMs += d;
       c.desde = agora;
     }
@@ -329,7 +497,7 @@
     const c = crono();
     atualizarCrono(c);
     if (c.acum > 60000 && !(await window.customConfirm('Zerar o cronômetro desta meta?'))) return;
-    gravarCrono(ctx.id, { ...c, acum: 0, rodando: false, fase: 'foco', faseMs: 0 });
+    gravarCrono(ctx.id, { ...c, acum: 0, rodando: false, fase: 'foco', faseMs: 0, porAssunto: {} });
     renderCrono();
   }
 
@@ -362,6 +530,25 @@
       });
       setTimeout(() => ac.close(), 1500);
     } catch (e) { /* sem áudio */ }
+  }
+
+  // O assunto selecionado passa a receber o tempo do cronômetro
+  function marcarAssuntoNoCrono() {
+    if (!ctx || !ctx.id) return;
+    const c = crono();
+    atualizarCrono(c);
+    c.assunto = subAtual();
+    gravarCrono(ctx.id, c);
+  }
+
+  /* Minutos de cada assunto numa meta/revisão: o total estudado dividido pelo tempo em que cada
+     assunto ficou selecionado. { [id do assunto]: min }; '' = anotações gerais (sem subtópico). */
+  function tempoPorAssunto(id) {
+    const c = lerCronos()[id];
+    if (!c || !c.porAssunto) return {};
+    atualizarCrono(c);
+    const soma = Object.values(c.porAssunto).reduce((a, v) => a + v, 0);
+    return soma ? Object.fromEntries(Object.entries(c.porAssunto).map(([k, v]) => [k, Math.round(c.acum * v / soma / 60000)])) : {};
   }
 
   /* Minutos estudados no cronômetro de uma meta/revisão (0 se não houver) */
@@ -867,6 +1054,8 @@
     if (!quill) return;
     if (ctx) salvar();
     ctx = dados;
+    // Aberta pelo nome (ficha, Meus Resumos): acha o item do edital para mostrar os assuntos
+    if (!ctx.topicoId && window.estSub) ctx.topicoId = window.estSub.topicoPorNomes(dados.disc, dados.topico);
     $('est-sessao-rotulo').textContent = dados.rotulo;
     $('est-sessao-disc').textContent = dados.disc;
     $('est-sessao-topico').textContent = dados.topico;
@@ -879,6 +1068,9 @@
     const salvo = (resumosMap[makeResumoKey(dados.disc, dados.topico)] || {}).conteudo || '';
     ultimoSalvo = salvo;
     paginas = separarPaginas(salvo);
+    if (comAssuntos()) paginas = window.estSub.ligarPaginas(ctx.topicoId, paginas);
+    $('est-sessao-novo').hidden = true;
+    outrosAbertos = false;
     atual = -1;
     mostrarPagina(0);
     status(vazio(salvo) ? '' : 'Salvo');
@@ -1072,6 +1264,14 @@
     $('est-sessao-pomodoro').addEventListener('change', alternarPomodoro);
     $('est-sessao-ciclo').addEventListener('change', trocarCiclo);
     $('est-sessao-nova-pag').addEventListener('click', novaPagina);
+    const novoNome = $('est-sessao-novo-nome');
+    novoNome.addEventListener('input', dicaNovoAssunto);
+    novoNome.addEventListener('keydown', ev => {
+      if (ev.key === 'Enter') { ev.preventDefault(); confirmarNovoAssunto(false); }
+      if (ev.key === 'Escape') { ev.stopPropagation(); $('est-sessao-novo').hidden = true; }
+    });
+    $('est-sessao-novo-criar').addEventListener('click', () => confirmarNovoAssunto(true));
+    $('est-sessao-tec-link').addEventListener('change', gravarTecDoAssunto);
     $('est-sessao-ver-materia').addEventListener('click', verMateria);
     const titulo = $('est-sessao-pag-titulo');
     titulo.addEventListener('input', renomear);
@@ -1086,11 +1286,13 @@
   document.addEventListener('DOMContentLoaded', init);
 
   window.estSessao = {
-    abrir, abrirResumo, fechar, minutosDe, selo, separarPaginas,
+    abrir, abrirResumo, fechar, minutosDe, selo, separarPaginas, juntarPaginas, tempoPorAssunto,
     irPagina: mostrarPagina, apagarPagina,
+    irAssunto: id => mostrarPagina(paginaDoAssunto(id)), tirarDoPdf, usarNestePdf,
+    outrosAbertos: v => { outrosAbertos = v; },
     zerarCrono: id => gravarCrono(id, null),
     // Usados pelo Caderno de Erros (estudos.erros.js)
-    contexto: () => ctx && { disc: ctx.disc, topico: ctx.topico, topicoId: ctx.topicoId },
+    contexto: () => ctx && { disc: ctx.disc, topico: ctx.topico, topicoId: ctx.topicoId, subtopicoId: subAtual() },
     limparHtmlColado, reduzirImagem,
     pdfAberto: () => pdfPendente   // lido pelo leitor.html
   };

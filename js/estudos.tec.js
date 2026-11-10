@@ -176,12 +176,15 @@
     abrirTec([caderno(ref, assuntos)]);
   }
 
-  // Botão da janela de estudo: abre o caderno do tópico ou, se ainda não houver, cria
+  // Botão da janela de estudo: abre o caderno do assunto selecionado; sem ele, o do item
+  // ou, se ainda não houver, cria
   function daJanela() {
     const ctx = window.estSessao && window.estSessao.contexto();
     const ref = ctx && ctx.topicoId && acharTopico(ctx.topicoId);
     if (!ref) return;
-    if (ref.t.tecLink) window.open(ref.t.tecLink, '_blank', 'noopener');
+    const sub = ctx.subtopicoId && window.estSub && window.estSub.porId(ctx.subtopicoId);
+    if (sub && sub.tec_link) window.open(sub.tec_link, '_blank', 'noopener');
+    else if (ref.t.tecLink) window.open(ref.t.tecLink, '_blank', 'noopener');
     else criar(ref.t.id);
   }
 

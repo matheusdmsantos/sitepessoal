@@ -279,6 +279,7 @@
       inc !== null ? `<span class="est-ed-selo ${incidenciaAlta(d, t) ? 'alta' : ''}" title="${inc.toFixed(1).replace('.', ',')}% das questões da disciplina no TEC">📊 ${inc >= 1 ? Math.round(inc) + '%' : inc > 0 ? '<1%' : '0%'}</span>` : '',
       pags ? `<span class="est-ed-selo" title="Páginas lidas do material">📄 ${lidas ? `${lidas}/` : ''}${pags}p</span>` : '',
       temResumo(d, t) ? `<span class="est-ed-selo" title="Tem resumo">✍️</span>` : '',
+      window.estSub ? window.estSub.selo(t.id) : '',
       seloRevisao(sit),
       t.tempoGasto ? `<span class="est-ed-selo sutil" title="Tempo de estudo">⏱ ${fmtTempo(t.tempoGasto)}</span>` : ''
     ].join('');
@@ -480,6 +481,8 @@
         </div>
       </section>
 
+      ${window.estSub ? window.estSub.blocoFicha(e, d, t) : ''}
+
       ${window.estErros ? window.estErros.blocoFicha(e.id, d.id, t.id) : ''}
 
       <section class="est-ed-ficha-bloco">
@@ -509,12 +512,12 @@
         const grupo = !filhos.length && partesAgrupadas(t);
         if (!filhos.length && !grupo) return '';
         return `<section class="est-ed-ficha-bloco">
-        <h3>Subtópicos</h3>
+        <h3>Subitens do edital</h3>
         ${filhos.length
-          ? `<p class="est-ed-ficha-vazio">${filhos.length} subtópico${filhos.length > 1 ? 's' : ''} separado${filhos.length > 1 ? 's' : ''} no edital.</p>
+          ? `<p class="est-ed-ficha-vazio">${filhos.length} subite${filhos.length > 1 ? 'ns separados' : 'm separado'} no edital (1.1, 1.2…).</p>
              <button type="button" class="est-plano-btn" onclick="estEdital.agruparSubtopicos()">⊟ Agrupar neste tópico</button>`
           : `<p class="est-ed-ficha-vazio">${grupo.subs.length} subite${grupo.subs.length > 1 ? 'ns agrupados' : 'm agrupado'} no nome do tópico.</p>
-             <button type="button" class="est-plano-btn" onclick="estEdital.separarSubtopicos()">⊞ Separar em ${grupo.subs.length} subtópico${grupo.subs.length > 1 ? 's' : ''}</button>`}
+             <button type="button" class="est-plano-btn" onclick="estEdital.separarSubtopicos()">⊞ Separar em ${grupo.subs.length} subite${grupo.subs.length > 1 ? 'ns' : 'm'}</button>`}
       </section>`;
       })()}
 
@@ -591,7 +594,7 @@
     const filhos = filhosDe(d, t);
     if (!filhos.length) return;
     const comEstudo = filhos.some(f => f.estudado || f.questoesFeitas || f.tempoGasto);
-    if (!(await window.customConfirm(`Agrupar ${filhos.length} subtópicos em "${t.nome}"? ` +
+    if (!(await window.customConfirm(`Agrupar ${filhos.length} subitens do edital em "${t.nome}"? ` +
       (comEstudo ? 'Questões e tempo deles passam para este tópico. ' : '') +
       'A incidência e os PDFs também, e as metas abertas desta semana são refeitas. Dá para separar de novo depois.'))) return;
     const semNumero = x => x.replace(/^\s*\d+(?:\.\d+)*[.)]?\s+/, '').trim().replace(/[.;]$/, '');
@@ -626,7 +629,7 @@
     const { d, t } = ref;
     const g = partesAgrupadas(t);
     if (!g) return;
-    if (!(await window.customConfirm(`Separar "${g.num} ${g.base}" em ${g.subs.length} subtópicos? ` +
+    if (!(await window.customConfirm(`Separar "${g.num} ${g.base}" em ${g.subs.length} subitens do edital? ` +
       'O progresso, a incidência e os PDFs ficam no tópico principal: para dividi-los, importe a incidência de novo e religue os PDFs.'))) return;
     const antes = t.nome;
     t.nome = `${g.num} ${g.base}`;

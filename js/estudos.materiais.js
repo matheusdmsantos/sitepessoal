@@ -12,6 +12,7 @@
  */
 (function () {
   let ctx = null;   // { edital, disc, lista: [material], comparar }
+  const assAbertos = new Set();   // PDFs com a seção "Assuntos deste PDF" aberta
 
   const $ = id => document.getElementById(id);
   const novoId = () => 'mat_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
@@ -269,11 +270,63 @@
           <button type="button" class="est-plano-btn sutil" data-acao="desligar" data-m="${i}" data-l="${j}" aria-label="Remover ligação" title="Remover ligação">✕</button>
         </div>`).join('')}
         <button type="button" class="est-plano-btn" data-acao="ligar" data-m="${i}">+ Tópico</button>
+        ${window.estSub ? htmlAssuntosDoPdf(m, i) : ''}
       </div>`).join('')
       : '<p class="est-plano-vazio">Nenhum PDF ainda.</p>';
     $('est-mat-lista').querySelectorAll('select').forEach(sel => {
       sel.value = ctx.lista[sel.dataset.m].topicos[sel.dataset.l].topico_id || '';
     });
+  }
+
+  /* Assuntos (subtópicos) deste PDF: opcional aqui, porque o normal é criá-los durante o estudo,
+     na coluna "Assuntos" da janela. Faixa de páginas por assunto também opcional. */
+  function htmlAssuntosDoPdf(m, i) {
+    const tops = m.topicos.map(l => ctx.disc.topicos.find(t => t.id === l.topico_id)).filter(Boolean);
+    if (!tops.length) return '';
+    const ligados = tops.flatMap(t => window.estSub.doTopico(t.id)).filter(s => s.pdfs.some(p => p.material_id === m.id));
+    const nomeItem = s => (tops.find(t => t.id === s.topico_id) || {}).nome || '';
+    return `<details class="est-mat-ass" data-m="${i}" ${assAbertos.has(m.id) ? 'open' : ''}>
+      <summary>🧩 Assuntos deste PDF (${ligados.length}) <small>opcional</small></summary>
+      ${ligados.map(s => { const p = s.pdfs.find(x => x.material_id === m.id); return `
+      <div class="est-mat-ass-linha">
+        <span class="est-mat-ass-nome" title="${escapeHtml(nomeItem(s))}">${escapeHtml(s.nome)}</span>
+        <span class="est-mat-faixa">
+          <input type="number" class="est-form-input" min="1" max="${m.paginas}" placeholder="pág." value="${p.de || ''}" data-sub="${s.id}" data-campo-ass="de" aria-label="Página inicial de ${escapeHtml(s.nome)}" />
+          <span>a</span>
+          <input type="number" class="est-form-input" min="1" max="${m.paginas}" placeholder="pág." value="${p.ate || ''}" data-sub="${s.id}" data-campo-ass="ate" aria-label="Página final de ${escapeHtml(s.nome)}" />
+        </span>
+        <button type="button" class="est-plano-btn sutil" data-acao-ass="tirar" data-sub="${s.id}" aria-label="Tirar ${escapeHtml(s.nome)} deste PDF" title="Tirar deste PDF (o assunto continua no item)">✕</button>
+      </div>`; }).join('')}
+      <div class="est-mat-ass-novo">
+        ${tops.length > 1 ? `<select class="est-form-select" data-ass-item aria-label="Item do edital do assunto">${tops.map(t => `<option value="${t.id}">${escapeHtml(nomeCurto(t, 40))}</option>`).join('')}</select>` : ''}
+        <input type="text" class="est-form-input" data-ass-nome list="est-mat-ass-lista-${i}" placeholder="Assunto (existente ou novo)" aria-label="Assunto deste PDF" autocomplete="off" />
+        <datalist id="est-mat-ass-lista-${i}">${opcoesAss(tops[0].id)}</datalist>
+        <button type="button" class="est-plano-btn" data-acao-ass="incluir">+ Assunto</button>
+      </div>
+      <p class="est-mat-ass-dica" data-ass-dica role="status"></p>
+    </details>`;
+  }
+
+  const opcoesAss = tId => window.estSub.doTopico(tId).map(s => `<option value="${escapeHtml(s.nome)}"></option>`).join('');
+
+  async function incluirAssunto(caixa) {
+    const m = ctx.lista[caixa.dataset.m];
+    const tId = (caixa.querySelector('[data-ass-item]') || {}).value || m.topicos.find(l => l.topico_id).topico_id;
+    const campo = caixa.querySelector('[data-ass-nome]');
+    const nome = campo.value.trim();
+    const dica = caixa.querySelector('[data-ass-dica]');
+    if (!nome) return;
+    const { exato, parecido } = window.estSub.sugestao(tId, nome);
+    // Parecido com um existente: avisa e só cria no segundo clique
+    if (!exato && parecido && campo.dataset.confirmado !== nome) {
+      campo.dataset.confirmado = nome;
+      dica.textContent = `⚠ Parecido com “${parecido.nome}”, que já existe. Escolha-o na lista para usar o mesmo, ou clique de novo para criar “${nome}”.`;
+      return;
+    }
+    if (exato) await window.estSub.vincular(exato.id, [m.id]);
+    else await window.estSub.criar(tId, nome, [m.id]);
+    assAbertos.add(m.id);
+    renderLista();
   }
 
   function render() {
@@ -298,7 +351,14 @@
       renderRanking();
     });
     const lista = $('est-mat-lista');
-    lista.addEventListener('click', e => {
+    lista.addEventListener('click', async e => {
+      const ba = e.target.closest('button[data-acao-ass]');
+      if (ba && ctx) {
+        const caixa = ba.closest('.est-mat-ass');
+        if (ba.dataset.acaoAss === 'incluir') await incluirAssunto(caixa);
+        else { await window.estSub.desvincular(ba.dataset.sub, [ctx.lista[caixa.dataset.m].id]); renderLista(); }
+        return;
+      }
       const b = e.target.closest('button[data-acao]');
       if (!b || !ctx) return;
       const m = ctx.lista[b.dataset.m];
@@ -308,7 +368,26 @@
       $('est-mat-salvar').disabled = false;
       render();
     });
+    lista.addEventListener('toggle', e => {
+      const c = e.target.closest && e.target.closest('.est-mat-ass');
+      if (c && ctx) { const id = ctx.lista[c.dataset.m].id; if (c.open) assAbertos.add(id); else assAbertos.delete(id); }
+    }, true);
+    lista.addEventListener('keydown', e => {
+      if (e.key === 'Enter' && e.target.matches('[data-ass-nome]')) { e.preventDefault(); incluirAssunto(e.target.closest('.est-mat-ass')); }
+    });
     lista.addEventListener('change', e => {
+      const fa = e.target.closest('[data-campo-ass]');
+      if (fa && ctx) {
+        const caixa = fa.closest('.est-mat-ass');
+        const linha = fa.closest('.est-mat-ass-linha');
+        const n = k => parseInt(linha.querySelector(`[data-campo-ass="${k}"]`).value, 10) || null;
+        window.estSub.faixa(fa.dataset.sub, ctx.lista[caixa.dataset.m].id, n('de'), n('ate'));
+        return;
+      }
+      if (e.target.matches('[data-ass-item]')) {
+        e.target.closest('.est-mat-ass').querySelector('datalist').innerHTML = opcoesAss(e.target.value);
+        return;
+      }
       const el = e.target.closest('[data-campo]');
       if (!el || !ctx) return;
       const m = ctx.lista[el.dataset.m];

@@ -146,7 +146,8 @@
       edital_id: s.editalId || null, disciplina_id: s.discId || null, topico_id: s.topicId || null,
       disciplina: s.discipline || '', topico: s.topic || '',
       minutos: s.timeMinutes || 0, questoes: s.questionsTotal || 0, acertos: s.questionsCorrect || 0,
-      tipo: s.tipo || 'estudo', meta_concluida: !!s.metaDone
+      tipo: s.tipo || 'estudo', meta_concluida: !!s.metaDone,
+      ...(window.estSub && window.estSub.temSessoes() ? { assuntos: s.assuntos || null } : {})
     };
   }
 
@@ -156,7 +157,7 @@
       editalId: r.edital_id, discId: r.disciplina_id, topicId: r.topico_id,
       discipline: r.disciplina, topic: r.topico,
       timeMinutes: r.minutos, questionsTotal: r.questoes, questionsCorrect: r.acertos,
-      tipo: r.tipo, metaDone: r.meta_concluida
+      tipo: r.tipo, metaDone: r.meta_concluida, assuntos: r.assuntos || null
     };
   }
 
@@ -267,6 +268,7 @@
     remotoMat = mat.remoto;
     indexarIncidencias();
     pagPorTopico = contarPaginas(materiais);
+    if (window.estSub) await window.estSub.carregar();
   }
 
   /* =============================================
@@ -1060,7 +1062,7 @@
     let pos = 0;
     trechos.forEach(x => {
       const a = Math.max(ini, pos), b = Math.min(fim, pos + x.pags);
-      if (b > a) r.push({ nome: x.nome, de: x.inicio + a - pos, ate: x.inicio + b - pos - 1, aprox: x.aprox });
+      if (b > a) r.push({ id: x.m.id, nome: x.nome, de: x.inicio + a - pos, ate: x.inicio + b - pos - 1, aprox: x.aprox });
       pos += x.pags;
     });
     return r;
@@ -1081,7 +1083,8 @@
       minutos: tipo === 'meta' ? item.minutos : item.minutos || MIN_REVISAO,
       concluida: tipo === 'meta' ? !!item.concluida : !!item.concluida_em,
       leitura: roteiroDeLeitura(tipo, item),
-      leituraParcial: tipo === 'meta' && !item.concluida && item.partes > 1 && !ehQuestoes(item)
+      leituraParcial: tipo === 'meta' && !item.concluida && item.partes > 1 && !ehQuestoes(item),
+      questoes: tipo === 'meta' && ehQuestoes(item) ? questoesDaMeta(item) : 0
     });
   }
 
@@ -1133,7 +1136,42 @@
     document.getElementById('est-concluir-q').value = questoesMeta ? questoesDaMeta(item) : '';
     document.getElementById('est-concluir-c').value = '';
     document.getElementById('est-concluir-tec').value = ref.t.tecLink || '';
+    montarAssuntosConclusao(tipo, item, ref, questoesMeta);
     document.getElementById('est-modal-concluir').classList.add('active');
+  }
+
+  /* Divisão por assunto (opcional). Meta de estudo: os assuntos com tempo no cronômetro ou ligados aos
+     PDFs da meta (sem nenhum desses, todos os do item). Revisão e meta de questões: todos os do item;
+     na de questões, a sugestão de cada um vai no campo vazio. */
+  function montarAssuntosConclusao(tipo, item, ref, questoesMeta) {
+    const caixa = document.getElementById('est-concluir-assuntos');
+    const sub = window.estSub;
+    if (!caixa) return;
+    const todos = sub && sub.temSessoes() ? sub.doTopico(ref.t.id) : [];
+    const tempos = window.estSessao ? window.estSessao.tempoPorAssunto(contextoConclusao.id) : {};
+    const mats = new Set(roteiroDeLeitura(tipo, item).map(x => x.id));
+    let lista = tipo === 'meta' && !questoesMeta ? todos.filter(s => tempos[s.id] > 0 || s.pdfs.some(x => mats.has(x.material_id))) : todos;
+    if (!lista.length) lista = todos;
+    const cotas = questoesMeta && lista.length ? sub.distribuir(ref.t.id, questoesDaMeta(item)) : {};
+    caixa.hidden = !lista.length;
+    caixa.open = lista.some(s => tempos[s.id] > 0) || questoesMeta;
+    document.getElementById('est-concluir-assuntos-lista').innerHTML = lista.map(s => `
+      <div class="est-concluir-ass" data-sub="${s.id}">
+        <span title="${attr(s.nome)}">${escapeHtml(s.nome)}</span>
+        <input type="number" class="est-form-input" min="0" data-k="minutos" value="${tempos[s.id] || ''}" placeholder="0" aria-label="Minutos em ${attr(s.nome)}" />
+        <input type="number" class="est-form-input" min="0" data-k="questoes" placeholder="${cotas[s.id] ? '≈' + cotas[s.id] : '0'}" aria-label="Questões feitas de ${attr(s.nome)}" />
+        <input type="number" class="est-form-input" min="0" data-k="acertos" placeholder="0" aria-label="Questões certas de ${attr(s.nome)}" />
+      </div>`).join('');
+  }
+
+  function lerAssuntosConclusao() {
+    const caixa = document.getElementById('est-concluir-assuntos');
+    if (!caixa || caixa.hidden) return [];
+    return [...caixa.querySelectorAll('.est-concluir-ass[data-sub]')].map(l => {
+      const v = k => Math.max(0, parseInt(l.querySelector(`[data-k="${k}"]`).value, 10) || 0);
+      const questoes = v('questoes');
+      return { subtopico_id: l.dataset.sub, minutos: v('minutos'), questoes, acertos: Math.min(v('acertos'), questoes) };
+    }).filter(x => x.minutos || x.questoes);
   }
 
   function mostrarFaixaConclusao() {
@@ -1158,9 +1196,12 @@
     const { e, d, t } = ref;
 
     const val = id => parseInt(document.getElementById(id).value, 10) || 0;
-    const minutos = val('est-concluir-h') * 60 + val('est-concluir-m');
-    const questoes = val('est-concluir-q');
-    const acertos = Math.min(val('est-concluir-c'), questoes);
+    // Divisão por assunto: os totais sobem se a soma dos assuntos passar deles; o resto fica sem subtópico
+    const assuntos = lerAssuntosConclusao();
+    const somaAss = k => assuntos.reduce((a, x) => a + x[k], 0);
+    const minutos = Math.max(val('est-concluir-h') * 60 + val('est-concluir-m'), somaAss('minutos'));
+    const questoes = Math.max(val('est-concluir-q'), somaAss('questoes'));
+    const acertos = Math.min(Math.max(val('est-concluir-c'), somaAss('acertos')), questoes);
     const tecLink = document.getElementById('est-concluir-tec').value.trim();
     const pct = questoes > 0 ? Math.round((acertos / questoes) * 100) : null;
 
@@ -1194,7 +1235,8 @@
       id: novoId('s'), date: hoje(), timestamp: new Date().toISOString(),
       editalId: e.id, discId: d.id, topicId: t.id, discipline: d.nome, topic: t.nome,
       timeMinutes: minutos, questionsTotal: questoes, questionsCorrect: acertos,
-      tipo: ctx.tipo === 'meta' ? 'estudo' : item.tipo, metaDone: ctx.tipo === 'meta' && !parcial && !questoesMeta
+      tipo: ctx.tipo === 'meta' ? 'estudo' : item.tipo, metaDone: ctx.tipo === 'meta' && !parcial && !questoesMeta,
+      ...(assuntos.length ? { assuntos } : {})
     };
     studyData.push(sessao);
     saveData();
@@ -2183,6 +2225,8 @@
           </table>
         </div>
       </div>
+
+      ${window.estSub ? window.estSub.htmlDesempenho() : ''}
 
       <div class="est-plano-card">
         <h3 class="est-plano-card-title">🎯 Pontos fracos <span class="est-plano-sub">(tópicos com 10+ questões e acerto abaixo de ${ACERTO_BOM}%)</span></h3>

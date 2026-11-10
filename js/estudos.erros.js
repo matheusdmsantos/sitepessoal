@@ -158,6 +158,7 @@
   }
 
   const nomeDisc = er => (acharDisc(er.disciplina_id) || {}).d?.nome || er.disciplina_nome || 'Sem disciplina';
+  const nomeSub = er => { const s = window.estSub && er.topico_id && window.estSub.doRegistro(er.topico_id, er.subtopico_id); return s ? s.nome : ''; };
   const nomeTopico = er => (er.topico_id && (acharTopico(er.topico_id) || {}).t?.nome) || er.topico_nome || '';
 
   // Assunto de um edital desativado que não veio para o ativo (estudos.aproveitar.js)
@@ -323,6 +324,19 @@
     sel.innerHTML = '<option value="">Sem tópico</option>' +
       tops.map(t => `<option value="${esc(t.id)}">${esc(t.nome.length > 90 ? t.nome.slice(0, 89) + '…' : t.nome)}</option>`).join('');
     sel.value = tops.some(t => t.id === tId) ? tId : '';
+    preencherSubs('');
+  }
+
+  /* Assunto (subtópico) do item escolhido: só aparece se o item tem assuntos e a coluna
+     erros.subtopico_id existe (supabase/subtopicos.sql) */
+  function preencherSubs(subId) {
+    const sub = window.estSub;
+    const tId = $('est-erro-topico').value;
+    const lista = sub && sub.temErros() && tId ? sub.doTopico(tId) : [];
+    $('est-erro-sub-campo').hidden = !lista.length;
+    $('est-erro-sub').innerHTML = '<option value="">Sem assunto</option>' +
+      lista.map(s => `<option value="${esc(s.id)}">${esc(s.nome)}</option>`).join('');
+    $('est-erro-sub').value = lista.some(s => s.id === subId) ? subId : '';
   }
 
   function renderOpcoes() {
@@ -380,6 +394,7 @@
     $('est-erro-comentario-bloco').open = !!(er && er.comentario);
     $('est-erro-outro').hidden = !!er;
     preencherDiscs(edital, dId, tId);
+    preencherSubs(er ? er.subtopico_id : contexto.subtopicoId || (contexto.topicoId || contexto.discId ? '' : ultimo.subtopicoId));
     renderOpcoes();
     statusForm('');
     $('est-modal-erro').classList.add('active');
@@ -430,8 +445,11 @@
       enunciado,
       comentario: textoDe(comentario) || /<img/i.test(comentario) ? comentario : null
     });
+    // Sem a coluna no banco, o campo não vai (o upsert falharia)
+    if (window.estSub && window.estSub.temErros()) er.subtopico_id = (topicoId && $('est-erro-sub').value) || null;
+    const subtopicoId = er.subtopico_id || '';
     if (!existente) erros.push(er);
-    try { localStorage.setItem(ULTIMO, JSON.stringify({ discId, topicoId })); } catch { /* só conveniência */ }
+    try { localStorage.setItem(ULTIMO, JSON.stringify({ discId, topicoId, subtopicoId })); } catch { /* só conveniência */ }
     $('est-erro-salvar').disabled = true;
     const ok = await gravar(er);
     $('est-erro-salvar').disabled = false;
@@ -439,7 +457,7 @@
     if (!ok) return;
     if (outro) {
       toast('Erro registrado. Cole a próxima questão.');
-      abrirForm(null, { discId, topicoId });
+      abrirForm(null, { discId, topicoId, subtopicoId });
     } else {
       fecharForm();
       toast(existente ? 'Erro atualizado.' : 'Erro registrado. A primeira revisão é amanhã.');
@@ -574,7 +592,7 @@
         <header class="est-erro-cab">
           <div class="est-erro-ref">
             <span class="est-plano-tag">${esc(nomeDisc(er))}</span>
-            <span class="est-erro-topico">${esc(nomeTopico(er) || 'Sem tópico')}</span>
+            <span class="est-erro-topico">${esc(nomeTopico(er) || 'Sem tópico')}${nomeSub(er) ? ` <span class="est-erro-sub">› ${esc(nomeSub(er))}</span>` : ''}</span>
           </div>
           <div class="est-erro-selos">
             ${fora(er) ? '<span class="est-erro-selo fora" title="Assunto de um edital desativado que não está no edital ativo">Fora do edital</span>' : ''}
@@ -728,6 +746,16 @@
   /* =============================================
      AVISOS
   ============================================= */
+  async function mudarAssunto(ids, subId) {
+    for (const id of ids) {
+      const er = erros.find(x => x.id === id);
+      if (!er) continue;
+      er.subtopico_id = subId || null;
+      await gravar(er);
+    }
+    renderTudo();
+  }
+
   function toast(msg) {
     if (window.estPlano && window.estPlano.aviso) window.estPlano.aviso(msg);
   }
@@ -805,6 +833,7 @@
     document.querySelectorAll('input[name="est-erro-tipo"]').forEach(r =>
       r.addEventListener('change', () => { if (r.checked) mudarTipo(r.value); }));
     $('est-erro-disc').addEventListener('change', () => preencherTopicos(''));
+    $('est-erro-topico').addEventListener('change', () => preencherSubs(''));
     $('est-erro-tec').addEventListener('change', ev => detectar(ev.target.value));
     $('est-erro-form').addEventListener('submit', ev => { ev.preventDefault(); salvarForm(false); });
     $('est-erro-outro').addEventListener('click', () => salvarForm(true));
@@ -829,7 +858,7 @@
       const e = editalAtual();
       const d = c && e && e.disciplinas.find(x => x.nome === c.disc);
       const t = d && d.topicos.find(x => x.nome === c.topico);
-      novo({ discId: d ? d.id : '', topicoId: t ? t.id : '' });
+      novo({ discId: d ? d.id : '', topicoId: t ? t.id : '', subtopicoId: (c && c.subtopicoId) || '' });
     });
 
     carregar();
@@ -837,5 +866,6 @@
 
   document.addEventListener('DOMContentLoaded', init);
 
-  window.estErros = { novo, editar, revisar, revisarTopico, verTopico, blocoFicha, render, copiarPara, temErro };
+  window.estErros = { novo, editar, revisar, revisarTopico, verTopico, blocoFicha, render, copiarPara, temErro,
+    todos: () => erros, mudarAssunto };
 })();

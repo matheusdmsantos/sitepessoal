@@ -10,7 +10,7 @@
   <!-- Fontes do editor de resumo (js/estudos.sessao.js, FONTES): só são baixadas quando usadas -->
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Architects+Daughter&family=Caveat:wght@400;700&family=Dancing+Script:wght@400;700&family=Gloria+Hallelujah&family=Indie+Flower&family=Kalam:wght@400;700&family=Lato:ital,wght@0,400;0,700;1,400&family=Lora:ital,wght@0,400;0,700;1,400&family=Merriweather:ital,wght@0,400;0,700;1,400&family=Montserrat:ital,wght@0,400;0,700;1,400&family=Open+Sans:ital,wght@0,400;0,700;1,400&family=Patrick+Hand&family=Permanent+Marker&family=Roboto+Mono:wght@400;700&family=Roboto:ital,wght@0,400;0,700;1,400&family=Shadows+Into+Light&display=swap" />
   <link href="https://cdn.quilljs.com/1.3.6/quill.snow.css" rel="stylesheet">
-  <link rel="stylesheet" href="css/estudos.css?v=35" />
+  <link rel="stylesheet" href="css/estudos.css?v=36" />
 </head>
 <body class="page-estudos">
 
@@ -422,6 +422,13 @@
             <input type="number" id="est-concluir-c" class="est-form-input" min="0" placeholder="0" />
           </div>
         </div>
+        <!-- Divisão por assunto (estudos.plano.js + estudos.subtopicos.js) -->
+        <details id="est-concluir-assuntos" class="est-concluir-assuntos" hidden>
+          <summary>Dividir por assunto <small>(opcional)</small></summary>
+          <div class="est-concluir-ass est-concluir-ass-cab" aria-hidden="true"><span>Assunto</span><span>Min</span><span>Feitas</span><span>Certas</span></div>
+          <div id="est-concluir-assuntos-lista"></div>
+          <p class="est-concluir-ass-nota">O tempo vem do assunto selecionado na janela enquanto o cronômetro rodava. O que não for dividido fica no item como “sem subtópico”; os totais acima sobem se a soma passar deles.</p>
+        </details>
         <div class="est-form-group">
           <label class="est-form-label" for="est-concluir-tec">Link do Caderno do TEC (Opcional)</label>
           <input type="url" id="est-concluir-tec" class="est-form-input" placeholder="https://www.tecconcursos.com.br/..." />
@@ -798,15 +805,27 @@
         </div>
       </header>
       <div class="est-sessao-corpo">
-        <nav class="est-sessao-paginas" aria-label="Páginas do resumo">
+        <nav class="est-sessao-paginas" aria-label="Assuntos do resumo">
           <div class="est-sessao-paginas-topo">
-            <span>Páginas</span>
-            <button type="button" class="est-plano-btn sutil" id="est-sessao-nova-pag" title="Nova página">+ Página</button>
+            <span>Assuntos</span>
+            <button type="button" class="est-plano-btn sutil" id="est-sessao-nova-pag" title="Escolher ou criar um assunto (subtópico) deste item">+ Assunto</button>
+          </div>
+          <div class="est-sessao-novo" id="est-sessao-novo" hidden>
+            <input type="text" class="est-form-input" id="est-sessao-novo-nome" list="est-sessao-novo-lista" maxlength="80" autocomplete="off"
+              placeholder="Nome do assunto" aria-label="Nome do assunto" aria-describedby="est-sessao-novo-dica" />
+            <datalist id="est-sessao-novo-lista"></datalist>
+            <p class="est-sessao-novo-dica" id="est-sessao-novo-dica" role="status"></p>
+            <button type="button" class="est-plano-btn" id="est-sessao-novo-criar" hidden></button>
           </div>
           <ul id="est-sessao-lista"></ul>
         </nav>
         <div class="est-sessao-folha">
-          <input type="text" class="est-sessao-pag-titulo" id="est-sessao-pag-titulo" aria-label="Título da página" maxlength="80" />
+          <input type="text" class="est-sessao-pag-titulo" id="est-sessao-pag-titulo" aria-label="Nome do assunto" maxlength="80" />
+          <div class="est-sessao-tec-ass" id="est-sessao-tec-ass" hidden>
+            <label for="est-sessao-tec-link">Caderno TEC do assunto</label>
+            <input type="url" class="est-form-input" id="est-sessao-tec-link" placeholder="Cole o link do caderno de questões deste assunto" />
+            <a class="est-plano-btn sutil" id="est-sessao-tec-abrir" target="_blank" rel="noopener" hidden>Abrir ↗</a>
+          </div>
           <div id="est-sessao-editor"></div>
         </div>
       </div>
@@ -869,6 +888,10 @@
             <span class="est-form-label">Tópico do edital</span>
             <select id="est-erro-topico" class="est-form-select"></select>
           </label>
+          <label class="est-erro-campo" id="est-erro-sub-campo" hidden>
+            <span class="est-form-label">Assunto</span>
+            <select id="est-erro-sub" class="est-form-select"></select>
+          </label>
         </div>
         <p id="est-erro-form-status" class="est-erro-form-status" role="alert" hidden></p>
         <div class="est-importar-acoes">
@@ -915,15 +938,16 @@
     };
   </script>
   <script src="js/estudos.v5.js?v=10"></script>
-  <script src="js/estudos.plano.js?v=24"></script>
-  <script src="js/estudos.sessao.js?v=15"></script>
+  <script src="js/estudos.plano.js?v=25"></script>
+  <script src="js/estudos.sessao.js?v=16"></script>
+  <script src="js/estudos.subtopicos.js?v=1"></script>
   <script src="js/estudos.resumos.js?v=6"></script>
-  <script src="js/estudos.edital.js?v=8"></script>
+  <script src="js/estudos.edital.js?v=9"></script>
   <script src="js/estudos.importar.js?v=3"></script>
   <script src="js/estudos.incidencia.js?v=5"></script>
-  <script src="js/estudos.materiais.js?v=4"></script>
-  <script src="js/estudos.erros.js?v=3"></script>
+  <script src="js/estudos.materiais.js?v=5"></script>
+  <script src="js/estudos.erros.js?v=4"></script>
   <script src="js/estudos.aproveitar.js?v=2"></script>
-  <script src="js/estudos.tec.js?v=4"></script>
+  <script src="js/estudos.tec.js?v=5"></script>
 </body>
 </html>
