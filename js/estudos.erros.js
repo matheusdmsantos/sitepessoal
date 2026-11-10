@@ -32,7 +32,13 @@
   let erros = [];
   let remoto = false;
   let carregado = false;
-  let filtro = { disc: '', topico: '', motivo: '', situacao: '', busca: '' };
+  let filtro = { disc: '', topico: '', pdf: '', sub: '', motivo: '', situacao: '', busca: '' };
+  let temLog = false;   // coluna erros.revisoes_log (supabase/motor-interface.sql)
+  const CONFIANCA = [['certeza', 'Certeza'], ['duvida', 'Dúvida'], ['chute', 'Chute']];
+  /* Motor de estudos (edital por PDF): PDF e subtópico no lugar do tópico, confiança, agenda 2/7/21
+     (estMotorErros) e "Gabarito discutível" fora da agenda. Nos outros editais, tudo como antes. */
+  const modoMotor = () => !!(window.estMotorErros && window.estPlano && window.estPlano.editalAtivoPorPdf && window.estPlano.editalAtivoPorPdf());
+  const naAgenda = er => (modoMotor() ? window.estMotorErros.naAgenda(er) : !er.dominado_em);
   let abertos = new Set();
   let form = null;      // { id?, tipo, gabarito, resposta, motivo } enquanto o formulário está aberto
   let fila = null;      // { itens, i, respondida }
@@ -75,6 +81,7 @@
     const user = await window.authReady;
     if (!user) return;
     const { data, error } = await sb.from('erros').select('*');
+    temLog = !error && !(await sb.from('erros').select('revisoes_log').limit(1)).error;
     if (!error) {
       remoto = true;
       erros = data || [];
@@ -97,7 +104,7 @@
   async function gravar(e) {
     e.atualizado_em = new Date().toISOString();
     if (!remoto) { salvarLocal(); return true; }
-    const { dono, ...linha } = e;   // o banco preenche o dono
+    const { dono, _releitura, ...linha } = e;   // o banco preenche o dono; _releitura só vale na tela
     const { error } = await sb.from('erros').upsert(linha);
     if (error) {
       console.error('Erro ao salvar no caderno de erros:', error);
@@ -159,6 +166,7 @@
 
   const nomeDisc = er => (acharDisc(er.disciplina_id) || {}).d?.nome || er.disciplina_nome || 'Sem disciplina';
   const nomeSub = er => { const s = window.estSub && er.topico_id && window.estSub.doRegistro(er.topico_id, er.subtopico_id); return s ? s.nome : ''; };
+  const nomePdf = er => (er.material_id && window.estPlano && window.estPlano.pdfsDaDisciplina ? (window.estPlano.pdfsDaDisciplina(er.disciplina_id).find(p => p.id === er.material_id) || {}).nome : '') || '';
   const nomeTopico = er => (er.topico_id && (acharTopico(er.topico_id) || {}).t?.nome) || er.topico_nome || '';
 
   // Assunto de um edital desativado que não veio para o ativo (estudos.aproveitar.js)
@@ -177,6 +185,7 @@
   ============================================= */
   function situacao(er) {
     if (er.dominado_em) return 'dominada';
+    if (!naAgenda(er)) return 'fora';   // gabarito discutível: fica registrado, sem revisão
     if (er.proxima && er.proxima <= hoje()) return 'hoje';
     return 'revisao';
   }
@@ -189,6 +198,15 @@
     er.revisoes = (er.revisoes || 0) + 1;
     if (certo) er.acertos = (er.acertos || 0) + 1;
     er.ultima_revisao = hoje();
+    if (modoMotor()) {
+      // Agenda do motor (2, 7 e 21 dias; 3 acertos seguidos = dominado); o log guarda cada resposta
+      const passo = er.etapa || 0;
+      const { releitura, ...campos } = window.estMotorErros.responder(er, certo, hoje());
+      Object.assign(er, campos);
+      if (temLog) er.revisoes_log = [...(er.revisoes_log || []), { data: hoje(), acertou: certo, passo }];
+      er._releitura = releitura;
+      return certo;
+    }
     if (certo) {
       er.etapa = (er.etapa || 0) + 1;
       if (er.etapa >= INTERVALOS.length) { er.dominado_em = hoje(); er.proxima = null; }
@@ -320,6 +338,15 @@
   function preencherTopicos(tId) {
     const ref = acharDisc($('est-erro-disc').value);
     const sel = $('est-erro-topico');
+    if (modoMotor()) {
+      // PDF no lugar do tópico (o item do PDF continua gravado em topico_id)
+      const pdfs = ref ? window.estPlano.pdfsDaDisciplina(ref.d.id) : [];
+      sel.innerHTML = '<option value="">Escolha o PDF</option>' + pdfs.map(p => `<option value="${esc(p.id)}">${esc(p.nome)}</option>`).join('');
+      const alvo = pdfs.find(p => p.id === tId || p.item === tId);
+      sel.value = alvo ? alvo.id : '';
+      preencherSubs('');
+      return;
+    }
     const tops = ref ? ref.d.topicos : [];
     sel.innerHTML = '<option value="">Sem tópico</option>' +
       tops.map(t => `<option value="${esc(t.id)}">${esc(t.nome.length > 90 ? t.nome.slice(0, 89) + '…' : t.nome)}</option>`).join('');
@@ -332,9 +359,10 @@
   function preencherSubs(subId) {
     const sub = window.estSub;
     const tId = $('est-erro-topico').value;
-    const lista = sub && sub.temErros() && tId ? sub.doTopico(tId) : [];
+    const pdf = modoMotor() && tId ? window.estPlano.pdfsDaDisciplina($('est-erro-disc').value).find(p => p.id === tId) : null;
+    const lista = !sub || !sub.temErros() || !tId ? [] : pdf ? sub.doTopico(pdf.item).filter(s => s.material_id === pdf.id) : modoMotor() ? [] : sub.doTopico(tId);
     $('est-erro-sub-campo').hidden = !lista.length;
-    $('est-erro-sub').innerHTML = '<option value="">Sem assunto</option>' +
+    $('est-erro-sub').innerHTML = `<option value="">${modoMotor() ? 'Sem subtópico' : 'Sem assunto'}</option>` +
       lista.map(s => `<option value="${esc(s.id)}">${esc(s.nome)}</option>`).join('');
     $('est-erro-sub').value = lista.some(s => s.id === subId) ? subId : '';
   }
@@ -345,6 +373,8 @@
     $('est-erro-gabarito').innerHTML = grupo('gabarito', form.gabarito, false);
     $('est-erro-resposta').innerHTML = grupo('resposta', form.resposta, form.tipo === 'ce');
     document.querySelectorAll('input[name="est-erro-tipo"]').forEach(r => { r.checked = r.value === form.tipo; });
+    $('est-erro-conf-campo').hidden = !modoMotor();
+    $('est-erro-conf').innerHTML = CONFIANCA.map(([v, r]) => `<button type="button" class="est-erro-op ${form.confianca === v ? 'ativa' : ''}" data-campo="confianca" data-valor="${v}" aria-pressed="${form.confianca === v}">${r}</button>`).join('');
     $('est-erro-motivos').innerHTML = MOTIVOS.map(m => `
       <button type="button" class="est-erro-motivo ${form.motivo === m.id ? 'ativa' : ''}" data-campo="motivo" data-valor="${m.id}" aria-pressed="${form.motivo === m.id}">
         <span aria-hidden="true">${m.icone}</span> ${esc(m.nome)}
@@ -376,7 +406,8 @@
   function abrirForm(er, contexto) {
     const ultimo = lerUltimo();
     const dId = er ? er.disciplina_id : contexto.discId || ultimo.discId;
-    const tId = er ? er.topico_id : contexto.topicoId || (contexto.discId ? '' : ultimo.topicoId);
+    // No modo do motor, o campo de tópico é o PDF: o erro já registrado e o contexto podem vir com o PDF ou com o item dele
+    const tId = er ? er.material_id || er.topico_id : contexto.materialId || contexto.topicoId || (contexto.discId ? '' : ultimo.materialId || ultimo.topicoId);
     const edital = er ? (acharDisc(er.disciplina_id) || {}).e || editalAtual() : editalAtual();
     form = {
       id: er ? er.id : null,
@@ -384,8 +415,12 @@
       gabarito: er ? er.gabarito : null,
       resposta: er ? er.resposta : null,
       motivo: er ? er.motivo : null,
+      confianca: er ? er.confianca || null : null,
+      blocoId: er ? er.bloco_id || null : contexto.blocoId || null,   // erro registrado a partir de um bloco (calibração)
       edital
     };
+    $('est-erro-topico-rotulo').textContent = modoMotor() ? 'PDF' : 'Tópico do edital';
+    $('est-erro-sub-rotulo').textContent = modoMotor() ? 'Subtópico' : 'Assunto';
     $('est-erro-form-titulo').textContent = er ? 'Editar erro' : 'Registrar questão errada';
     $('est-erro-tec').value = er ? (er.link || er.tec_id || '') : '';
     $('est-erro-enunciado').innerHTML = er ? sanitizar(er.enunciado) : '';
@@ -416,7 +451,8 @@
     if (!form) return;
     const enunciado = sanitizar($('est-erro-enunciado').innerHTML);
     const discId = $('est-erro-disc').value;
-    const topicoId = $('est-erro-topico').value;
+    const pdf = modoMotor() && $('est-erro-topico').value ? window.estPlano.pdfsDaDisciplina(discId).find(p => p.id === $('est-erro-topico').value) : null;
+    const topicoId = pdf ? pdf.item : $('est-erro-topico').value;
     if (!textoDe(enunciado) && !/<img/i.test(enunciado)) return statusForm('Cole o enunciado da questão.');
     if (!form.gabarito) return statusForm('Marque o gabarito.');
     if (!discId) return statusForm('Escolha a disciplina.');
@@ -429,6 +465,13 @@
       id: novoId(), etapa: 0, proxima: somarDias(hoje(), INTERVALOS[0]),
       revisoes: 0, acertos: 0, ultima_revisao: null, dominado_em: null, criado_em: new Date().toISOString()
     };
+    if (modoMotor() && (!existente || existente.motivo !== form.motivo)) {
+      // Agenda do motor: 1ª revisão em 2 dias; "Gabarito discutível" fica fora (sem próxima revisão)
+      const ag = window.estMotorErros.agendar({ motivo: form.motivo, recorrencias: er.recorrencias || 0 }, hoje());
+      if (!existente || !existente.revisoes) Object.assign(er, ag || { proxima: null });
+      else if (!ag) er.proxima = null;
+      else if (!er.proxima && !er.dominado_em) er.proxima = ag.proxima;
+    }
     Object.assign(er, {
       edital_id: refD ? refD.e.id : null,
       disciplina_id: discId,
@@ -447,9 +490,15 @@
     });
     // Sem a coluna no banco, o campo não vai (o upsert falharia)
     if (window.estSub && window.estSub.temErros()) er.subtopico_id = (topicoId && $('est-erro-sub').value) || null;
+    if (modoMotor()) {
+      er.material_id = pdf ? pdf.id : null;
+      er.confianca = form.confianca || null;
+      if (temLog && form.blocoId) er.bloco_id = form.blocoId;
+    }
     const subtopicoId = er.subtopico_id || '';
+    const materialId = er.material_id || '';
     if (!existente) erros.push(er);
-    try { localStorage.setItem(ULTIMO, JSON.stringify({ discId, topicoId, subtopicoId })); } catch { /* só conveniência */ }
+    try { localStorage.setItem(ULTIMO, JSON.stringify({ discId, topicoId, subtopicoId, materialId })); } catch { /* só conveniência */ }
     $('est-erro-salvar').disabled = true;
     const ok = await gravar(er);
     $('est-erro-salvar').disabled = false;
@@ -457,16 +506,27 @@
     if (!ok) return;
     if (outro) {
       toast('Erro registrado. Cole a próxima questão.');
-      abrirForm(null, { discId, topicoId, subtopicoId });
+      abrirForm(null, { discId, topicoId, subtopicoId, materialId, blocoId: form.blocoId });
     } else {
       fecharForm();
-      toast(existente ? 'Erro atualizado.' : 'Erro registrado. A primeira revisão é amanhã.');
+      toast(existente ? 'Erro atualizado.' : !er.proxima ? 'Erro registrado. “Gabarito discutível” não entra nas revisões.'
+        : `Erro registrado. A primeira revisão é em ${fmtData(er.proxima)}.`);
     }
   }
 
   /* =============================================
      REVISÃO POR CARTÃO
   ============================================= */
+  // "Passo 2 de 3 (7 dias)" na agenda do motor
+  function passoTexto(er) {
+    const passos = window.estConfig.erros.passos, k = Math.min(er.etapa || 0, passos.length - 1);
+    return `Passo ${k + 1} de ${passos.length} (${passos[k]} dias)`;
+  }
+  function paginasDoSub(er) {
+    const s = er.subtopico_id && window.estSub && window.estSub.porId(er.subtopico_id);
+    return s && s.pag_ini ? ` (p. ${s.pag_ini}–${s.pag_fim})` : '';
+  }
+
   function revisar(ids) {
     const lista = ids ? ids.map(id => erros.find(e => e.id === id)).filter(Boolean) : pendentes(filtrados());
     if (!lista.length) { toast('Nenhuma questão para revisar agora.'); return; }
@@ -484,7 +544,7 @@
     $('est-erro-rev-conteudo').innerHTML = `
       <div class="est-erro-rev-topo">
         <div>
-          <span class="est-plano-tag">Revisão de erros · ${fila.i + 1} de ${fila.itens.length}</span>
+          <span class="est-plano-tag">Revisão de erros · ${fila.i + 1} de ${fila.itens.length}${modoMotor() && r === null ? ` · ${passoTexto(er)}` : ''}</span>
           <h2 class="est-modal-title" id="est-erro-rev-titulo">${esc(nomeTopico(er) || nomeDisc(er))}</h2>
           <span class="est-plano-sub">${esc(nomeDisc(er))}${er.tec_id ? ` · Questão ${esc(er.tec_id)} do TEC` : ''}${fora(er) ? ' · <span class="est-erro-selo fora">Fora do edital</span>' : ''}</span>
         </div>
@@ -502,8 +562,9 @@
       </div>` : `
       <div class="est-erro-resultado ${certo ? 'bom' : 'ruim'}" role="status">
         <strong>${certo ? '✓ Acertou!' : '✗ Errou de novo.'}</strong>
-        <span>${er.dominado_em ? 'Questão dominada: sai das revisões.' : `Próxima revisão em ${fmtData(er.proxima)}.`}</span>
+        <span>${er.dominado_em ? 'Questão dominada: sai das revisões.' : `${modoMotor() ? `${passoTexto(er)}. ` : ''}Volta em ${fmtData(er.proxima)}.`}</span>
       </div>
+      ${er._releitura ? `<p class="est-erro-regra"><span>Releitura</span>Errou de novo um erro de conteúdo: releia ${esc(nomeSub(er) || nomeTopico(er) || 'o assunto')}${paginasDoSub(er)} antes da próxima revisão.</p>` : ''}
       <dl class="est-erro-detalhes">
         <div><dt>Gabarito</dt><dd>${esc(rotuloOpcao(er.tipo, er.gabarito))}</dd></div>
         <div><dt>Quando errou</dt><dd>${esc(rotuloOpcao(er.tipo, er.resposta))}</dd></div>
@@ -519,10 +580,13 @@
 
   async function responder(v) {
     const er = fila.itens[fila.i];
+    delete er._releitura;
     fila.respondida = v;
     if (aplicarResposta(er, v)) fila.certos++;
     renderCartao();
-    await gravar(er);
+    const { _releitura, ...linha } = er;
+    await gravar(linha);
+    if (window.estPlano && window.estPlano.renderTudo) window.estPlano.renderTudo();
     renderTudo();
   }
 
@@ -551,8 +615,10 @@
     return doEdital().filter(er =>
       (!filtro.disc || er.disciplina_id === filtro.disc) &&
       (!filtro.topico || er.topico_id === filtro.topico) &&
+      (!filtro.pdf || er.material_id === filtro.pdf) &&
+      (!filtro.sub || er.subtopico_id === filtro.sub) &&
       (!filtro.motivo || er.motivo === filtro.motivo) &&
-      (!filtro.situacao || situacao(er) === filtro.situacao) &&
+      (!filtro.situacao || (filtro.situacao === 'aberto' ? !er.dominado_em : situacao(er) === filtro.situacao)) &&
       (!busca || `${textoDe(er.enunciado)} ${er.regra || ''} ${er.tec_id || ''} ${nomeTopico(er)}`.toLowerCase().includes(busca)));
   }
 
@@ -585,6 +651,7 @@
     const sit = situacao(er);
     const selo = sit === 'dominada' ? '<span class="est-erro-selo bom">✓ Dominada</span>'
       : sit === 'hoje' ? '<span class="est-erro-selo hoje">Revisar hoje</span>'
+      : sit === 'fora' ? '<span class="est-erro-selo" title="Gabarito discutível: fica registrado, sem revisão nem estatística">Sem revisão</span>'
       : `<span class="est-erro-selo">Revisão ${fmtData(er.proxima)}</span>`;
     const txt = textoDe(er.enunciado);
     return `
@@ -592,7 +659,7 @@
         <header class="est-erro-cab">
           <div class="est-erro-ref">
             <span class="est-plano-tag">${esc(nomeDisc(er))}</span>
-            <span class="est-erro-topico">${esc(nomeTopico(er) || 'Sem tópico')}${nomeSub(er) ? ` <span class="est-erro-sub">› ${esc(nomeSub(er))}</span>` : ''}</span>
+            <span class="est-erro-topico">${esc((modoMotor() && nomePdf(er)) || nomeTopico(er) || 'Sem tópico')}${nomeSub(er) ? ` <span class="est-erro-sub">› ${esc(nomeSub(er))}</span>` : ''}</span>
           </div>
           <div class="est-erro-selos">
             ${fora(er) ? '<span class="est-erro-selo fora" title="Assunto de um edital desativado que não está no edital ativo">Fora do edital</span>' : ''}
@@ -607,6 +674,8 @@
                <div><dt>Sua resposta</dt><dd>${esc(rotuloOpcao(er.tipo, er.resposta))}</dd></div>
                <div><dt>Revisões</dt><dd>${er.revisoes ? `${er.acertos || 0} de ${er.revisoes} certas` : 'nenhuma ainda'}</dd></div>
                <div><dt>Registrado</dt><dd>${fmtData(er.criado_em)}</dd></div>
+               ${er.confianca ? `<div><dt>Confiança</dt><dd>${esc((CONFIANCA.find(c => c[0] === er.confianca) || [])[1] || er.confianca)}</dd></div>` : ''}
+               ${er.recorrencias ? `<div><dt>Recorrências</dt><dd>${er.recorrencias}</dd></div>` : ''}
              </dl>
              ${er.regra ? `<p class="est-erro-regra"><span>Regra</span>${esc(er.regra)}</p>` : ''}
              ${er.comentario ? `<details class="est-erro-coment"><summary>Comentário</summary><div class="est-erro-enunciado-ver">${sanitizar(er.comentario)}</div></details>` : ''}`
@@ -621,6 +690,22 @@
           <button type="button" class="est-plano-btn sutil est-erro-excluir" data-acao="excluir" data-id="${er.id}">Excluir</button>
         </footer>
       </article>`;
+  }
+
+  // Filtros de PDF e subtópico (modo do motor), no lugar do de tópico
+  function filtrosPdf(refD, todos) {
+    const pdfs = refD ? window.estPlano.pdfsDaDisciplina(refD.d.id).filter(p => todos.some(x => x.material_id === p.id)) : [];
+    const pdf = pdfs.find(p => p.id === filtro.pdf);
+    const subs = pdf && window.estSub ? window.estSub.doTopico(pdf.item).filter(s => s.material_id === pdf.id && todos.some(x => x.subtopico_id === s.id)) : [];
+    return `
+        <select class="est-form-select" data-filtro="pdf" aria-label="PDF" ${refD ? '' : 'disabled'}>
+          <option value="">${refD ? 'Todos os PDFs' : 'Escolha a disciplina'}</option>
+          ${pdfs.map(p => `<option value="${esc(p.id)}" ${filtro.pdf === p.id ? 'selected' : ''}>${esc(p.nome)}</option>`).join('')}
+        </select>
+        <select class="est-form-select" data-filtro="sub" aria-label="Subtópico" ${pdf ? '' : 'disabled'}>
+          <option value="">${pdf ? 'Todos os subtópicos' : 'Escolha o PDF'}</option>
+          ${subs.map(s => `<option value="${esc(s.id)}" ${filtro.sub === s.id ? 'selected' : ''}>${esc(s.nome)}</option>`).join('')}
+        </select>`;
   }
 
   function render() {
@@ -641,7 +726,7 @@
       <div class="est-plano-topo">
         <div>
           <h2 class="est-plano-titulo">❌ Caderno de Erros</h2>
-          <span class="est-plano-sub">${e ? esc(e.titulo) + ' · ' : ''}cada questão errada volta em 1, 7, 30 e 90 dias até você acertar todas as vezes</span>
+          <span class="est-plano-sub">${e ? esc(e.titulo) + ' · ' : ''}${modoMotor() ? 'cada questão errada volta em 2, 7 e 21 dias; três acertos seguidos e ela está dominada' : 'cada questão errada volta em 1, 7, 30 e 90 dias até você acertar todas as vezes'}</span>
         </div>
         <div class="est-plano-topo-acoes">
           <button type="button" class="est-plano-btn" data-acao="novo">＋ Registrar erro</button>
@@ -665,16 +750,18 @@
           <option value="">Todas as disciplinas</option>
           ${discs.map(d => `<option value="${esc(d.id)}" ${filtro.disc === d.id ? 'selected' : ''}>${esc(d.nome)}</option>`).join('')}
         </select>
+        ${modoMotor() ? filtrosPdf(refD, todos) : `
         <select class="est-form-select" data-filtro="topico" aria-label="Tópico" ${refD ? '' : 'disabled'}>
           <option value="">${refD ? 'Todos os tópicos' : 'Escolha a disciplina'}</option>
           ${tops.map(t => `<option value="${esc(t.id)}" ${filtro.topico === t.id ? 'selected' : ''}>${esc(t.nome.length > 70 ? t.nome.slice(0, 69) + '…' : t.nome)}</option>`).join('')}
-        </select>
+        </select>`}
         <select class="est-form-select" data-filtro="motivo" aria-label="Motivo">
           <option value="">Todos os motivos</option>
           ${MOTIVOS.map(m => `<option value="${m.id}" ${filtro.motivo === m.id ? 'selected' : ''}>${m.icone} ${esc(m.nome)}</option>`).join('')}
         </select>
         <select class="est-form-select" data-filtro="situacao" aria-label="Situação">
           <option value="">Todas as situações</option>
+          <option value="aberto" ${filtro.situacao === 'aberto' ? 'selected' : ''}>Abertos (não dominados)</option>
           <option value="hoje" ${filtro.situacao === 'hoje' ? 'selected' : ''}>Para revisar hoje</option>
           <option value="revisao" ${filtro.situacao === 'revisao' ? 'selected' : ''}>Em revisão</option>
           <option value="dominada" ${filtro.situacao === 'dominada' ? 'selected' : ''}>Dominadas</option>
@@ -802,7 +889,8 @@
       const campo = ev.target.dataset.filtro;
       if (!campo) return;
       filtro[campo] = ev.target.value;
-      if (campo === 'disc') filtro.topico = '';
+      if (campo === 'disc') { filtro.topico = ''; filtro.pdf = ''; filtro.sub = ''; }
+      if (campo === 'pdf') filtro.sub = '';
       render();
     });
     let atraso = null;
@@ -866,6 +954,9 @@
 
   document.addEventListener('DOMContentLoaded', init);
 
-  window.estErros = { novo, editar, revisar, revisarTopico, verTopico, blocoFicha, render, copiarPara, temErro,
+  // C2: itens vencidos hoje no edital ativo (o card "Revisão de erros" do plano)
+  const vencidosHoje = () => (carregado ? pendentes(doEdital()) : []);
+
+  window.estErros = { novo, editar, revisar, revisarTopico, verTopico, blocoFicha, render, copiarPara, temErro, vencidosHoje, modoMotor,
     todos: () => erros, mudarAssunto };
 })();

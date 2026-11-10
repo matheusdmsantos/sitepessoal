@@ -1720,6 +1720,7 @@
           </div>
         </div>
         <div class="est-plano-lista">
+          ${cardRevisaoErros()}
           ${revHoje.map(itemRevisao).join('')}
           ${metasHoje.map(m => itemMeta(m, { compacto: true })).join('')}
           ${!revHoje.length && !metasHoje.length ? '<p class="est-plano-vazio">Nenhuma meta para hoje. Veja a semana em “Planejamento Semanal”.</p>' : ''}
@@ -1990,6 +1991,7 @@
                 <strong>${DIAS_CURTOS[diaDaSemana(dia)]} ${fmtData(dia)}</strong>
                 <span>${resumo}</span>
               </div>
+              ${dia === h ? cardRevisaoErros() : ''}
               ${doDia.map(m => itemMeta(m)).join('')}
               ${revDia.map(itemRevisao).join('')}
               ${!revDia.length && !doDia.length ? '<span class="est-plano-dia-vazio">—</span>' : ''}
@@ -2725,6 +2727,31 @@
   }
 
   // Tela do PDF: grava os campos do PDF em motor_pdfs (cria a linha se o PDF ainda não estiver no motor)
+  // Edital ativo é por PDF e o motor está ligado? (Caderno de Erros, cards do motor)
+  const editalAtivoPorPdf = () => temMotor && editalPorPdf(editalAtivo());
+  // PDFs do motor numa disciplina, na ordem de leitura: [{ id, nome, item }]
+  function pdfsDaDisciplina(discId) {
+    return motorPdfs.filter(x => x.disciplina_id === discId).sort((a, b) => a.ordem - b.ordem).map(x => {
+      const m = materiais.find(y => y.id === x.id) || {};
+      return { id: x.id, nome: m.nome || x.id, item: ((m.topicos || [])[0] || {}).topico_id || null };
+    });
+  }
+
+  /* C2: card da revisão de erros do dia (não é gravado: a meta de verdade vem do motor na publicação) */
+  function cardRevisaoErros() {
+    if (!editalAtivoPorPdf() || !window.estErros || !window.estMotorErros) return '';
+    const itens = window.estErros.vencidosHoje();
+    if (!itens.length) return '';
+    return `
+      <div class="est-plano-item tipo-questoes">
+        <div class="est-plano-item-info" role="button" tabindex="0" onclick="estErros.revisar()" onkeydown="if (event.key === 'Enter') estErros.revisar()">
+          <span class="est-plano-tag">Revisão de erros · ${itens.length} ite${itens.length === 1 ? 'm' : 'ns'} · ~${fmtMin(window.estMotorErros.minutos(itens.length))}</span>
+          <span class="est-plano-item-top">Refaça as questões que você errou, sem ver o gabarito. Três acertos seguidos e ela sai da fila.</span>
+        </div>
+        <div class="est-plano-item-acoes"><button class="est-plano-btn primario" onclick="estErros.revisar()">▶ Revisar</button></div>
+      </div>`;
+  }
+
   async function salvarMotorPdf(id, campos) {
     let x = motorPdfs.find(p => p.id === id);
     if (!x) {
@@ -2893,7 +2920,7 @@
     agendarReforco, mudarSemana, irParaSemana, alternarConfig, editalTrocado, projetar,
     incidenciaDaDisciplina, pctIncidencia, salvarIncidencias,
     materiaisDaDisciplina, paginasDoTopico, prioridadeDosTopicos, salvarMateriais, ordemPdfDe, porPdfDe, criarEditalPorPdf, juntarTopicos,
-    migrarMotor, verSemanaDoMotor, converterAgendaErros, salvarMotorPdf, itensDoEditalDeOrigem, temMotor: () => temMotor, motorPdfs: () => motorPdfs,
+    migrarMotor, verSemanaDoMotor, converterAgendaErros, salvarMotorPdf, itensDoEditalDeOrigem, editalAtivoPorPdf, pdfsDaDisciplina, temMotor: () => temMotor, motorPdfs: () => motorPdfs,
     renderTudo, fmtMin, aviso, revisoesDoTopico, paginasLidas, aproveitarDe
   };
 })();
