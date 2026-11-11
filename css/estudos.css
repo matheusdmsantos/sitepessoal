@@ -1960,7 +1960,7 @@ html, body {
 }
 .est-mat-item.solto { border-color: rgba(251, 191, 36, 0.45); background: var(--est-amber-dim); }
 .est-mat-item > .est-plano-btn { align-self: flex-start; }
-.est-mat-cab { display: grid; grid-template-columns: 1fr auto auto; gap: 8px; align-items: center; }
+.est-mat-cab { display: grid; grid-template-columns: minmax(0, 1fr); grid-auto-flow: column; grid-auto-columns: auto; gap: 8px; align-items: center; }
 .est-mat-nome { font-size: 0.82rem; color: var(--est-silver-bright); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .est-mat-link { display: grid; grid-template-columns: 1fr auto auto; gap: 6px; align-items: center; }
 .est-mat-link .est-form-select { padding: 6px 32px 6px 10px; font-size: 0.78rem; min-width: 0; }
