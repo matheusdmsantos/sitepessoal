@@ -22,28 +22,39 @@
     return ov;
   }
 
-  function abrir(pdfId) {
+  // PDF, disciplina, item e subtópicos no formato da tela (null se o PDF não está na lista; item null se não tem item próprio)
+  function dadosDoPdf(pdfId) {
     const P = window.estPlano;
-    if (!P.temMotor()) { aviso('A tela do PDF precisa do supabase/motor.sql rodado no Supabase.'); return; }
-    const motor = P.motorPdfs().find(x => x.id === pdfId);
     let pdf = null, disc = null, edital = null;
     for (const e of editaisData) for (const d of e.disciplinas) {
       const m = P.materiaisDaDisciplina(d.id).find(x => x.id === pdfId);
       if (m) { pdf = m; disc = d; edital = e; }
     }
-    if (!pdf) { aviso('Salve a lista de PDFs antes de abrir a tela do PDF.'); return; }
+    if (!pdf) return null;
     const item = ((pdf.topicos || []).find(l => disc.topicos.some(t => t.id === l.topico_id)) || {}).topico_id;
-    if (!item) { aviso('Este PDF não tem item próprio. Use o edital por PDF.'); return; }
+    if (!item) return { pdf, disc, edital, item: null, linhas: [] };
     const subs = window.estSub.doTopico(item).filter(s => (s.material_id ? s.material_id === pdfId : (s.pdfs || []).some(p => p.material_id === pdfId) || !(s.pdfs || []).length));
-    ctx = {
-      pdf, disc, edital, item, motor: motor || {},
-      pdfTec: (motor && motor.tec_link) || '', pdfPeso: motor && motor.peso != null ? motor.peso : '',
-      itensEdital: P.itensDoEditalDeOrigem(edital, disc.nome),
+    return {
+      pdf, disc, edital, item,
       linhas: subs.map(s => {
         const p = (s.pdfs || []).find(x => x.material_id === pdfId) || {};
         return { id: s.id, nomeAntigo: s.nome, nome: s.nome, pag_ini: s.pag_ini || p.de || null, pag_fim: s.pag_fim || p.ate || null,
           tec_link: s.tec_link || '', peso: s.peso != null ? s.peso : '', nao_cai: !!s.nao_cai, itens_edital: s.itens_edital || [] };
-      }).sort((a, b) => (a.pag_ini || 1e9) - (b.pag_ini || 1e9)),
+      }).sort((x, y) => (x.pag_ini || 1e9) - (y.pag_ini || 1e9))
+    };
+  }
+
+  function abrir(pdfId) {
+    const P = window.estPlano;
+    if (!P.temMotor()) { aviso('A tela do PDF precisa do supabase/motor.sql rodado no Supabase.'); return; }
+    const d = dadosDoPdf(pdfId);
+    if (!d) { aviso('Salve a lista de PDFs antes de abrir a tela do PDF.'); return; }
+    if (!d.item) { aviso('Este PDF não tem item próprio. Use o edital por PDF.'); return; }
+    const motor = P.motorPdfs().find(x => x.id === pdfId);
+    ctx = {
+      ...d, motor: motor || {},
+      pdfTec: (motor && motor.tec_link) || '', pdfPeso: motor && motor.peso != null ? motor.peso : '',
+      itensEdital: P.itensDoEditalDeOrigem(d.edital, d.disc.nome),
       previa: null, itensAberto: null
     };
     render();
@@ -125,34 +136,45 @@
     ligar();
   }
 
-  /* Prévia do agrupamento: só os grupos com mais de um subtópico; cada um pode ser desmarcado e renomeado */
+  /* =============================================
+     AGRUPAR SUBTÓPICOS PEQUENOS: num PDF (tela do PDF) ou em todos os PDFs do edital ativo (lote)
+  ============================================= */
+  const reduzidos = gs => gs.reduce((a, g) => a + g.membros.length - 1, 0);
+  const textoMinimos = temTec => {
+    const cfg = window.estConfig.agrupar;
+    return `Pequeno = menos de ${cfg.minPaginas} páginas${temTec ? ` ou menos de ${cfg.minQuestoes} questões no TEC (planilha de incidência da disciplina)` : ' (sem planilha de incidência do TEC, conta só as páginas)'}.`;
+  };
+
+  // Card de um grupo; chave = "k" na tela, "p.k" no lote
+  function htmlGrupo(g, chave, tec) {
+    const assuntos = g.membros.flatMap(m => (tec[m.id] || { assuntos: [] }).assuntos.filter(a => !a.dentroDoPai));
+    const links = [...new Set(g.membros.map(m => m.tec_link).filter(Boolean))];
+    return `<div class="est-pdf-grupo ${g.usar ? '' : 'desligado'}">
+      <label class="est-pdf-grupo-cab"><input type="checkbox" data-g="${chave}" data-gk="usar" ${g.usar ? 'checked' : ''} /> Juntar
+        <input class="est-form-input" data-g="${chave}" data-gk="nome" value="${esc(g.nome)}" aria-label="Nome do grupo" /></label>
+      <p class="est-pdf-sub">${g.membros.map((m, j) => (j ? ` <button type="button" class="est-ed-link" data-a="cortar" data-i="${chave}|${j}" title="Separar o grupo antes de “${esc(m.nome)}”" aria-label="Separar o grupo antes de ${esc(m.nome)}">✂</button> ` : '') +
+        `${esc(m.nome)} <small>(p. ${m.pag_ini}${m.pag_fim > m.pag_ini ? '–' + m.pag_fim : ''})</small>`).join('')}</p>
+      <p class="est-pdf-sub">📄 p. ${g.pag_ini}–${g.pag_fim} (${g.paginas} p.)${g.questoes != null ? ` · ${g.questoes} questões no TEC` : ''}
+        ${links.length > 1 ? ` · ⚠ ${links.length} cadernos diferentes: o link sai, crie um caderno novo` : links.length ? ' · fica com o caderno que já existe' : ''}</p>
+      ${assuntos.length ? `<p class="est-pdf-sub">Assuntos do TEC para o caderno: ${assuntos.map(a => `${esc(a.nome)} <small>(${a.questoes})</small>`).join('; ')}</p>` : ''}
+    </div>`;
+  }
+
+  // Prévia na tela do PDF: só os grupos com mais de um subtópico
   function htmlGrupos() {
-    const G = ctx.grupos, cfg = window.estConfig.agrupar;
+    const G = ctx.grupos;
     const juntos = G.lista.filter(g => g.membros.length > 1);
     if (!juntos.length) {
-      return `<div class="est-pdf-grupos"><p class="est-pdf-sub">Nenhum subtópico pequeno para juntar (menos de ${cfg.minPaginas} páginas${G.temTec ? ` ou ${cfg.minQuestoes} questões no TEC` : ''}).</p>
+      return `<div class="est-pdf-grupos"><p class="est-pdf-sub">Nenhum subtópico pequeno para juntar. ${textoMinimos(G.temTec)}</p>
         <button type="button" class="est-plano-btn" data-a="agruparFechar">Fechar</button></div>`;
     }
     const marcados = juntos.filter(g => g.usar);
+    const n = ctx.linhas.filter(l => !l.apagar).length;
     return `
       <div class="est-pdf-grupos">
-        <h3 class="est-pdf-h3">Agrupar subtópicos pequenos <small>(${ctx.linhas.filter(l => !l.apagar).length} → ${ctx.linhas.filter(l => !l.apagar).length - marcados.reduce((a, g) => a + g.membros.length - 1, 0)})</small></h3>
-        <p class="est-pdf-sub">Pequeno = menos de ${cfg.minPaginas} páginas${G.temTec ? ` ou menos de ${cfg.minQuestoes} questões no TEC (planilha de incidência da disciplina)` : ' (sem planilha de incidência do TEC desta disciplina, conta só as páginas)'}.
-          Cada grupo fica com no máximo ${G.maxPaginas} páginas (uma meta de leitura). Resumo, erros, tempo e questões vão para o grupo. Mude os mínimos em ⚙ Parâmetros.</p>
-        ${juntos.map(g => {
-          const k = G.lista.indexOf(g);
-          const assuntos = g.membros.flatMap(m => (G.tec[m.id] || { assuntos: [] }).assuntos.filter(a => !a.dentroDoPai));
-          const links = [...new Set(g.membros.map(m => m.tec_link).filter(Boolean))];
-          return `<div class="est-pdf-grupo ${g.usar ? '' : 'desligado'}">
-            <label class="est-pdf-grupo-cab"><input type="checkbox" data-g="${k}" data-gk="usar" ${g.usar ? 'checked' : ''} /> Juntar
-              <input class="est-form-input" data-g="${k}" data-gk="nome" value="${esc(g.nome)}" aria-label="Nome do grupo" /></label>
-            <p class="est-pdf-sub">${g.membros.map((m, j) => (j ? ` <button type="button" class="est-ed-link" data-a="cortar" data-i="${k}:${j}" title="Separar o grupo antes de “${esc(m.nome)}”" aria-label="Separar o grupo antes de ${esc(m.nome)}">✂</button> ` : '') +
-              `${esc(m.nome)} <small>(p. ${m.pag_ini}${m.pag_fim > m.pag_ini ? '–' + m.pag_fim : ''})</small>`).join('')}</p>
-            <p class="est-pdf-sub">📄 p. ${g.pag_ini}–${g.pag_fim} (${g.paginas} p.)${g.questoes != null ? ` · ${g.questoes} questões no TEC` : ''}
-              ${links.length > 1 ? ` · ⚠ ${links.length} cadernos diferentes: o link sai, crie um caderno novo` : links.length ? ' · fica com o caderno que já existe' : ''}</p>
-            ${assuntos.length ? `<p class="est-pdf-sub">Assuntos do TEC para o caderno: ${assuntos.map(a => `${esc(a.nome)} <small>(${a.questoes})</small>`).join('; ')}</p>` : ''}
-          </div>`;
-        }).join('')}
+        <h3 class="est-pdf-h3">Agrupar subtópicos pequenos <small>(${n} → ${n - reduzidos(marcados)})</small></h3>
+        <p class="est-pdf-sub">${textoMinimos(G.temTec)} Cada grupo fica com no máximo ${G.maxPaginas} páginas (uma meta de leitura). Resumo, erros, tempo e questões vão para o grupo. Mude os mínimos em ⚙ Parâmetros.</p>
+        ${juntos.map(g => htmlGrupo(g, G.lista.indexOf(g), G.tec)).join('')}
         <div class="est-ed-ficha-linha">
           <button type="button" class="est-plano-btn sutil" data-a="agruparFechar">Cancelar</button>
           <button type="button" class="est-plano-btn primario" data-a="agruparAplicar" ${marcados.length ? '' : 'disabled'}>Juntar ${marcados.length} grupo(s)</button>
@@ -162,9 +184,9 @@
   }
 
   // Árvore de assuntos do TEC da disciplina (guardada ao salvar a incidência; o edital por PDF usa a da disciplina de mesmo nome)
-  function arvoreTec() {
+  function arvoreTec(disc) {
     const nome = s => String(s).trim().toLowerCase();
-    const ids = [ctx.disc.id, ...editaisData.flatMap(e => e.disciplinas).filter(d => d.id !== ctx.disc.id && nome(d.nome) === nome(ctx.disc.nome)).map(d => d.id)];
+    const ids = [disc.id, ...editaisData.flatMap(e => e.disciplinas).filter(d => d.id !== disc.id && nome(d.nome) === nome(disc.nome)).map(d => d.id)];
     for (const id of ids) {
       try { const a = JSON.parse(localStorage.getItem('est_tec_arvore_' + id)); if (Array.isArray(a) && a.length) return a; } catch { /* sem armazenamento */ }
     }
@@ -178,39 +200,61 @@
       usar: true, nome: C().nomeDoGrupo(membros.map(m => m.nome.trim())) };
   }
 
+  function calcularGrupos(disc, linhas) {
+    const cfgL = window.estConfig.leitura, cfg = window.estConfig.agrupar;
+    const arvore = arvoreTec(disc);
+    const tec = arvore.length && window.estIncidencia ? C().casarTec(linhas, arvore, window.estIncidencia.termos) : {};
+    const maxPaginas = Math.floor(cfgL.maxMin * cfgL.paginasPorHora / 60);
+    const lista = C().agrupar(linhas.map(l => ({ ...l, linha: l, questoes: tec[l.id] ? tec[l.id].questoes : null })),   // sem assunto do TEC ligado: só as páginas contam
+      { minPaginas: cfg.minPaginas, minQuestoes: cfg.minQuestoes, maxPaginas });
+    return { lista: lista.map(g => grupoDe(g.membros.map(m => m.linha), tec)), tec, temTec: !!arvore.length, maxPaginas };
+  }
+
   function montarGrupos() {
     if (ctx.linhas.some(l => !l.apagar && !l.id)) { aviso('Salve os subtópicos novos antes de agrupar.'); return; }
-    const v = C().validar(ctx.linhas.filter(l => !l.apagar), ctx.pdf.paginas);
-    if (v.erros.length) { aviso('Corrija os problemas da lista antes de agrupar.'); return; }
-    const cfgL = window.estConfig.leitura, cfg = window.estConfig.agrupar;
-    const vivas = ctx.linhas.filter(l => !l.apagar);
-    const arvore = arvoreTec();
-    const tec = arvore.length && window.estIncidencia ? C().casarTec(vivas, arvore, window.estIncidencia.termos) : {};
-    const maxPaginas = Math.floor(cfgL.maxMin * cfgL.paginasPorHora / 60);
-    const lista = C().agrupar(vivas.map(l => ({ ...l, linha: l, questoes: tec[l.id] ? tec[l.id].questoes : null })),   // sem assunto do TEC ligado: só as páginas contam
-      { minPaginas: cfg.minPaginas, minQuestoes: cfg.minQuestoes, maxPaginas });
-    ctx.grupos = { lista: lista.map(g => grupoDe(g.membros.map(m => m.linha), tec)), tec, temTec: !!arvore.length, maxPaginas };
+    if (C().validar(ctx.linhas.filter(l => !l.apagar), ctx.pdf.paginas).erros.length) { aviso('Corrija os problemas da lista antes de agrupar.'); return; }
+    ctx.grupos = calcularGrupos(ctx.disc, ctx.linhas.filter(l => !l.apagar));
     render();
   }
 
-  /* Junta cada grupo marcado no primeiro subtópico dele (estSub.mesclar leva resumo, erros, sessões, metas e
-     blocos), renomeia e acerta páginas, peso, itens do edital, caderno e "estudado em" */
-  async function aplicarGrupos() {
-    const S = window.estSub, pdfId = ctx.pdf.id;
-    const grupos = ctx.grupos.lista.filter(g => g.usar && g.membros.length > 1);
+  // Grupo da chave ("k" na tela, "p.k" no lote)
+  function grupoDaChave(chave) {
+    const [a, b] = String(chave).split('.');
+    return b === undefined ? { G: ctx.grupos, k: Number(a) } : { G: lote.itens[Number(a)].G, k: Number(b) };
+  }
+  // Campo do card mudou; devolve true se precisa redesenhar
+  function mudarGrupo(inp) {
+    const { G, k } = grupoDaChave(inp.dataset.g);
+    if (inp.dataset.gk === 'usar') { G.lista[k].usar = inp.checked; return true; }
+    G.lista[k].nome = inp.value;
+    return false;
+  }
+  function cortarGrupo(i) {
+    const [chave, j] = i.split('|');
+    const { G, k } = grupoDaChave(chave), g = G.lista[k];
+    G.lista.splice(k, 1, grupoDe(g.membros.slice(0, Number(j)), G.tec), grupoDe(g.membros.slice(Number(j)), G.tec));
+  }
+
+  // Nome vazio, repetido ou igual ao de um subtópico que fica de fora: devolve a mensagem
+  function problemaDosNomes(linhas, grupos) {
     const nomes = grupos.map(g => g.nome.trim().toLowerCase());
-    if (grupos.some(g => !g.nome.trim())) { aviso('Dê um nome a cada grupo.'); return; }
-    if (new Set(nomes).size < nomes.length) { aviso('Dois grupos estão com o mesmo nome.'); return; }
-    const fora = ctx.linhas.filter(l => !l.apagar && !grupos.some(g => g.membros.includes(l)));
+    if (nomes.some(n => !n)) return 'Dê um nome a cada grupo.';
+    if (new Set(nomes).size < nomes.length) return 'Dois grupos estão com o mesmo nome.';
+    const fora = linhas.filter(l => !grupos.some(g => g.membros.includes(l)));
     const conflito = grupos.find(g => fora.some(l => l.nome.trim().toLowerCase() === g.nome.trim().toLowerCase()));
-    if (conflito) { aviso(`Já existe um subtópico chamado “${conflito.nome}”. Escolha outro nome para o grupo.`); return; }
-    if (!(await window.customConfirm(`Juntar ${grupos.reduce((a, g) => a + g.membros.length, 0)} subtópicos em ${grupos.length} grupo(s)? Não tem volta.`))) return;
-    if (!(await salvar(true))) return;
+    return conflito ? `Já existe um subtópico chamado “${conflito.nome}”. Escolha outro nome para o grupo.` : '';
+  }
+
+  /* Junta cada grupo no primeiro subtópico dele (estSub.mesclar leva resumo, erros, sessões, metas e blocos),
+     renomeia e acerta páginas, peso, itens do edital, caderno e "estudado em". Devolve quantos grupos
+     ficaram sem caderno (tinham cadernos diferentes). */
+  async function juntarGrupos(pdfId, grupos) {
+    const S = window.estSub;
     let novosCadernos = 0;
     for (const g of grupos) {
-      const [alvo, ...resto] = g.membros.map(m => S.porId(m.id)).filter(Boolean);
-      if (!alvo) continue;
       const antes = g.membros.map(m => S.porId(m.id)).filter(Boolean);
+      const [alvo, ...resto] = antes;
+      if (!alvo) continue;
       const links = [...new Set(antes.map(s => s.tec_link).filter(Boolean))];
       const pesos = antes.map(s => s.peso).filter(p => p != null && p !== '');
       const estudados = antes.map(s => s.estudado_em);
@@ -227,10 +271,124 @@
         pdfs: [...outros, { material_id: pdfId, de: g.pag_ini, ate: g.pag_fim }]
       });
     }
+    return novosCadernos;
+  }
+
+  const avisoFeito = (grupos, novos) => `${grupos} grupo(s) criados.` +
+    (novos ? ` ${novos} grupo(s) tinham cadernos diferentes e ficaram sem link: crie um caderno novo com os assuntos do grupo.` : '');
+
+  async function aplicarGrupos() {
+    const grupos = ctx.grupos.lista.filter(g => g.usar && g.membros.length > 1);
+    const erro = problemaDosNomes(ctx.linhas.filter(l => !l.apagar), grupos);
+    if (erro) { aviso(erro); return; }
+    if (!(await window.customConfirm(`Juntar ${grupos.reduce((a, g) => a + g.membros.length, 0)} subtópicos em ${grupos.length} grupo(s)? Não tem volta.`))) return;
+    if (!(await salvar(true))) return;
+    const pdfId = ctx.pdf.id;
+    const novos = await juntarGrupos(pdfId, grupos);
     abrir(pdfId);
     if (window.estEdital) window.estEdital.render();
     window.estPlano.renderTudo();
-    aviso(`${grupos.length} grupo(s) criados.` + (novosCadernos ? ` ${novosCadernos} grupo(s) tinham cadernos diferentes e ficaram sem link: crie um caderno novo com os assuntos do grupo.` : ''));
+    aviso(avisoFeito(grupos.length, novos));
+  }
+
+  /* ---------- Lote: todos os PDFs do edital ativo de uma vez ---------- */
+  let lote = null;   // { edital, itens: [{ pdf, disc, item, linhas, G }], pulados: ['Disciplina · PDF'] }
+
+  function overlayLote() {
+    let ov = $('est-modal-pdf-lote');
+    if (ov) return ov;
+    ov = document.createElement('div');
+    ov.className = 'est-modal-overlay';
+    ov.id = 'est-modal-pdf-lote';
+    ov.innerHTML = '<div class="est-modal est-pdf-tela" role="dialog" aria-modal="true" aria-labelledby="est-lote-titulo"></div>';
+    ov.addEventListener('click', ev => { if (ev.target === ov) fecharLote(); });
+    document.body.appendChild(ov);
+    return ov;
+  }
+
+  function abrirLote() {
+    const P = window.estPlano;
+    if (!P.temMotor()) { aviso('Agrupar precisa do supabase/motor.sql rodado no Supabase.'); return; }
+    const edital = editaisData.find(e => e.id === currentEditalId);
+    if (!edital) return;
+    lote = { edital, itens: [], pulados: [] };
+    edital.disciplinas.forEach(d => P.materiaisDaDisciplina(d.id).forEach(x => {   // todos os PDFs da lista, na ordem dela
+      const dd = dadosDoPdf(x.id);
+      if (!dd || !dd.item || dd.linhas.length < 2) return;
+      if (C().validar(dd.linhas, dd.pdf.paginas).erros.length) { lote.pulados.push(`${d.nome} · ${dd.pdf.nome}`); return; }
+      const G = calcularGrupos(d, dd.linhas);
+      if (G.lista.some(g => g.membros.length > 1)) lote.itens.push({ ...dd, G });
+    }));
+    renderLote();
+    overlayLote().classList.add('active');
+  }
+
+  function fecharLote() {
+    const ov = $('est-modal-pdf-lote');
+    if (ov) ov.classList.remove('active');
+    lote = null;
+  }
+
+  function renderLote() {
+    const marcadosDe = it => it.G.lista.filter(g => g.usar && g.membros.length > 1);
+    const marcados = lote.itens.flatMap(marcadosDe);
+    const pdfs = lote.itens.filter(it => marcadosDe(it).length).length;
+    const temTec = lote.itens.some(it => it.G.temTec);
+    const maxPaginas = lote.itens.length ? lote.itens[0].G.maxPaginas : 0;
+    let discAnt = null;
+    const html = `
+      <div class="est-modal-header">
+        <div>
+          <h2 class="est-modal-title" id="est-lote-titulo">🧲 Agrupar subtópicos pequenos</h2>
+          <p class="est-pdf-sub">${esc(lote.edital.titulo)} · todos os PDFs</p>
+        </div>
+        <button type="button" class="est-modal-close" data-a="fechar" aria-label="Fechar">✕</button>
+      </div>
+      ${lote.itens.length ? `
+        <p class="est-pdf-sub">${textoMinimos(temTec)} Só junta subtópicos seguidos no PDF, até ${maxPaginas} páginas por grupo (uma meta de leitura). Resumo, erros, tempo e questões vão para o grupo. Mude os mínimos em ⚙ Parâmetros.</p>
+        ${lote.itens.map((it, p) => {
+          const cab = it.disc.id !== discAnt ? `<h3 class="est-pdf-h3">${esc(it.disc.nome)}</h3>` : '';
+          discAnt = it.disc.id;
+          const juntos = it.G.lista.filter(g => g.membros.length > 1);
+          return `${cab}<div class="est-pdf-grupos">
+            <p class="est-pdf-lote-pdf">📄 ${esc(it.pdf.nome)} <small>(${it.linhas.length} → ${it.linhas.length - reduzidos(marcadosDe(it))} subtópicos${it.G.temTec ? '' : ' · só páginas'})</small></p>
+            ${juntos.map(g => htmlGrupo(g, `${p}.${it.G.lista.indexOf(g)}`, it.G.tec)).join('')}
+          </div>`;
+        }).join('')}`
+        : `<p class="est-pdf-sub">Nenhum PDF tem subtópico pequeno para juntar. ${textoMinimos(temTec)}</p>`}
+      ${lote.pulados.length ? `<div class="est-pdf-avisos"><p>⚠ Ficaram de fora porque a lista de subtópicos tem problema (corrija na tela do PDF): ${lote.pulados.map(esc).join('; ')}</p></div>` : ''}
+      <div class="est-pdf-rodape">
+        <span class="est-pdf-sub">${marcados.length ? `${marcados.length} grupo(s) em ${pdfs} PDF(s). Não tem volta.` : ''}</span>
+        <button type="button" class="est-btn-cancelar" data-a="fechar">Cancelar</button>
+        <button type="button" class="est-btn-register" data-a="aplicar" ${marcados.length ? '' : 'disabled'}>Juntar ${marcados.length} grupo(s)</button>
+      </div>`;
+    const tela = overlayLote().querySelector('.est-pdf-tela');
+    tela.innerHTML = html;
+    tela.querySelectorAll('[data-gk]').forEach(inp => inp.addEventListener('change', () => { if (mudarGrupo(inp)) renderLote(); }));
+    tela.querySelectorAll('[data-a]').forEach(b => b.addEventListener('click', () => {
+      if (b.dataset.a === 'fechar') fecharLote();
+      else if (b.dataset.a === 'cortar') { cortarGrupo(b.dataset.i); renderLote(); }
+      else if (b.dataset.a === 'aplicar') aplicarLote(b);
+    }));
+  }
+
+  async function aplicarLote(botao) {
+    const fazer = lote.itens.map(it => ({ it, grupos: it.G.lista.filter(g => g.usar && g.membros.length > 1) })).filter(x => x.grupos.length);
+    for (const { it, grupos } of fazer) {
+      const erro = problemaDosNomes(it.linhas, grupos);
+      if (erro) { aviso(`${it.pdf.nome}: ${erro}`); return; }
+    }
+    const n = fazer.reduce((a, x) => a + x.grupos.length, 0);
+    const subs = fazer.reduce((a, x) => a + x.grupos.reduce((b, g) => b + g.membros.length, 0), 0);
+    if (!(await window.customConfirm(`Juntar ${subs} subtópicos em ${n} grupo(s), em ${fazer.length} PDF(s)? Não tem volta.`))) return;
+    botao.disabled = true;
+    botao.textContent = 'Juntando…';
+    let novos = 0;
+    for (const { it, grupos } of fazer) novos += await juntarGrupos(it.pdf.id, grupos);
+    fecharLote();
+    if (window.estEdital) window.estEdital.render();
+    window.estPlano.renderTudo();
+    aviso(avisoFeito(n, novos));
   }
 
   function htmlPrevia() {
@@ -263,10 +421,7 @@
       const l = ctx.linhas[cb.dataset.i];
       l.itens_edital = cb.checked ? [...new Set([...l.itens_edital, cb.dataset.item])] : l.itens_edital.filter(x => x !== cb.dataset.item);
     }));
-    tela.querySelectorAll('[data-gk]').forEach(inp => inp.addEventListener('change', () => {
-      const g = ctx.grupos.lista[inp.dataset.g];
-      if (inp.dataset.gk === 'usar') { g.usar = inp.checked; render(); } else g.nome = inp.value;
-    }));
+    tela.querySelectorAll('[data-gk]').forEach(inp => inp.addEventListener('change', () => { if (mudarGrupo(inp)) render(); }));
     $('est-pdf-colar').addEventListener('input', ev => { ctx.colado = ev.target.value; });
     $('est-pdf-arquivo').addEventListener('change', ev => sugerirPeloSumario(ev.target.files[0]));
     tela.querySelectorAll('[data-a]').forEach(b => b.addEventListener('click', () => acao(b.dataset.a, b.dataset.i)));
@@ -295,11 +450,7 @@
     } else if (a === 'sumario') $('est-pdf-arquivo').click();
     else if (a === 'agrupar') montarGrupos();
     else if (a === 'agruparFechar') { ctx.grupos = null; render(); }
-    else if (a === 'cortar') {
-      const [k, j] = i.split(':').map(Number), G = ctx.grupos, g = G.lista[k];
-      G.lista.splice(k, 1, grupoDe(g.membros.slice(0, j), G.tec), grupoDe(g.membros.slice(j), G.tec));
-      render();
-    }
+    else if (a === 'cortar') { cortarGrupo(i); render(); }
     else if (a === 'agruparAplicar') aplicarGrupos();
     else if (a === 'salvar') salvar();
   }
@@ -366,5 +517,5 @@
     return true;
   }
 
-  window.estPdf = { abrir, fechar };
+  window.estPdf = { abrir, fechar, abrirLote };
 })();

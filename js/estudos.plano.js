@@ -3063,7 +3063,7 @@
         <div class="est-plano-kpi"><span>Questões nesta semana</span><strong>${Math.round(fr * 100)}% <small>do tempo</small></strong>
           <small class="est-motor-kpi-sub">no plano: ${fmtMin(minQ)} de ${fmtMin(minT)}${atraso ? ` · +${Math.round(atraso * window.estConfig.semana.fracaoAtraso * 100)} pts por atraso` : ''}</small></div>
         <div class="est-plano-kpi"><span>Prova</span><strong>${prova ? fmtData(prova) : '—'}</strong>
-          <small class="est-motor-kpi-sub">${prova ? `${Math.max(0, diasEntre(hoje(), prova))} dias` : 'sem data'} · <button type="button" class="est-ed-link" onclick="estPlano.abrirParametros()">⚙ Parâmetros</button></small></div>
+          <small class="est-motor-kpi-sub">${prova ? `${Math.max(0, diasEntre(hoje(), prova))} dias` : 'sem data'} · <button type="button" class="est-ed-link" onclick="estPlano.abrirParametros()">⚙ Parâmetros</button> · <button type="button" class="est-ed-link" onclick="estPdf.abrirLote()" title="Junta os subtópicos pequenos de todos os PDFs com os vizinhos de página">🧲 Agrupar subtópicos</button></small></div>
       </div>
       ${avisos.length ? `<div class="est-pdf-avisos">${avisos.map(a => `<p>⚠ ${escapeHtml(a)}</p>`).join('')}</div>` : ''}
       <div class="est-plano-card est-motor-proj" id="est-motor-proj">
