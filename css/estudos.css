@@ -2819,6 +2819,11 @@ html, body {
 .est-pdf-rapido summary { cursor: pointer; font-size: 0.82rem; color: var(--est-silver-bright); }
 .est-pdf-rapido textarea { width: 100%; margin-top: 6px; font: 0.8rem/1.5 ui-monospace, monospace; }
 .est-pdf-previa { margin-top: 8px; }
+.est-pdf-grupos { display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; border: 1px solid var(--est-border); border-radius: 8px; }
+.est-pdf-grupo { padding: 8px 0; border-top: 1px solid var(--est-border); }
+.est-pdf-grupo.desligado { opacity: 0.5; }
+.est-pdf-grupo-cab { display: flex; align-items: center; gap: 8px; font-size: 0.8rem; color: var(--est-silver-bright); }
+.est-pdf-grupo-cab .est-form-input { flex: 1; min-width: 0; padding: 4px 8px; font-size: 0.82rem; }
 .est-pdf-rodape { display: flex; align-items: center; justify-content: flex-end; gap: 10px; flex-wrap: wrap; padding-top: 6px; border-top: 1px solid var(--est-border); }
 .est-pdf-rodape .est-pdf-sub { margin-right: auto; }
 @media (max-width: 700px) { .est-pdf-cab { grid-template-columns: 1fr; } }

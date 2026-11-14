@@ -202,6 +202,40 @@
     teste('texto sem sumário: nenhuma sugestão', !Cd.lerSumario(['Aula 01', 'Nesta aula veremos 3 temas', 'Bons estudos 2'], 60).length);
   }
 
+  /* ---------- Agrupar assuntos pequenos ---------- */
+  grupo('Agrupar assuntos pequenos (tela do PDF)');
+  {
+    const op = { minPaginas: 8, maxPaginas: 23, minQuestoes: 40 };
+    const s = (id, a, b, extra) => ({ id, nome: id, pag_ini: a, pag_fim: b, questoes: null, ...extra });
+    // O PDF do Presidente da República (páginas 3 a 47)
+    const pres = [s('Presidencialismo', 3, 3), s('Presidente', 4, 12), s('Atribuições', 13, 27), s('Vice', 28, 28), s('Ministros', 29, 29),
+      s('Prerrogativas', 30, 35), s('Responsabilidade', 36, 44), s('Conselhos', 45, 47)];
+    const g = Cd.agrupar(pres, op);
+    const txt = g.map(x => x.membros.map(m => m.id).join('+') + ` ${x.pag_ini}-${x.pag_fim}`).join(' | ');
+    teste('sem planilha: pequenos juntam com o vizinho; nenhum grupo passa de 23 páginas',
+      g.every(x => x.paginas <= 23) && g.every(x => x.paginas >= 8 || g.length === 1) && g.reduce((a, x) => a + x.membros.length, 0) === 8, txt);
+    teste('grupos seguem a ordem das páginas, sem buracos nem sobreposição', g.every((x, i) => !i || x.pag_ini === g[i - 1].pag_fim + 1), txt);
+    teste('grande sozinho fica como está', Cd.agrupar([s('A', 1, 20), s('B', 21, 40)], op).length === 2);
+    const nc = Cd.agrupar([s('A', 1, 3), s('B', 4, 5, { nao_cai: true }), s('C', 6, 8)], op);
+    teste('"não cai" fica sozinho e separa os vizinhos', nc.length === 3, nc.map(x => x.membros.map(m => m.id).join('+')).join(' | '));
+    const q = Cd.agrupar([s('A', 1, 10, { questoes: 12 }), s('B', 11, 20, { questoes: 15 }), s('C', 21, 30, { questoes: 80 })], op);
+    teste('com planilha: poucas questões também juntam (A+B, C sozinho)', q.length === 2 && q[0].membros.length === 2 && q[0].questoes === 27 && q[1].questoes === 80,
+      q.map(x => x.membros.map(m => m.id).join('+') + ' ' + x.questoes).join(' | '));
+    const ult = Cd.agrupar([s('A', 1, 15), s('B', 16, 17)], op);
+    teste('o último pequeno vai para o anterior', ult.length === 1 && ult[0].pag_fim === 17);
+    teste('nome sugerido: "A, B e C"', Cd.nomeDoGrupo(['A', 'B', 'C']) === 'A, B e C' && Cd.nomeDoGrupo(['A']) === 'A');
+
+    const T = window.estIncidencia.termos;
+    const subs = [{ id: 'p', nome: 'Presidente da República' }, { id: 'a', nome: 'Atribuições do Presidente da República' }, { id: 'm', nome: 'Ministros de Estado' }];
+    const arv = [{ nome: 'Poder Executivo', hier: '1', questoes: 500 }, { nome: 'Presidente da República', hier: '1.1', questoes: 90 },
+      { nome: 'Atribuições do Presidente', hier: '1.1.1', questoes: 40 }, { nome: 'Ministros de Estado', hier: '1.2', questoes: 12 },
+      { nome: 'Responsabilidade civil do Estado', hier: '2', questoes: 300 }];
+    const c = Cd.casarTec(subs, arv, T);
+    teste('TEC: assunto vai para o subtópico de nome igual', c.p && c.p.questoes === 90 && c.m && c.m.questoes === 12, JSON.stringify(c));
+    teste('TEC: empate vai para o mais específico ("Atribuições do Presidente")', c.a && c.a.questoes === 40);
+    teste('TEC: assunto que só divide uma palavra não entra ("Responsabilidade civil do Estado")', !Object.values(c).some(x => x.assuntos.some(y => /civil/.test(y.nome))));
+  }
+
   /* ---------- Interface, etapa 5: estatísticas (T2, T3) ---------- */
   grupo('Interface 5 — estatísticas (T2, T3)');
   const St = window.estStats;

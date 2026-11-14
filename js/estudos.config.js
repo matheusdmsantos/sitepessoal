@@ -33,6 +33,11 @@ window.estConfig = {
     pesoBloco: 10,           // peso do bloco = n / (n + pesoBloco)
     chute: { ce: 0.5, me: 0.2 }
   },
+  // Agrupar assuntos pequenos (tela do PDF): o grupo não passa de uma meta de leitura (leitura.maxMin)
+  agrupar: {
+    minPaginas: 8,           // assunto com menos páginas que isso junta com o vizinho
+    minQuestoes: 40          // ou com menos questões no TEC (pela planilha de incidência da disciplina)
+  },
   // F. Estatísticas (só leitura; não mudam o agendamento)
   estatisticas: {
     amostraMin: 30,          // F3: menos questões que isso no subtópico = "amostra insuficiente"

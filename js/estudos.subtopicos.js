@@ -367,6 +367,7 @@
     });
     const errosDe = errosDo(de.topico_id).filter(er => er.subtopico_id === deId).map(er => er.id);
     if (errosDe.length) await window.estErros.mudarAssunto(errosDe, paraId);
+    if (window.estPlano && window.estPlano.trocarSubtopico) await window.estPlano.trocarSubtopico(deId, paraId);
     await apagarLinha(deId);
     return true;
   }

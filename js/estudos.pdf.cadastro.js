@@ -91,5 +91,66 @@
     return r.map((x, k) => ({ nome: x.nome, pag_ini: x.pag_ini, pag_fim: r[k + 1] ? r[k + 1].pag_ini - 1 : paginas || x.pag_ini }));
   }
 
-  window.estCadastroPdf = { lerLinhas, validar, lerSumario, faixasTexto };
+  /* Questões do TEC de cada subtópico, pela árvore de assuntos da planilha de incidência da disciplina
+     (arvore = [{ nome, hier, materia, questoes }]). Um assunto vai para o subtópico cujo nome contém pelo
+     menos metade dos termos dele (empate: o subtópico de nome mais curto, o mais específico); filho de um
+     assunto que já foi para o mesmo subtópico não soma de novo (no TEC o pai já inclui o filho).
+     termos = estIncidencia.termos. Devolve { idDoSubtopico: { questoes, assuntos: [{ nome, materia, questoes }] } }.
+     shortcut: semelhança só por termos do nome; se errar muito, guardar a ligação feita à mão. */
+  function casarTec(subs, arvore, termos) {
+    const docs = subs.map(s => ({ id: s.id, t: new Set(termos(s.nome)) })).filter(d => d.t.size);
+    const r = {};
+    (arvore || []).forEach(a => {
+      const ta = termos(a.nome);
+      if (!ta.length) return;
+      let melhor = null, nota = 0;
+      docs.forEach(d => {
+        const n = ta.filter(p => d.t.has(p)).length / ta.length;
+        if (n >= 0.5 && (n > nota || (n === nota && d.t.size < melhor.t.size))) { melhor = d; nota = n; }
+      });
+      if (!melhor) return;
+      const x = r[melhor.id] = r[melhor.id] || { questoes: 0, assuntos: [] };
+      const pai = a.hier && x.assuntos.some(b => b.hier && a.hier.startsWith(b.hier + '.'));
+      x.assuntos.push({ nome: a.nome, materia: a.materia || '', hier: a.hier || '', questoes: Number(a.questoes) || 0, dentroDoPai: pai });
+      if (!pai) x.questoes += Number(a.questoes) || 0;
+    });
+    return r;
+  }
+
+  /* Junta subtópicos pequenos com os vizinhos de página. subs = [{ id, nome, pag_ini, pag_fim, nao_cai,
+     questoes (número ou null, sem planilha) }]. Pequeno = menos de minPaginas páginas ou, se há o número,
+     menos de minQuestoes questões. Um grupo não passa de maxPaginas (uma meta de leitura); "não cai"
+     fica sozinho e separa os vizinhos. Devolve [{ membros, pag_ini, pag_fim, paginas, questoes }], na
+     ordem das páginas (grupos de um só também). */
+  function agrupar(subs, { minPaginas, maxPaginas, minQuestoes }) {
+    const novo = s => ({ membros: [s], pag_ini: s.pag_ini, pag_fim: s.pag_fim, questoes: s.questoes == null ? null : Number(s.questoes), fixo: !!s.nao_cai });
+    const tam = g => g.pag_fim - g.pag_ini + 1;
+    const pequeno = g => !g.fixo && (tam(g) < minPaginas || (g.questoes != null && g.questoes < minQuestoes));
+    const cabe = (a, b) => !a.fixo && !b.fixo && Math.max(a.pag_fim, b.pag_fim) - Math.min(a.pag_ini, b.pag_ini) + 1 <= maxPaginas;
+    const juntar = (a, b) => {
+      a.membros.push(...b.membros);
+      a.pag_ini = Math.min(a.pag_ini, b.pag_ini);
+      a.pag_fim = Math.max(a.pag_fim, b.pag_fim);
+      a.questoes = a.questoes == null && b.questoes == null ? null : (a.questoes || 0) + (b.questoes || 0);
+    };
+    const g = [];
+    subs.filter(s => s.pag_ini > 0 && s.pag_fim >= s.pag_ini).sort((a, b) => a.pag_ini - b.pag_ini).forEach(s => {
+      const n = novo(s), ult = g[g.length - 1];
+      if (ult && pequeno(ult) && cabe(ult, n)) juntar(ult, n); else g.push(n);
+    });
+    // Pequeno que sobrou (o último, ou o que não coube com o próximo): vai para o vizinho menor que couber
+    for (let i = 0; i < g.length; i++) {
+      if (!pequeno(g[i])) continue;
+      const viz = [g[i - 1], g[i + 1]].filter(v => v && cabe(g[i], v)).sort((a, b) => tam(a) - tam(b))[0];
+      if (!viz) continue;
+      if (viz === g[i - 1]) { juntar(viz, g[i]); g.splice(i, 1); } else { juntar(g[i], viz); g.splice(i + 1, 1); }
+      i = Math.max(-1, i - 2);   // o grupo que cresceu pode ainda ser pequeno
+    }
+    return g.map(x => ({ membros: x.membros, pag_ini: x.pag_ini, pag_fim: x.pag_fim, paginas: tam(x), questoes: x.questoes }));
+  }
+
+  // Nome sugerido para um grupo: "A e B" ou "A, B e C"
+  const nomeDoGrupo = nomes => (nomes.length < 2 ? nomes[0] || '' : nomes.slice(0, -1).join(', ') + ' e ' + nomes[nomes.length - 1]);
+
+  window.estCadastroPdf = { lerLinhas, validar, lerSumario, faixasTexto, casarTec, agrupar, nomeDoGrupo };
 })();

@@ -2800,6 +2800,37 @@
       </div>`;
   }
 
+  /* Subtópico juntado em outro (estSub.mesclar): troca o id nas metas (alvos e subtopico_id) e nos itens
+     dos blocos do motor, somando os números de quem ficar repetido */
+  async function trocarSubtopico(deId, paraId) {
+    const juntar = lista => {
+      if (!Array.isArray(lista) || !lista.some(a => a && a.subtopico_id === deId)) return null;
+      const r = [];
+      lista.forEach(a => {
+        const b = a.subtopico_id === deId ? { ...a, subtopico_id: paraId } : { ...a };
+        const ja = b.subtopico_id && r.find(x => x.subtopico_id === b.subtopico_id);
+        if (!ja) r.push(b);
+        else Object.keys(b).forEach(k => { if (typeof b[k] === 'number') ja[k] = (ja[k] || 0) + b[k]; });
+      });
+      return r;
+    };
+    const ms = metas.filter(m => {
+      const n = juntar(m.alvos);
+      if (n) m.alvos = n;
+      const s = m.subtopico_id === deId;
+      if (s) m.subtopico_id = paraId;
+      return n || s;
+    });
+    if (ms.length) await gravar('metas', ms);
+    for (const b of motorBlocos) {
+      const n = juntar(b.itens);
+      if (!n) continue;
+      b.itens = n;
+      const { error } = await sb.from('motor_blocos').update({ itens: n }).eq('id', b.id);
+      if (error) console.error('Erro ao trocar o subtópico no bloco:', error);
+    }
+  }
+
   async function salvarMotorPdf(id, campos) {
     let x = motorPdfs.find(p => p.id === id);
     if (!x) {
@@ -3058,6 +3089,8 @@
       ['erros', 'minReleitura', 'Releitura (min)']]],
     ['Estatísticas', [['estatisticas', 'pontosAcerto', 'Pontos por acerto (nota líquida)'], ['estatisticas', 'pontosErro', 'Pontos por erro (nota líquida; negativo desconta)', 'neg'],
       ['estatisticas', 'amostraMin', 'Questões para o subtópico ter amostra suficiente']]],
+    ['Agrupar subtópicos pequenos (tela do PDF)', [['agrupar', 'minPaginas', 'Junta o subtópico com menos páginas que'],
+      ['agrupar', 'minQuestoes', 'Ou com menos questões no TEC que']]],
     ['Semana', [['semana', 'fracaoBase', 'Questões no início da leitura (%)', 'pct'], ['semana', 'fracaoRampa', 'Rampa até o fim da leitura (+%)', 'pct'],
       ['semana', 'fracaoAtraso', 'A mais por semana de atraso (%)', 'pct'], ['semana', 'fracaoMaxLeitura', 'Máximo enquanto há leitura (%)', 'pct'],
       ['semana', 'retaFinalSemanas', 'Reta final (semanas antes da prova)'], ['semana', 'semanasProjecao', 'Semanas na projeção']]]
@@ -3547,7 +3580,7 @@
     agendarReforco, mudarSemana, irParaSemana, alternarConfig, editalTrocado, projetar,
     incidenciaDaDisciplina, pctIncidencia, salvarIncidencias,
     materiaisDaDisciplina, paginasDoTopico, prioridadeDosTopicos, salvarMateriais, ordemPdfDe, porPdfDe, criarEditalPorPdf, juntarTopicos,
-    migrarMotor, verSemanaDoMotor, converterAgendaErros, salvarMotorPlano, planoDoEdital: id => planoDe(id), abrirParametros, projecaoMotor: e => { const p = planoDe(e.id); aplicarConfigMotor(p); const x = paginasDoMotor(e); return window.estMotorSemana.projetar({ ...x, minutosSemana: Math.round(Number(p.horas_semana) * 60), dataProva: motorDataProva(p), hoje: segundaDe(hoje()) }); }, criarReleitura, revisarErrosDaMeta, _recarregarMotor: carregarMotor, salvarMotorPdf, itensDoEditalDeOrigem, editalAtivoPorPdf, pdfsDaDisciplina, temMotor: () => temMotor, motorPdfs: () => motorPdfs,
+    migrarMotor, verSemanaDoMotor, converterAgendaErros, salvarMotorPlano, planoDoEdital: id => planoDe(id), abrirParametros, projecaoMotor: e => { const p = planoDe(e.id); aplicarConfigMotor(p); const x = paginasDoMotor(e); return window.estMotorSemana.projetar({ ...x, minutosSemana: Math.round(Number(p.horas_semana) * 60), dataProva: motorDataProva(p), hoje: segundaDe(hoje()) }); }, criarReleitura, revisarErrosDaMeta, _recarregarMotor: carregarMotor, salvarMotorPdf, trocarSubtopico, itensDoEditalDeOrigem, editalAtivoPorPdf, pdfsDaDisciplina, temMotor: () => temMotor, motorPdfs: () => motorPdfs,
     renderTudo, fmtMin, aviso, revisoesDoTopico, paginasLidas, aproveitarDe
   };
 })();
