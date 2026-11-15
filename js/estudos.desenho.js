@@ -30,6 +30,7 @@
   let atual = null, ponteiro = null, ponteiroDedo = false, mudou = false, resolver = null, editando = false;
   let apagando = false;            // traço atual é borracha (ferramenta ou botão da caneta)
   let botaoNoAr = false;           // botão da caneta apertado com ela pairando sobre a tela
+  let apagandoNoAr = false;        // borracha começada pela pressão (sem pointerdown), ver mover()
   // Qualquer botão além da ponta (S Pen: lateral; outras canetas: borracha) — buttons é bit a bit
   const botaoExtra = ev => ev.pointerType === 'pen' && ((ev.buttons & ~1) > 0 || ev.button > 0);
   let zoom = 1, pinca = null;
@@ -109,7 +110,8 @@
     // iPad: sem isto, a Apple Pencil seleciona texto ou abre a lupa
     cv.addEventListener('touchstart', ev => ev.preventDefault(), { passive: false });
     // Botão da caneta não abre o menu do navegador
-    cv.addEventListener('contextmenu', ev => ev.preventDefault());
+    // S Pen no Chrome/Android: apertar o botão no ar dispara contextmenu (e buttons=1 com pressão 0)
+    cv.addEventListener('contextmenu', ev => { ev.preventDefault(); botaoNoAr = true; });
     // shortcut: diagnóstico da caneta (🔎) para descobrir o que o botão da S Pen envia; tirar quando estiver ajustado
     const diag = [];
     const anotar = ev => {
@@ -449,8 +451,10 @@
       }
       return;
     }
-    if (ev.pointerId !== ponteiro) { if (ev.pointerType === 'pen') botaoNoAr = botaoExtra(ev); return; }
+    if (ev.pointerId !== ponteiro) { if (ev.pointerType === 'pen') canetaNoAr(ev); return; }
     ev.preventDefault();
+    // Borracha do botão da S Pen: levantar a ponta (pressão 0, sem pointerup) encerra
+    if (apagandoNoAr && !(ev.pressure > 0)) { encerrarNoAr(); return; }
     // Botão apertado no meio do traço: o que foi riscado fica e dali em diante apaga
     if (!apagando && !laco && !arrasto && botaoExtra(ev)) {
       if (atual) { guardarHistorico(); tracos.push(atual); atual = null; mudou = true; redesenharBase(); }
@@ -472,6 +476,30 @@
     if (atual || laco || arrasto) redesenhar();
   }
 
+  /* Caneta sem estar riscando. A S Pen (Chrome/Android) manda o botão lateral como buttons=1
+     com pressão 0, e ao encostar com ele apertado não vem pointerdown: a pressão só sobe.
+     Por isso a borracha começa aqui, quando a pressão aparece com o botão apertado. */
+  function canetaNoAr(ev) {
+    const pressionando = ev.pressure > 0;
+    if (botaoExtra(ev) && !((ev.buttons & 1) && pressionando)) botaoNoAr = true;
+    if ((ev.buttons & 1) && !pressionando) botaoNoAr = true;
+    if (!ev.buttons) botaoNoAr = false;
+    if (!botaoNoAr || !pressionando || !(ev.buttons & 1) || ponteiro !== null || ev.target !== cv) return;
+    ponteiro = ev.pointerId;
+    apagando = true;
+    apagandoNoAr = true;
+    guardarHistorico();
+    apagarEm(ponto(ev));
+    atualizarBarra();
+  }
+
+  function encerrarNoAr() {
+    ponteiro = null;
+    apagando = false;
+    apagandoNoAr = false;
+    atualizarBarra();
+  }
+
   function terminarArrasto() {
     arrasto = null;
     sel.box = caixaDe(sel.tracos);
@@ -485,6 +513,8 @@
     ponteiro = null;
     ponteiroDedo = false;
     apagando = false;
+    apagandoNoAr = false;
+    if (!ev.buttons) botaoNoAr = false;
     if (laco) { fecharLaco(); redesenhar(); }
     if (arrasto) terminarArrasto();
     if (atual) {
