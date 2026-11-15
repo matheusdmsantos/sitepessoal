@@ -882,6 +882,7 @@
      revisões dependem da data e continuam onde estão). A projeção se refaz sem elas. */
   async function adiantar() {
     const e = editalAtivo();
+    if (usarMotor(e)) return adiantarMotor(e);
     const projecao = e && planoDe(e.id) ? projetar(e) : null;
     const previstas = projecao ? projecao.semanas.flatMap(w => w.metas) : [];
     if (!previstas.length) { aviso('Não há metas previstas para adiantar: o edital já está todo no plano.'); return; }
@@ -932,6 +933,33 @@
     semanaVista = semana;
     renderTudo();
     aviso(novas.length ? `${novas.length} metas geradas para esta semana.` : 'Não há tópicos pendentes para gerar metas.');
+  }
+
+  /* Motor: terminou o dia, traz para hoje as metas do próximo dia com meta (gera a semana seguinte se
+     preciso). Só leitura e 1º contato de subtópico estudado antes de hoje: revisões e erros dependem da
+     data (o motor adia, nunca antecipa) e questões no mesmo dia do estudo seriam fixação. */
+  async function adiantarMotor(e) {
+    const h = hoje(), atual = segundaDe(h), prox = somarDias(atual, 7);
+    const antes = dia => dia && dia < h;
+    const podeMover = m => m.edital_id === e.id && !m.concluida && m.dia > h &&
+      (m.tipo_bloco === 'leitura' || m.tipo_bloco === 'releitura' || (m.tipo_bloco === 'primeiro' && (m.alvos || []).every(a => (a.subtopico_id
+        ? antes(((window.estSub && window.estSub.porId(a.subtopico_id)) || {}).estudado_em) : antes((motorDe(m.material_id) || {}).concluido_em)))));
+    let cand = metas.filter(podeMover);
+    if (!cand.length && !metasDaSemana(e.id, prox).length) {
+      const novas = await gerarSemanaMotor(e, prox);
+      metas.push(...novas);
+      await gravar('metas', novas);
+      cand = metas.filter(podeMover);
+    }
+    if (!cand.length) { aviso('Nada para adiantar: o que falta são revisões e questões, que dependem da data.'); return; }
+    const dia = cand.reduce((a, m) => (m.dia < a ? m.dia : a), cand[0].dia);
+    const ordem0 = metas.filter(m => m.edital_id === e.id && m.dia === h).length;
+    const mover = cand.filter(m => m.dia === dia).sort((a, b) => a.ordem - b.ordem);
+    mover.forEach((m, i) => Object.assign(m, { semana: atual, dia: h, ordem: ordem0 + i }));
+    await gravar('metas', mover);
+    semanaVista = atual;
+    renderTudo();
+    aviso(`${mover.length} meta${mover.length > 1 ? 's' : ''} de ${fmtData(dia)} adiantada${mover.length > 1 ? 's' : ''} para hoje.`);
   }
 
   /* Motor: terminou a semana antes, gera a seguinte já (na segunda, garantirSemanaMotor a encontra
@@ -1752,6 +1780,7 @@
           <div>
             <h2 class="est-activity-title">Plano de hoje</h2>
             <span class="est-plano-sub">${pendentes ? `${pendentes} atividade${pendentes > 1 ? 's' : ''} pendente${pendentes > 1 ? 's' : ''}` : 'Tudo feito por hoje 🎉'}</span>
+            ${!pendentes && usarMotor(e) ? `<button class="est-plano-btn" onclick="estPlano.adiantar()" title="Traz para hoje as metas de leitura do próximo dia">⏩ Adiantar o próximo dia</button>` : ''}
           </div>
           <div class="est-plano-semana-resumo">
             <span>Semana: <strong>${fmtMin(estudado)}</strong> de ${fmtMin(metaMin)} · <strong>${feitas}</strong>/${daSemana.length} metas</span>
@@ -1966,7 +1995,7 @@
           </div>
           ${plano ? `<button class="est-plano-btn" onclick="estPlano.alternarConfig()">⚙️ Plano</button>` : ''}
           ${plano && semanaVista === atual ? `<button class="est-plano-btn" onclick="estPlano.regerarSemana()" title="Refaz as metas não concluídas desta semana">↻ Regerar</button>` : ''}
-          ${plano && semanaVista >= atual && projecao && projecao.semanas.some(w => w.metas.length) ? `<button class="est-plano-btn" onclick="estPlano.adiantar()" title="Traz para hoje as metas do próximo dia previsto">⏩ Adiantar</button>` : ''}
+          ${plano && semanaVista >= atual && (motor || (projecao && projecao.semanas.some(w => w.metas.length))) ? `<button class="est-plano-btn" onclick="estPlano.adiantar()" title="Traz para hoje as metas do próximo dia previsto">⏩ Adiantar</button>` : ''}
           ${plano ? `<button class="est-plano-btn perigo" onclick="estPlano.reiniciarPlanejamento()" title="Apaga todas as metas e revisões deste edital e começa o plano de novo">⟲ Reiniciar do zero</button>` : ''}
         </div>
       </div>
