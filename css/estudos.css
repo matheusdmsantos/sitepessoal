@@ -2123,6 +2123,10 @@ html, body {
 .est-crono-fl-fase { font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.06em; font-weight: 600; color: var(--est-green); }
 .est-crono-fl-rotulo { font-size: 0.78rem; color: var(--est-silver); max-width: 340px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .est-crono-fl-tempo { font-size: 2.3rem; line-height: 1; font-variant-numeric: tabular-nums; color: var(--est-green); }
+.est-crono-flutuante.parado { border-color: var(--est-border); }
+.est-crono-flutuante.parado .est-crono-fl-tempo, .est-crono-flutuante.parado .est-crono-fl-fase { color: var(--est-silver); }
+#est-crono-flutuante button.fechar { padding: 7px 10px; border-color: transparent; background: none; color: var(--est-silver); }
+#est-crono-flutuante button[hidden] { display: none; }
 .est-crono-flutuante.pausa { border-color: rgba(251, 191, 36, 0.45); }
 .est-crono-flutuante.pausa .est-crono-fl-tempo, .est-crono-flutuante.pausa .est-crono-fl-fase { color: var(--est-amber); }
 #est-crono-flutuante button {

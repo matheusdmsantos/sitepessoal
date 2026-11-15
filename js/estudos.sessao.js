@@ -518,11 +518,15 @@
     }
   }
 
-  /* Cronômetro flutuante: com a janela fechada e um cronômetro rodando, fica no topo da página
-     com o tempo, "Pausar" e "Abrir" (volta à janela de estudo da meta). */
+  /* Cronômetro flutuante: com a janela fechada, fica no topo da página o cronômetro rodando ou,
+     sem nenhum rodando, o último pausado com tempo (até ser dispensado no ✕ ou a meta ser concluída).
+     "Pausar/Continuar" e "Abrir" (volta à janela de estudo da meta). */
   function rodandoFora() {
     let achado = null;
-    Object.entries(lerCronos()).forEach(([id, c]) => { if (c.rodando && (!achado || c.desde > achado.c.desde)) achado = { id, c }; });
+    const nota = c => (c.rodando ? 2 : !c.oculto && (c.acum > 0 || c.faseMs > 0) ? 1 : 0);
+    Object.entries(lerCronos()).forEach(([id, c]) => {
+      if (nota(c) && (!achado || nota(c) > nota(achado.c) || (nota(c) === nota(achado.c) && c.desde > achado.c.desde))) achado = { id, c };
+    });
     return achado;
   }
 
@@ -536,9 +540,12 @@
     if (atualizarCrono(c)) bipe();
     gravarCrono(id, c);
     const pausa = c.pomodoro && c.fase === 'pausa';
-    el.classList.toggle('pausa', pausa);
+    el.classList.toggle('pausa', pausa && c.rodando);
+    el.classList.toggle('parado', !c.rodando);
+    el.querySelector('[data-a="pausar"]').textContent = c.rodando ? '⏸ Pausar' : '▶ Continuar';
+    el.querySelector('[data-a="dispensar"]').hidden = c.rodando;
     el.querySelector('.est-crono-fl-tempo').textContent = c.pomodoro ? fmt(Math.max(0, duracaoFase(c.fase) - c.faseMs)) : fmt(c.acum);
-    el.querySelector('.est-crono-fl-fase').textContent = c.pomodoro ? (pausa ? '☕ Pausa' : '🍅 Foco') : '⏱ Estudando';
+    el.querySelector('.est-crono-fl-fase').textContent = !c.rodando ? '⏸ Pausado' : c.pomodoro ? (pausa ? '☕ Pausa' : '🍅 Foco') : '⏱ Estudando';
     el.querySelector('.est-crono-fl-rotulo').textContent = c.rotulo || '';
     el.dataset.id = id;
     el.dataset.tipo = c.tipo || 'meta';
@@ -553,14 +560,16 @@
     el.innerHTML = `<div class="est-crono-fl-info"><span class="est-crono-fl-fase"></span><span class="est-crono-fl-rotulo"></span></div>
       <strong class="est-crono-fl-tempo">00:00</strong>
       <button type="button" data-a="pausar">⏸ Pausar</button>
-      <button type="button" data-a="abrir" class="primario">Abrir</button>`;
+      <button type="button" data-a="abrir" class="primario">Abrir</button>
+      <button type="button" data-a="dispensar" class="fechar" title="Esconder (o tempo continua guardado na meta)" aria-label="Esconder o cronômetro">✕</button>`;
     el.addEventListener('click', ev => {
       const a = ev.target.closest('button') && ev.target.closest('button').dataset.a;
       const id = el.dataset.id;
       if (!a || !id) return;
-      if (a === 'pausar') {
+      if (a === 'pausar' || a === 'dispensar') {
         const c = lerCronos()[id];
-        if (c) { atualizarCrono(c); c.rodando = false; c.desde = Date.now(); gravarCrono(id, c); }
+        if (c && a === 'pausar') { atualizarCrono(c); c.rodando = !c.rodando; c.oculto = false; c.desde = Date.now(); gravarCrono(id, c); }
+        if (c && a === 'dispensar') { c.oculto = true; gravarCrono(id, c); }
         renderFlutuante();
         if (window.estPlano) window.estPlano.renderTudo();   // selo ⏱ da lista
       } else window.estPlano.abrirEstudo(el.dataset.tipo, id);
@@ -574,6 +583,7 @@
     const c = crono();
     atualizarCrono(c);
     c.rodando = !c.rodando;
+    c.oculto = false;
     c.desde = Date.now();
     gravarCrono(ctx.id, c);
     renderCrono();
