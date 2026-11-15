@@ -2243,7 +2243,23 @@ html, body {
 .est-sessao-folha .ql-snow.ql-toolbar button.ql-ia { width: auto; padding: 2px 10px; border-radius: 6px; background: #ede9fe; color: #5b21b6; font-weight: 700; font-size: 0.82rem; line-height: 1.2; }
 .est-sessao-folha .ql-snow.ql-toolbar button.ql-ia:hover { background: #ddd6fe; color: #4c1d95; }
 .est-sessao-folha .ql-snow.ql-toolbar button.ql-ia:disabled { opacity: 0.7; cursor: progress; }
-.est-sessao-folha .ql-snow.ql-toolbar button.ql-desenho { width: auto; padding: 2px 6px; font-size: 1rem; line-height: 1; }
+.est-sessao-folha .ql-snow.ql-toolbar button.ql-desenho,
+.est-sessao-folha .ql-snow.ql-toolbar button.ql-tinta { width: auto; padding: 2px 6px; font-size: 1rem; line-height: 1; }
+.est-sessao-folha .ql-snow.ql-toolbar button.ql-tinta.ql-active { background: #dbeafe; border-radius: 6px; }
+
+/* Tinta por cima do texto (estudos.tinta.js): desligada, só mostra; ligada, a caneta risca e o dedo rola */
+.est-tinta { position: absolute; z-index: 4; pointer-events: none; }
+.est-tinta.ligada { pointer-events: auto; touch-action: none; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; cursor: crosshair; }
+.est-tinta-barra { position: absolute; right: 22px; bottom: 14px; z-index: 7; display: flex; align-items: center; gap: 4px; padding: 5px 6px; background: #fff; border: 1px solid #d1d5db; border-radius: 12px; box-shadow: 0 4px 14px rgba(0,0,0,0.15); }
+.est-tinta-barra[hidden] { display: none; }
+.est-sessao-folha .est-tinta-barra button { min-width: 38px; min-height: 38px; padding: 2px 6px; border: 1px solid transparent; border-radius: 8px; background: transparent; color: #111827; font-size: 1.05rem; cursor: pointer; }
+.est-sessao-folha .est-tinta-barra button:hover:not(:disabled) { background: #f3f4f6; }
+.est-sessao-folha .est-tinta-barra button:disabled { opacity: 0.35; cursor: default; }
+.est-sessao-folha .est-tinta-barra button.ativo { border-color: #2563eb; background: #dbeafe; }
+.est-sessao-folha .est-tinta-barra button:focus-visible { outline: 2px solid #2563eb; outline-offset: 1px; }
+.est-sessao-folha .est-tinta-barra button.est-tinta-cor { min-width: 26px; width: 26px; min-height: 26px; padding: 0; border: 2px solid #fff; border-radius: 50%; box-shadow: 0 0 0 1px #9ca3af; }
+.est-sessao-folha .est-tinta-barra button.est-tinta-cor.ativo { box-shadow: 0 0 0 2px #2563eb; }
+.est-tinta-sep { width: 1px; align-self: stretch; margin: 2px 3px; background: #e5e7eb; }
 
 /* Desenho à mão (estudos.desenho.js) */
 .ql-editor img.est-desenho { display: block; max-width: 100%; height: auto; margin: 6px 0; border: 1px dashed transparent; border-radius: 6px; cursor: pointer; }

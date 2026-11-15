@@ -163,6 +163,21 @@
     await salvarResumo(ref.d.nome, ref.t.nome, window.estSessao.juntarPaginas(paginas), true);
   }
 
+  // Janela de estudo aberta em dois aparelhos: o outro pode ter criado assuntos. Busca os do item
+  // antes de ligar as páginas novas, senão ligarPaginas criaria o mesmo assunto de novo aqui.
+  async function atualizarDoItem(tId, paginas) {
+    if (!remoto) return;
+    const nomes = doTopico(tId).map(s => chave(s.nome));
+    if (paginas.every(p => p.semTitulo || nomes.includes(chave(p.titulo)))) return;
+    const { data, error } = await sb.from('subtopicos').select('*').eq('topico_id', tId);
+    if (error) return;
+    data.forEach(l => {
+      if (!Array.isArray(l.pdfs)) l.pdfs = [];
+      const i = subs.findIndex(s => s.id === l.id);
+      if (i >= 0) subs[i] = l; else subs.push(l);
+    });
+  }
+
   const paginaDe = (paginas, nome) => paginas.find(p => !p.semTitulo && chave(p.titulo) === chave(nome));
 
   // Assuntos que faltam para as páginas com título do resumo. Item com um PDF só: já ligados a ele.
@@ -732,7 +747,7 @@
   }
 
   window.estSub = {
-    carregar, migrar, doTopico, porId, doRegistro, sugestao, topicoPorNomes, ligarPaginas,
+    carregar, migrar, doTopico, porId, doRegistro, sugestao, topicoPorNomes, ligarPaginas, atualizarDoItem,
     criar, vincular, desvincular, faixa, paginasNoPdf, atualizarCampos, definirTec, linkDoCaderno, editarTec, renomear, mover, ordenar, paiDe, mesclar, reclassificar, excluir,
     numerosDe, distribuir, selo, blocoFicha, abrirPainel, fecharPainel, marcarTodos, confirmarMesclar,
     confirmarReclassificar, novoPerguntando, renomearPerguntando, htmlDesempenho, ver,

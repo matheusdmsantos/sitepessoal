@@ -141,9 +141,8 @@
 
   let quill = null;
   let ctx = null;            // { tipo, id, disc, topico, minutos, concluida }; sem id = só o resumo, sem cronômetro
-  let paginas = [];          // [{ titulo, html, semTitulo }]
+  let paginas = [];          // [{ titulo, html, semTitulo, sub?, uid, sujo }] (sujo: edições ainda não gravadas)
   let atual = 0;
-  let ultimoSalvo = '';
   let timerSalvar = null;
   let tick = null;
   let outrosAbertos = false;  // grupo "Outros assuntos do item" aberto na coluna
@@ -187,18 +186,29 @@
     if (quill && paginas[atual]) paginas[atual].html = quill.root.innerHTML;
   }
 
-  function mostrarPagina(i) {
-    esconderAlca();
-    mostrarResumo();
-    guardarPaginaAtual();
-    atual = Math.max(0, Math.min(i, paginas.length - 1));
+  // Troca o conteúdo do editor sem contar como edição (não marca a página como alterada)
+  function porNoEditor(html) {
+    quill.root.innerHTML = html;
+    quill.update('silent');
+    quill.history.clear();
+  }
+
+  function tituloDaPagina() {
     const p = paginas[atual];
     const geral = comAssuntos() && p.semTitulo;
     const titulo = $('est-sessao-pag-titulo');
     titulo.value = geral ? 'Anotações gerais (sem assunto)' : p.titulo;
     titulo.disabled = geral;
-    quill.root.innerHTML = p.html;
-    quill.history.clear();
+  }
+
+  function mostrarPagina(i) {
+    esconderAlca();
+    mostrarResumo();
+    guardarPaginaAtual();
+    atual = Math.max(0, Math.min(i, paginas.length - 1));
+    tituloDaPagina();
+    porNoEditor(paginas[atual].html);
+    if (window.estTinta) window.estTinta.pagina();
     mostrarTecDoAssunto();
     marcarAssuntoNoCrono();
     renderPaginas();
@@ -216,7 +226,7 @@
   function novaPagina() {
     if (comAssuntos()) { abrirNovoAssunto(); return; }
     guardarPaginaAtual();
-    paginas.push({ titulo: `Página ${paginas.length + 1}`, html: '', semTitulo: false });
+    paginas.push(numerada({ titulo: `Página ${paginas.length + 1}`, html: '', semTitulo: false }));
     mostrarPagina(paginas.length - 1);
     agendarSalvar();
     $('est-sessao-pag-titulo').select();
@@ -228,10 +238,12 @@
     const p = paginas[i];
     if (!vazio(p.html) && !(await window.customConfirm(`Apagar a página "${p.titulo}" e tudo o que está nela?`))) return;
     paginas.splice(i, 1);
+    apagadas.add(p.uid);
     // A primeira página precisa de título se outra passou a ocupar o lugar dela
-    if (i === 0) paginas[0].semTitulo = false;
+    if (i === 0 && paginas[0].semTitulo) { paginas[0].semTitulo = false; paginas[0].sujo++; }
     atual = Math.min(atual > i ? atual - 1 : atual, paginas.length - 1);
-    quill.root.innerHTML = paginas[atual].html;
+    porNoEditor(paginas[atual].html);
+    if (window.estTinta) window.estTinta.pagina();
     $('est-sessao-pag-titulo').value = paginas[atual].titulo;
     renderPaginas();
     salvar();
@@ -269,7 +281,7 @@
     const ordem = new Map(window.estSub.doTopico(ctx.topicoId).map((x, k) => [x.id, k]));
     const pos = p => (ordem.has(p.sub) ? ordem.get(p.sub) : 1e9);
     const [geral, ...resto] = paginas;
-    paginas = [geral, ...[...resto, { titulo: s.nome, html: '', semTitulo: false, sub: s.id }].sort((a, b) => pos(a) - pos(b))];
+    paginas = [geral, ...[...resto, numerada({ titulo: s.nome, html: '', semTitulo: false, sub: s.id })].sort((a, b) => pos(a) - pos(b))];
     atual = Math.max(0, paginas.indexOf(aberta));
     return paginas.findIndex(p => p.sub === id);
   }
@@ -378,6 +390,7 @@
       const [geral, ...resto] = paginas;
       paginas = geral.semTitulo ? [geral, ...resto.sort((a, b) => posPag(a) - posPag(b))] : paginas.slice().sort((a, b) => posPag(a) - posPag(b));
       atual = Math.max(0, paginas.indexOf(aberta));
+      ordemSuja = true;
       renderPaginas();
       salvar();
     });
@@ -494,6 +507,7 @@
     for (const p of paginas) {
       const s = p.sub && window.estSub.porId(p.sub);
       if (!s || p.titulo === s.nome) continue;
+      p.sujo++;
       if (!(await window.estSub.renomear(s.id, p.titulo, false))) {
         p.titulo = s.nome;
         if (paginas[atual] === p) $('est-sessao-pag-titulo').value = s.nome;
@@ -503,11 +517,241 @@
   }
 
   /* =============================================
-     SALVAMENTO (mesmo caminho do editor de "Meus Resumos")
+     SALVAMENTO E SINCRONIA ENTRE APARELHOS
+     O resumo pode estar aberto no PC e no tablet ao mesmo tempo. Cada aparelho grava só as
+     páginas que mudou (sujo): antes de gravar, confere se o servidor ainda está na versão que
+     ele conhece (updated_at); se não, junta as páginas do outro aparelho e tenta de novo.
+     A cada SINC_MS, busca o que o outro gravou (só as páginas novas, pela função resumo_partes do
+     supabase/sincronia.sql; sem ela, o resumo inteiro). Mesma página mudada nos dois: fica a deste.
   ============================================= */
+  const SINC_MS = 3000;
+  const DIVISAO = /(?=<h1 class="est-pagina">)/;    // a mesma do resumo_partes, no SQL
+  let base = new Map();       // uid → { titulo, html, semTitulo }: as páginas como estão no servidor
+  let baseBruta = '';         // o conteudo do servidor, exatamente
+  let baseUpdated;            // updated_at dessa versão (undefined: ainda não conferido)
+  let hashesBase = null;      // cache de resumo_partes para baseBruta
+  let apagadas = new Set();   // uids das páginas apagadas aqui e ainda não gravadas
+  let ordemSuja = false;
+  let uidSeq = 0;
+  let fila = Promise.resolve();
+  let timerSinc = null, sincOcupado = false, temRpc = true, avisoConflito = '';
+
+  const numerada = p => { if (!p.uid) p.uid = 'p' + (++uidSeq); if (!p.sujo) p.sujo = 0; return p; };
+  const chavePag = p => (p.semTitulo ? '\u0000' : String(p.titulo).trim().toLowerCase());
+  const chaveResumo = () => makeResumoKey(ctx.disc, ctx.topico);
+  const idResumo = () => (ctx && (resumosMap[chaveResumo()] || {}).id) || null;
+  const tabelaResumos = () => window.supabaseClient.from('resumos');
+  const temMudanca = () => ordemSuja || apagadas.size > 0 || paginas.some(p => p.sujo);
+  // Página da tinta (estudos.tinta.js): o assunto não muda com o nome; sem assunto, o título
+  const paginaDaTinta = () => { const p = paginas[atual] || {}; return p.sub || (p.semTitulo ? '_geral' : 't:' + chavePag(p)); };
+
+  // Dá a cada página da lista o uid da página de mesmo título em refs ([{ uid, chave }])
+  function casar(lista, refs) {
+    const livres = new Map();
+    refs.forEach(r => { if (!livres.has(r.chave)) livres.set(r.chave, []); livres.get(r.chave).push(r.uid); });
+    lista.forEach(p => { const l = livres.get(chavePag(p)); p.uid = (l && l.shift()) || null; numerada(p); p.sujo = 0; });
+    return lista;
+  }
+
+  function definirBase(conteudo, updated) {
+    const ps = casar(separarPaginas(conteudo), paginas.map(p => ({ uid: p.uid, chave: chavePag(p) })));
+    base = new Map(ps.map(p => [p.uid, { titulo: p.titulo, html: p.html, semTitulo: p.semTitulo }]));
+    baseBruta = conteudo;
+    baseUpdated = updated;
+    hashesBase = null;
+  }
+
+  // O resumo no mapa global do v5 (Meus Resumos lê dele)
+  function entrada() {
+    const key = chaveResumo();
+    if (!resumosMap[key]) resumosMap[key] = { id: null, conteudo: '', disciplina_nome: ctx.disc.trim(), topico_nome: ctx.topico.trim() };
+    return resumosMap[key];
+  }
+
+  // Mesmo backup local do salvarResumo do v5
+  function guardarLocal(html) {
+    entrada().conteudo = html;
+    try {
+      const b = JSON.parse(localStorage.getItem('est_resumos_backup') || '{}');
+      b[chaveResumo()] = html;
+      localStorage.setItem('est_resumos_backup', JSON.stringify(b));
+    } catch (e) { /* sem espaço: fica só no servidor */ }
+  }
+
+  // Uma operação de cada vez (gravar e buscar mexem nas mesmas páginas)
+  function enfileirar(fn) {
+    const p = fila.then(fn, fn);
+    fila = p.catch(e => console.error('Sincronia do resumo:', e));
+    return p;
+  }
+
+  async function sha(s) {
+    const b = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s));
+    return [...new Uint8Array(b)].map(x => x.toString(16).padStart(2, '0')).join('');
+  }
+
+  async function dadosDaBase() {
+    if (hashesBase && hashesBase.bruta === baseBruta) return hashesBase;
+    const partes = baseBruta.split(DIVISAO);
+    const hs = await Promise.all(partes.map(sha));
+    const uris = [...new Set([...baseBruta.matchAll(/"(data:image\/[^"]+)"/g)].map(m => m[1]))];
+    const his = await Promise.all(uris.map(sha));
+    hashesBase = { bruta: baseBruta, hashes: hs, porHash: new Map(hs.map((h, i) => [h, partes[i]])), imagens: his, img: new Map(his.map((h, i) => [h, uris[i]])) };
+    return hashesBase;
+  }
+
+  // O resumo no servidor: { conteudo, updated_at }, null se não existe mais, false se não deu para ler
+  async function baixar(id) {
+    if (temRpc) {
+      const d = await dadosDaBase();
+      const { data, error } = await window.supabaseClient.rpc('resumo_partes', { p_id: id, p_hashes: d.hashes, p_imagens: d.imagens });
+      if (!error) {
+        if (!data) return null;
+        let falta = false;
+        const conteudo = data.partes.map(p => (p.html === undefined ? d.porHash.get(p.h)
+          : p.html.replace(/"ref:([0-9a-f]{64})"/g, (m, h) => (d.img.has(h) ? `"${d.img.get(h)}"` : (falta = true, m))))).join('');
+        if (!falta && !data.partes.some(p => p.html === undefined && !d.porHash.has(p.h))) return { conteudo, updated_at: data.updated_at };
+      } else if (error.code === 'PGRST202') temRpc = false;   // função não criada: baixa o resumo inteiro
+      else return false;
+    }
+    const { data, error } = await tabelaResumos().select('conteudo, updated_at').eq('id', id).maybeSingle();
+    if (error) return false;
+    return data ? { conteudo: data.conteudo || '', updated_at: data.updated_at } : null;
+  }
+
+  // Busca a versão do servidor e junta com a daqui. Devolve false se não conseguiu.
+  async function puxarRemoto() {
+    const c = ctx;
+    let id = idResumo();
+    if (!id) {
+      // Ainda sem resumo conhecido: o outro aparelho pode ter criado
+      const { data, error } = await tabelaResumos().select('id, conteudo, updated_at')
+        .eq('disciplina_nome', c.disc.trim()).eq('topico_nome', c.topico.trim()).maybeSingle();
+      if (error || ctx !== c) return false;
+      if (!data) { baseUpdated = null; return true; }
+      entrada().id = data.id;
+      return aplicar(data.conteudo || '', data.updated_at, c);
+    }
+    const r = await baixar(id);
+    if (r === false || ctx !== c) return false;
+    if (r === null) {   // apagado em outro lugar: a próxima gravação cria de novo
+      entrada().id = null;
+      paginas.forEach(p => { if (!vazio(p.html)) p.sujo++; });
+      definirBase('', null);
+      return true;
+    }
+    return r.updated_at === baseUpdated || aplicar(r.conteudo, r.updated_at, c);
+  }
+
+  async function aplicar(conteudo, updated, c) {
+    if (comAssuntos()) await window.estSub.atualizarDoItem(ctx.topicoId, separarPaginas(conteudo));
+    if (ctx !== c) return false;
+    aplicarRemoto(conteudo, updated);
+    return true;
+  }
+
+  /* Junta as páginas do servidor (delas) com as daqui. Página alterada aqui e ainda não gravada
+     fica a daqui; as outras ficam como no servidor; página nova lá entra no lugar dela;
+     página apagada lá some daqui (se não mudou aqui); apagada aqui volta só se mudou lá. */
+  function aplicarRemoto(conteudo, updated) {
+    if (conteudo === baseBruta) { baseUpdated = updated; return; }   // igual ao que já está aqui (ao abrir, quase sempre)
+    quill.update();   // letra digitada que o Quill ainda não registrou conta como alteração
+    guardarPaginaAtual();
+    const delas = casar(separarPaginas(conteudo), [...base].map(([uid, b]) => ({ uid, chave: chavePag(b) })));
+    const porUid = new Map(delas.map(d => [d.uid, d]));
+    const aberta = paginas[atual];
+    const antesDaAberta = base.get(aberta.uid);
+    const minhas = new Set(paginas.map(p => p.uid));
+    const conflitos = [];
+    let res = [];
+    paginas.forEach(m => {
+      const d = porUid.get(m.uid), b = base.get(m.uid);
+      if (m.sujo) {
+        if (d && b && (d.html !== b.html || d.titulo !== b.titulo)) conflitos.push(m.titulo);
+        res.push(m);
+      } else if (d) {
+        Object.assign(m, { titulo: d.titulo, html: d.html, semTitulo: d.semTitulo });
+        res.push(m);
+      } else if (!b) res.push(m);   // criada aqui (vazia), ainda não gravada
+    });
+    let anterior = null;
+    delas.forEach(d => {
+      if (minhas.has(d.uid)) { anterior = d.uid; return; }
+      const b = base.get(d.uid);
+      if (b && b.html === d.html && b.titulo === d.titulo) return;   // apagada aqui e intacta lá
+      apagadas.delete(d.uid);
+      const k = anterior ? res.findIndex(p => p.uid === anterior) + 1 : (res[0] && res[0].semTitulo ? 1 : 0);
+      res.splice(k, 0, d);
+      anterior = d.uid;
+    });
+    const mudouAberta = porUid.has(aberta.uid) && !aberta.sujo && (!antesDaAberta || antesDaAberta.html !== porUid.get(aberta.uid).html);
+    base = new Map(delas.map(d => [d.uid, { titulo: d.titulo, html: d.html, semTitulo: d.semTitulo }]));
+    baseBruta = conteudo;
+    baseUpdated = updated;
+    hashesBase = null;
+    entrada().conteudo = conteudo;
+    if (comAssuntos()) res = window.estSub.ligarPaginas(ctx.topicoId, res).map(numerada);
+    paginas = res;
+    atual = Math.max(0, paginas.findIndex(p => p.uid === aberta.uid));
+    if (mudouAberta || paginas[atual].uid !== aberta.uid) {
+      const rolagem = quill.container.scrollTop;
+      const sel = quill.hasFocus() ? quill.getSelection() : null;
+      porNoEditor(paginas[atual].html);
+      tituloDaPagina();
+      if (sel) quill.setSelection(Math.min(sel.index, quill.getLength() - 1), 0, 'silent');
+      quill.container.scrollTop = rolagem;
+      esconderAlca();
+    }
+    renderPaginas();
+    if (window.estTinta) window.estTinta.pagina();
+    // O aviso de conflito fica até a próxima gravação terminar (senão o "Salvo" o apagaria na hora)
+    if (conflitos.length) avisoConflito = `⚠ “${conflitos.join('”, “')}” também mudou no outro aparelho; ficou a versão deste.`;
+    status(avisoConflito || 'Atualizado com o outro aparelho');
+  }
+
+  // Grava as páginas alteradas, juntando antes as do outro aparelho se ele gravou no meio
+  async function gravarRemoto() {
+    const c = ctx;
+    if (baseUpdated === undefined && !(await puxarRemoto())) { guardarLocal(juntarPaginas()); status('Sem conexão: salvo só neste aparelho'); return; }
+    for (let tentativa = 0; tentativa < 4 && ctx === c; tentativa++) {
+      guardarPaginaAtual();
+      const html = juntarPaginas();
+      const marcas = new Map(paginas.map(p => [p.uid, p.sujo]));
+      const id = idResumo();
+      let updated;
+      if (!id || vazio(html)) {
+        // Primeira gravação (cria) ou resumo vazio (apaga): o caminho de sempre
+        await salvarResumo(c.disc, c.topico, html, true);
+        const novo = idResumo();
+        const r = novo ? await tabelaResumos().select('updated_at').eq('id', novo).maybeSingle() : { data: null };
+        updated = r.data ? r.data.updated_at : null;
+      } else {
+        let q = tabelaResumos().update({ conteudo: html, updated_at: new Date().toISOString() }).eq('id', id);
+        q = baseUpdated == null ? q.is('updated_at', null) : q.eq('updated_at', baseUpdated);
+        const { data, error } = await q.select('updated_at');
+        if (error) { guardarLocal(html); status('Sem conexão: salvo só neste aparelho'); return; }
+        if (!data.length) {   // o outro aparelho gravou antes
+          if (!(await puxarRemoto())) { guardarLocal(html); status('Sem conexão: salvo só neste aparelho'); return; }
+          continue;
+        }
+        updated = data[0].updated_at;
+        guardarLocal(html);
+      }
+      if (ctx !== c) return;
+      paginas.forEach(p => { if (marcas.get(p.uid) === p.sujo) p.sujo = 0; });
+      apagadas.clear();
+      ordemSuja = false;
+      definirBase(html, updated);   // a base passa a ser o que foi gravado
+      status(temMudanca() ? 'Alterações não salvas' : avisoConflito || 'Salvo');
+      avisoConflito = '';
+      return;
+    }
+  }
+
   function status(txt) { $('est-sessao-status').textContent = txt; }
 
   function agendarSalvar() {
+    if (paginas[atual]) paginas[atual].sujo++;
     status('Alterações não salvas');
     clearTimeout(timerSalvar);
     timerSalvar = setTimeout(salvar, AUTOSAVE_MS);
@@ -518,12 +762,27 @@
     if (!ctx) return;
     guardarPaginaAtual();
     if (comAssuntos()) await sincronizarNomes();
-    const html = juntarPaginas();
-    if (html === ultimoSalvo) { status('Salvo'); return; }
+    if (!temMudanca()) { status('Salvo'); return; }
     status('Salvando…');
-    ultimoSalvo = html;
-    await salvarResumo(ctx.disc, ctx.topico, html, true);
-    status('Salvo');
+    await enfileirar(gravarRemoto);
+  }
+
+  // A cada SINC_MS com a janela à vista: o outro aparelho gravou? (só a data; o conteúdo só se mudou)
+  async function sincronizarAgora() {
+    if (!ctx || document.hidden || sincOcupado) return;
+    sincOcupado = true;
+    try {
+      await enfileirar(async () => {
+        if (!ctx) return;
+        const id = idResumo();
+        if (!id) { await puxarRemoto(); return; }
+        const { data, error } = await tabelaResumos().select('updated_at').eq('id', id).maybeSingle();
+        if (!error && ctx && (!data || data.updated_at !== baseUpdated)) await puxarRemoto();
+      });
+      if (window.estTinta && ctx) await window.estTinta.puxar();
+    } finally {
+      sincOcupado = false;
+    }
   }
 
   /* =============================================
@@ -1399,11 +1658,11 @@
             [{ 'color': [] }, { 'background': [] }],
             [{ 'list': 'ordered' }, { 'list': 'bullet' }, { 'indent': '-1' }, { 'indent': '+1' }],
             [{ 'align': [] }],
-            ['blockquote', 'code-block', 'link', 'image', 'desenho'],
+            ['blockquote', 'code-block', 'link', 'image', 'desenho', 'tinta'],
             ['clean'],
             ...(window.isOwner && window.isOwner() ? [['ia']] : [])
           ],
-          handlers: { ia: melhorarComIA, desenho: () => desenhar() }
+          handlers: { ia: melhorarComIA, desenho: () => desenhar(), tinta: () => window.estTinta && window.estTinta.ligar(!window.estTinta.ligada()) }
         }
       }
     });
@@ -1419,8 +1678,22 @@
       botaoDes.title = 'Desenhar à mão (caneta do tablet)';
       botaoDes.setAttribute('aria-label', 'Desenhar à mão');
     }
+    const botaoTinta = quill.getModule('toolbar').container.querySelector('.ql-tinta');
+    if (botaoTinta) {
+      botaoTinta.textContent = '🖊️';
+      botaoTinta.title = 'Tinta: rabiscar com a caneta por cima do texto (grifar, sublinhar, setas)';
+      botaoTinta.setAttribute('aria-label', 'Tinta por cima do texto');
+      botaoTinta.setAttribute('aria-pressed', 'false');
+    }
     quill.on('text-change', (delta, old, fonte) => { if (fonte === 'user') agendarSalvar(); });
     iniciarImagens();
+    if (window.estTinta) {
+      window.estTinta.iniciar({
+        quill, indiceEm, pagina: paginaDaTinta, resumoId: idResumo,
+        garantirResumo: async () => { if (paginas[atual]) paginas[atual].sujo++; await salvar(); },
+        aoMudar: v => { if (botaoTinta) { botaoTinta.classList.toggle('ql-active', v); botaoTinta.setAttribute('aria-pressed', String(v)); } }
+      });
+    }
   }
 
   /* Desenho à mão: sem img, insere um novo onde está o cursor (sem cursor, no fim da página);
@@ -1445,10 +1718,10 @@
 
   /* dados = { tipo: 'meta' | 'revisao', id, disc, topico, rotulo, minutos, concluida }
      Sem id, abre só o resumo (Edital Verticalizado e Meus Resumos). */
-  function abrir(dados) {
+  async function abrir(dados) {
     criarEditor();
     if (!quill) return;
-    if (ctx) salvar();
+    if (ctx) { await salvar(); if (window.estTinta) await window.estTinta.fechar(); }
     ctx = dados;
     // Aberta pelo nome (ficha, Meus Resumos): acha o item do edital para mostrar os assuntos
     if (!ctx.topicoId && window.estSub) ctx.topicoId = window.estSub.topicoPorNomes(dados.disc, dados.topico);
@@ -1462,9 +1735,13 @@
     if (dados.topicoId && window.estTec) $('est-sessao-tec').textContent = window.estTec.rotulo(dados.topicoId);
 
     const salvo = (resumosMap[makeResumoKey(dados.disc, dados.topico)] || {}).conteudo || '';
-    ultimoSalvo = salvo;
     paginas = separarPaginas(salvo);
     if (comAssuntos()) paginas = window.estSub.ligarPaginas(ctx.topicoId, paginas);
+    paginas.forEach(numerada);
+    apagadas = new Set();
+    ordemSuja = false;
+    // A versão daqui pode estar velha (o outro aparelho gravou depois): a 1ª busca abaixo confere
+    definirBase(salvo, undefined);
     $('est-sessao-novo').hidden = true;
     outrosAbertos = false;
     atual = -1;
@@ -1481,12 +1758,19 @@
     renderFlutuante();
     $('est-modal-sessao').setAttribute('aria-hidden', 'false');
     setTimeout(() => quill.focus(), 50);
+    clearInterval(timerSinc);
+    timerSinc = setInterval(sincronizarAgora, SINC_MS);
+    const c = ctx;
+    await enfileirar(puxarRemoto);
+    if (ctx === c && window.estTinta) await window.estTinta.abrirResumo();   // ligar a tinta tira o foco do texto
   }
 
   async function fechar() {
     if (!ctx) return;
     esconderAlca();
     await salvar();
+    clearInterval(timerSinc);
+    if (window.estTinta) await window.estTinta.fechar();
     clearInterval(tick);
     mostrarResumo();
     telaCheia(false);
@@ -1703,6 +1987,8 @@
       else if (alca && alca.img) esconderAlca(); else fechar();
     });
     window.addEventListener('beforeunload', () => { if (ctx) salvar(); });
+    // Voltou para a aba (ou o tablet acordou): busca logo o que o outro aparelho gravou
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) sincronizarAgora(); });
     criarFlutuante();
   }
 

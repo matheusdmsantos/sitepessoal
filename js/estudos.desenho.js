@@ -597,5 +597,6 @@
     return new Promise(r => { resolver = r; });
   }
 
-  window.estDesenho = { abrir };
+  // desenharTraco e tocaTraco também servem à tinta por cima do texto (estudos.tinta.js)
+  window.estDesenho = { abrir, desenharTraco, tocaTraco };
 })();
