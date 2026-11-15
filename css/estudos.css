@@ -2110,6 +2110,32 @@ html, body {
 .est-sessao-progresso { height: 4px; border-radius: 2px; background: var(--est-silver-dim); overflow: hidden; margin: 4px 0 2px; }
 .est-sessao-progresso > div { height: 100%; width: 0; background: var(--est-blue); transition: width 0.6s linear; }
 .est-sessao-meta { font-size: 0.7rem; color: var(--est-accent-muted); }
+
+/* Cronômetro flutuante (janela de estudo fechada com o tempo correndo) */
+.est-crono-flutuante {
+  position: fixed; top: 14px; left: 50%; transform: translateX(-50%); z-index: 950;
+  display: flex; align-items: center; gap: 14px; max-width: calc(100vw - 32px);
+  padding: 10px 14px 10px 18px; border: 1px solid rgba(74, 222, 128, 0.45); border-radius: 14px;
+  background: var(--est-bg-card); box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+}
+.est-crono-flutuante[hidden] { display: none; }
+.est-crono-fl-info { display: flex; flex-direction: column; min-width: 0; }
+.est-crono-fl-fase { font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.06em; font-weight: 600; color: var(--est-green); }
+.est-crono-fl-rotulo { font-size: 0.78rem; color: var(--est-silver); max-width: 340px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.est-crono-fl-tempo { font-size: 2.3rem; line-height: 1; font-variant-numeric: tabular-nums; color: var(--est-green); }
+.est-crono-flutuante.pausa { border-color: rgba(251, 191, 36, 0.45); }
+.est-crono-flutuante.pausa .est-crono-fl-tempo, .est-crono-flutuante.pausa .est-crono-fl-fase { color: var(--est-amber); }
+#est-crono-flutuante button {
+  padding: 7px 14px; border: 1px solid var(--est-border); border-radius: 999px; background: rgba(255, 255, 255, 0.04);
+  color: var(--est-silver-bright); font-size: 0.82rem; font-weight: 600; cursor: pointer; white-space: nowrap;
+}
+#est-crono-flutuante button:hover, #est-crono-flutuante button:focus-visible { border-color: var(--est-green); }
+#est-crono-flutuante button.primario { background: rgba(74, 222, 128, 0.15); border-color: rgba(74, 222, 128, 0.45); color: var(--est-green); }
+@media (max-width: 600px) {
+  .est-crono-flutuante { top: 8px; gap: 10px; padding: 8px 10px; }
+  .est-crono-fl-rotulo { display: none; }
+  .est-crono-fl-tempo { font-size: 1.8rem; }
+}
 .est-sessao-controles { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .est-sessao-controles #est-sessao-play { min-width: 112px; }
 .est-sessao-ciclo {

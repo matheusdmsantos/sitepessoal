@@ -495,6 +495,8 @@
     if (!ctx || !ctx.id) return;
     const c = crono();
     if (atualizarCrono(c) && c.rodando) bipe();
+    c.tipo = ctx.tipo || 'meta';
+    c.rotulo = `${ctx.rotulo} · ${ctx.topico}`;
     gravarCrono(ctx.id, c);
 
     const meta = ctx.minutos * 60000;
@@ -514,6 +516,58 @@
       $('est-sessao-fase').textContent = 'Tempo estudado';
       $('est-sessao-tempo').textContent = fmt(c.acum);
     }
+  }
+
+  /* Cronômetro flutuante: com a janela fechada e um cronômetro rodando, fica no topo da página
+     com o tempo, "Pausar" e "Abrir" (volta à janela de estudo da meta). */
+  function rodandoFora() {
+    let achado = null;
+    Object.entries(lerCronos()).forEach(([id, c]) => { if (c.rodando && (!achado || c.desde > achado.c.desde)) achado = { id, c }; });
+    return achado;
+  }
+
+  function renderFlutuante() {
+    const el = $('est-crono-flutuante');
+    if (!el) return;
+    const r = !ctx && rodandoFora();
+    el.hidden = !r;
+    if (!r) return;
+    const { id, c } = r;
+    if (atualizarCrono(c)) bipe();
+    gravarCrono(id, c);
+    const pausa = c.pomodoro && c.fase === 'pausa';
+    el.classList.toggle('pausa', pausa);
+    el.querySelector('.est-crono-fl-tempo').textContent = c.pomodoro ? fmt(Math.max(0, duracaoFase(c.fase) - c.faseMs)) : fmt(c.acum);
+    el.querySelector('.est-crono-fl-fase').textContent = c.pomodoro ? (pausa ? '☕ Pausa' : '🍅 Foco') : '⏱ Estudando';
+    el.querySelector('.est-crono-fl-rotulo').textContent = c.rotulo || '';
+    el.dataset.id = id;
+    el.dataset.tipo = c.tipo || 'meta';
+  }
+
+  function criarFlutuante() {
+    const el = document.createElement('div');
+    el.id = 'est-crono-flutuante';
+    el.className = 'est-crono-flutuante';
+    el.hidden = true;
+    el.setAttribute('role', 'status');
+    el.innerHTML = `<div class="est-crono-fl-info"><span class="est-crono-fl-fase"></span><span class="est-crono-fl-rotulo"></span></div>
+      <strong class="est-crono-fl-tempo">00:00</strong>
+      <button type="button" data-a="pausar">⏸ Pausar</button>
+      <button type="button" data-a="abrir" class="primario">Abrir</button>`;
+    el.addEventListener('click', ev => {
+      const a = ev.target.closest('button') && ev.target.closest('button').dataset.a;
+      const id = el.dataset.id;
+      if (!a || !id) return;
+      if (a === 'pausar') {
+        const c = lerCronos()[id];
+        if (c) { atualizarCrono(c); c.rodando = false; c.desde = Date.now(); gravarCrono(id, c); }
+        renderFlutuante();
+        if (window.estPlano) window.estPlano.renderTudo();   // selo ⏱ da lista
+      } else window.estPlano.abrirEstudo(el.dataset.tipo, id);
+    });
+    document.body.appendChild(el);
+    renderFlutuante();
+    setInterval(renderFlutuante, 1000);
   }
 
   function alternarPlay() {
@@ -1114,6 +1168,7 @@
       tick = setInterval(renderCrono, 1000);
     }
     $('est-modal-sessao').classList.add('active');
+    renderFlutuante();
     $('est-modal-sessao').setAttribute('aria-hidden', 'false');
     setTimeout(() => quill.focus(), 50);
   }
@@ -1131,6 +1186,7 @@
     $('est-modal-sessao').setAttribute('aria-hidden', 'true');
     const comCrono = !!ctx.id;
     ctx = null;
+    renderFlutuante();
     if (comCrono) window.estPlano.renderTudo(); // atualiza o selo ⏱ na lista
     if (window.estResumos) window.estResumos.render();
   }
@@ -1325,6 +1381,7 @@
       else if (alca && alca.img) esconderAlca(); else fechar();
     });
     window.addEventListener('beforeunload', () => { if (ctx) salvar(); });
+    criarFlutuante();
   }
 
   document.addEventListener('DOMContentLoaded', init);
