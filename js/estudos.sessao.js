@@ -596,7 +596,7 @@
   function mostrarDiag() {
     const sujas = paginas.filter(p => p.sujo).map(p => p.titulo);
     alert([
-      `Site: ${location.host} | janela v34`,
+      `Site: ${location.host} | janela v35`,
       `Resumo: ${ctx ? idResumo() || '(sem id)' : '(fechado)'} | função do SQL: ${temRpc ? 'sim/não testada' : 'não'}`,
       `Versão conhecida: ${baseUpdated}`,
       `Checagens: ${checagens} | aba visível: ${!document.hidden} | páginas por gravar: ${sujas.join(', ') || 'nenhuma'}`,
@@ -735,6 +735,29 @@
     status(avisoConflito || 'Atualizado com o outro aparelho');
   }
 
+  /* Cria a linha em public.resumos. Manda também o topico_id (a tabela tem a coluna); se o banco
+     recusar com ele, tenta sem. Erro fica à vista na linha de status e no diagnóstico. */
+  async function criarNoServidor(c, html) {
+    const linha = {
+      id: 'r_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7),
+      disciplina_nome: c.disc.trim(), topico_nome: c.topico.trim(), conteudo: html, updated_at: new Date().toISOString()
+    };
+    let { data, error } = await tabelaResumos().insert(c.topicoId ? { ...linha, topico_id: c.topicoId } : linha).select('id, updated_at');
+    if (error && c.topicoId) {
+      anotar('criar com topico_id: ' + descErro(error));
+      ({ data, error } = await tabelaResumos().insert(linha).select('id, updated_at'));
+    }
+    anotar('criar: ' + (error ? descErro(error) : 'ok ' + linha.id));
+    if (error || !data || !data.length) {
+      console.error('Não deu para criar o resumo no servidor.', error);
+      guardarLocal(html);
+      status('⚠ O servidor recusou o resumo (ficou só neste aparelho): ' + (error ? error.message : 'sem resposta'));
+      return null;
+    }
+    entrada().id = linha.id;
+    return data[0];
+  }
+
   // Grava as páginas alteradas, juntando antes as do outro aparelho se ele gravou no meio
   async function gravarRemoto() {
     const c = ctx;
@@ -746,8 +769,14 @@
       const marcas = new Map(paginas.map(p => [p.uid, p.sujo]));
       const id = idResumo();
       let updated;
-      if (!id || vazio(html)) {
-        // Primeira gravação (cria) ou resumo vazio (apaga): o caminho de sempre
+      if (!id && !vazio(html)) {
+        // Primeira gravação: cria aqui (o salvarResumo do v5 engolia o erro e o resumo ficava só neste navegador)
+        const r = await criarNoServidor(c, html);
+        if (!r) return;
+        updated = r.updated_at;
+        guardarLocal(html);
+      } else if (vazio(html)) {
+        // Resumo vazio (apaga): o caminho de sempre
         await salvarResumo(c.disc, c.topico, html, true);
         const novo = idResumo();
         anotar(`gravar pelo caminho antigo (${vazio(html) ? 'vazio' : 'novo'}): id ${novo}`);
