@@ -3136,6 +3136,14 @@
   const motorDe = id => motorPdfs.find(x => x.id === id);
   const itemIdDoPdf = id => (((materiais.find(m => m.id === id) || {}).topicos || [])[0] || {}).topico_id || null;
   const nomeDoPdf = id => (materiais.find(m => m.id === id) || {}).nome || 'PDF';
+  /* Alvos de um bloco: os subtópicos com caderno próprio ficam um a um; os sem caderno viram uma linha só,
+     "Questões do PDF", no caderno do PDF. Na conclusão o resultado dessa linha é repartido entre eles,
+     para cada um continuar com acerto e último contato (senão ficaria sempre no topo da escolha). */
+  function separarAlvos(alvos) {
+    const sub = a => a.subtopico_id && window.estSub && window.estSub.porId(a.subtopico_id);
+    const proprios = (alvos || []).filter(a => (sub(a) || {}).tec_link);
+    return { proprios, doPdf: (alvos || []).filter(a => !proprios.includes(a)), sub };
+  }
   // Caderno do PDF: o da Tela do PDF ou, sem ele, o do item do PDF (ficha do Edital, userscript)
   const cadernoDoPdf = id => (motorDe(id) || {}).tec_link || ((acharTopico(itemIdDoPdf(id)) || {}).t || {}).tecLink || '';
   const subtopicosDoPdf = id => { const t = itemIdDoPdf(id); return t && window.estSub ? window.estSub.doTopico(t).filter(s => s.material_id === id) : []; };
@@ -3283,14 +3291,19 @@
       const q = (m.alvos || []).reduce((a, x) => a + (x.questoes || 0), 0);
       tag = m.tipo_bloco === 'manutencao' ? `Questões · manutenção · ${disc} · ${q} questões · ${fmtMin(m.minutos)}`
         : `Questões · ${pdf} · Bloco ${i.n} · D+${i.dias} · Previsto ${i.prev}% · ${q} questões · ${fmtMin(m.minutos)}`;
-      const pdfTec = cadernoDoPdf(m.material_id);
-      const alvos = (m.alvos || []).map(a => {
-        if (a.material_id) { const t = cadernoDoPdf(a.material_id); return `${escapeHtml(nomeDoPdf(a.material_id))} (${a.questoes})${t ? ` <a href="${attr(t)}" target="_blank" rel="noopener">TEC ↗</a>` : ''}`; }
-        const s = a.subtopico_id && window.estSub && window.estSub.porId(a.subtopico_id);
-        const link = (s && s.tec_link) || pdfTec;
-        const naoLido = s && !s.estudado_em ? ' <small>(leia antes)</small>' : '';
-        return `${escapeHtml(s ? s.nome : 'PDF inteiro')} (${a.questoes})${naoLido}${link ? ` <a href="${attr(link)}" target="_blank" rel="noopener">TEC ↗</a>` : ' <small>sem caderno</small>'}`;
-      });
+      const tec = l => (l ? ` <a href="${attr(l)}" target="_blank" rel="noopener">TEC ↗</a>` : ' <small>sem caderno</small>');
+      let alvos;
+      if (m.tipo_bloco === 'manutencao') {
+        alvos = (m.alvos || []).map(a => { const t = cadernoDoPdf(a.material_id); return `${escapeHtml(nomeDoPdf(a.material_id))} (${a.questoes})${t ? tec(t) : ''}`; });
+      } else {
+        const { proprios, doPdf, sub } = separarAlvos(m.alvos);
+        const nome = a => { const s = sub(a); return s ? escapeHtml(s.nome) + (s.estudado_em ? '' : ' <small>(leia antes)</small>') : ''; };
+        alvos = proprios.map(a => `${nome(a)} (${a.questoes})${tec(sub(a).tec_link)}`);
+        if (doPdf.length) {
+          const nomes = doPdf.map(nome).filter(Boolean);
+          alvos.push(`Questões do PDF (${doPdf.reduce((x, a) => x + (a.questoes || 0), 0)})${nomes.length ? `: ${nomes.join(', ')}` : ''}${tec(cadernoDoPdf(m.material_id))}`);
+        }
+      }
       corpo = `<span class="est-plano-item-subs">${alvos.join(' · ')}</span>
         <span class="est-plano-item-top">Registre os erros e as dificuldades no Caderno de Erros.</span>`;
       acoes = concluir;
@@ -3433,13 +3446,18 @@
     const manut = m.tipo_bloco === 'manutencao';
     const alvos = m.alvos || [];
     const nomeAlvo = a => (a.material_id ? nomeDoPdf(a.material_id) : (a.subtopico_id && window.estSub.porId(a.subtopico_id) || {}).nome || 'PDF inteiro');
+    // Uma linha por subtópico com caderno; os sem caderno numa linha só, "Questões do PDF"
+    const sep = separarAlvos(alvos);
+    const linhas = manut ? alvos.map(a => ({ rot: nomeAlvo(a), alvos: [a] }))
+      : [...sep.proprios.map(a => ({ rot: nomeAlvo(a), alvos: [a] })),
+        ...(sep.doPdf.length ? [{ rot: 'Questões do PDF' + (sep.doPdf.some(a => a.subtopico_id) ? ` (${sep.doPdf.filter(a => a.subtopico_id).map(nomeAlvo).join(', ')})` : ''), alvos: sep.doPdf }] : [])];
     const tipo = tipoQuestaoLembrado();
     const html = `${campoTempo(min)}
       <label class="est-motor-campo">Tipo de questão <select class="est-form-select" data-k="tipo">
         <option value="ce" ${tipo === 'ce' ? 'selected' : ''}>Certo/Errado</option><option value="me" ${tipo === 'me' ? 'selected' : ''}>Múltipla escolha (5)</option></select></label>
       <table class="est-motor-tabela"><thead><tr><th>${manut ? 'PDF' : 'Subtópico'}</th><th>Feitas</th><th>Certas</th></tr></thead><tbody>
-      ${alvos.map((a, i) => `<tr><td>${escapeHtml(nomeAlvo(a))}</td>
-        <td><input type="number" class="est-form-input" data-t="${i}" min="0" value="${a.questoes || 0}" aria-label="Feitas" /></td>
+      ${linhas.map((l, i) => `<tr><td>${escapeHtml(l.rot)}</td>
+        <td><input type="number" class="est-form-input" data-t="${i}" min="0" value="${l.alvos.reduce((x, a) => x + (a.questoes || 0), 0)}" aria-label="Feitas" /></td>
         <td><input type="number" class="est-form-input" data-c="${i}" min="0" placeholder="0" aria-label="Certas" /></td></tr>`).join('')}
       </tbody></table>
       <details class="est-motor-campo"><summary>Confiança (opcional, para a calibração)</summary>
@@ -3452,8 +3470,14 @@
       const erro = t => { const p = c.querySelector('.est-motor-erro'); p.textContent = t; p.hidden = !t; };
       c.querySelector('[data-a="salvar"]').addEventListener('click', async () => {
         const v = sel => Math.max(0, parseInt((c.querySelector(sel) || {}).value, 10) || 0);
-        const res = alvos.map((a, i) => ({ a, total: v(`[data-t="${i}"]`), acertos: v(`[data-c="${i}"]`) }));
-        if (res.some(r => r.acertos > r.total)) return erro('As certas não podem passar das feitas.');
+        const lidas = linhas.map((l, i) => ({ l, total: v(`[data-t="${i}"]`), acertos: v(`[data-c="${i}"]`) }));
+        if (lidas.some(r => r.acertos > r.total)) return erro('As certas não podem passar das feitas.');
+        // Linha "Questões do PDF": feitas e certas repartidas por igual (as certas nunca passam das feitas de cada um)
+        const D = window.estMotorQuestoes.dividir, ids = l => l.alvos.map((_, j) => j);
+        const res = lidas.flatMap(({ l, total, acertos }) => {
+          const t = D(total, ids(l)), c = D(acertos, ids(l));
+          return l.alvos.map((a, j) => ({ a, total: t[j].questoes, acertos: c[j].questoes }));
+        });
         const total = res.reduce((s, r) => s + r.total, 0), acertos = res.reduce((s, r) => s + r.acertos, 0);
         const certezaTxt = c.querySelector('[data-k="certeza"]').value, chuteTxt = c.querySelector('[data-k="chute"]').value;
         const certeza = certezaTxt === '' ? null : v('[data-k="certeza"]'), chute = chuteTxt === '' ? null : v('[data-k="chute"]');
