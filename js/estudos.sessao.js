@@ -581,8 +581,27 @@
   // Uma operação de cada vez (gravar e buscar mexem nas mesmas páginas)
   function enfileirar(fn) {
     const p = fila.then(fn, fn);
-    fila = p.catch(e => console.error('Sincronia do resumo:', e));
+    fila = p.catch(e => { console.error('Sincronia do resumo:', e); anotar('ERRO ' + (e && e.message || e)); });
     return p;
+  }
+
+  // Diagnóstico da sincronia: tocar na linha de status mostra as últimas tentativas
+  const diag = [];
+  let checagens = 0;
+  const descErro = e => (e ? `${e.code || ''} ${e.message || ''}`.trim() : '');
+  function anotar(txt) {
+    diag.push(new Date().toLocaleTimeString('pt-BR') + ' ' + txt);
+    if (diag.length > 25) diag.shift();
+  }
+  function mostrarDiag() {
+    const sujas = paginas.filter(p => p.sujo).map(p => p.titulo);
+    alert([
+      `Site: ${location.host} | janela v34`,
+      `Resumo: ${ctx ? idResumo() || '(sem id)' : '(fechado)'} | função do SQL: ${temRpc ? 'sim/não testada' : 'não'}`,
+      `Versão conhecida: ${baseUpdated}`,
+      `Checagens: ${checagens} | aba visível: ${!document.hidden} | páginas por gravar: ${sujas.join(', ') || 'nenhuma'}`,
+      '', ...diag
+    ].join('\n'));
   }
 
   async function sha(s) {
@@ -614,11 +633,12 @@
       } else {
         // Função não criada (PGRST202) ou com erro: daqui em diante baixa o resumo inteiro
         if (error.code !== 'PGRST202') console.warn('resumo_partes falhou; baixando o resumo inteiro.', error);
+        anotar('função do SQL: ' + descErro(error));
         temRpc = false;
       }
     }
     const { data, error } = await tabelaResumos().select('conteudo, updated_at').eq('id', id).maybeSingle();
-    if (error) { console.warn('Não deu para buscar o resumo no servidor.', error); return false; }
+    if (error) { console.warn('Não deu para buscar o resumo no servidor.', error); anotar('baixar: ' + descErro(error)); return false; }
     return data ? { conteudo: data.conteudo || '', updated_at: data.updated_at } : null;
   }
 
@@ -630,12 +650,15 @@
       // Ainda sem resumo conhecido: o outro aparelho pode ter criado
       const { data, error } = await tabelaResumos().select('id, conteudo, updated_at')
         .eq('disciplina_nome', c.disc.trim()).eq('topico_nome', c.topico.trim()).maybeSingle();
+      if (error) anotar('busca pelo nome: ' + descErro(error));
       if (error || ctx !== c) return false;
-      if (!data) { baseUpdated = null; return true; }
+      if (!data) { baseUpdated = null; anotar('busca pelo nome: ainda não existe no servidor'); return true; }
       entrada().id = data.id;
+      anotar('busca pelo nome: achou ' + data.id);
       return aplicar(data.conteudo || '', data.updated_at, c);
     }
     const r = await baixar(id);
+    anotar(`busca: servidor ${r ? r.updated_at : r} | aqui ${baseUpdated}`);
     if (r === false || ctx !== c) return false;
     if (r === null) {   // apagado em outro lugar: a próxima gravação cria de novo
       entrada().id = null;
@@ -727,12 +750,14 @@
         // Primeira gravação (cria) ou resumo vazio (apaga): o caminho de sempre
         await salvarResumo(c.disc, c.topico, html, true);
         const novo = idResumo();
+        anotar(`gravar pelo caminho antigo (${vazio(html) ? 'vazio' : 'novo'}): id ${novo}`);
         const r = novo ? await tabelaResumos().select('updated_at').eq('id', novo).maybeSingle() : { data: null };
         updated = r.data ? r.data.updated_at : null;
       } else {
         let q = tabelaResumos().update({ conteudo: html, updated_at: new Date().toISOString() }).eq('id', id);
         if (!semCondicao) q = baseUpdated == null ? q.is('updated_at', null) : q.eq('updated_at', baseUpdated);
         const { data, error } = await q.select('updated_at');
+        anotar(`gravar${semCondicao ? ' (sem conferir)' : ''}: ${error ? descErro(error) : data.length + ' linha(s)'} | conhecida ${baseUpdated}`);
         if (error) { console.warn('Sincronia: erro ao gravar o resumo.', error); guardarLocal(html); status('⚠ Sem conexão: salvo só neste aparelho'); return; }
         if (!data.length) {   // o outro aparelho gravou antes
           const antes = baseUpdated;
@@ -784,10 +809,12 @@
         if (!ctx) return;
         const id = idResumo();
         let ok = true;
+        checagens++;
         if (!id) ok = await puxarRemoto();
         else {
           const { data, error } = await tabelaResumos().select('updated_at').eq('id', id).maybeSingle();
-          if (error) { console.warn('Sincronia: não deu para conferir o resumo.', error); ok = false; }
+          if (error) { console.warn('Sincronia: não deu para conferir o resumo.', error); anotar('checar: ' + descErro(error)); ok = false; }
+          else if (!data) anotar('checar: o resumo não existe mais no servidor');
           else if (ctx && (!data || data.updated_at !== baseUpdated)) ok = await puxarRemoto();
         }
         // Falha à vista (antes ficava calada); a próxima busca que der certo troca a mensagem
@@ -1776,6 +1803,7 @@
     clearInterval(timerSinc);
     timerSinc = setInterval(sincronizarAgora, SINC_MS);
     const c = ctx;
+    anotar(`abriu "${dados.topico}" | id ${idResumo() || '(sem id)'}`);
     await enfileirar(puxarRemoto);
     if (ctx === c && window.estTinta) await window.estTinta.abrirResumo();   // ligar a tinta tira o foco do texto
   }
@@ -2002,6 +2030,12 @@
       else if (alca && alca.img) esconderAlca(); else fechar();
     });
     window.addEventListener('beforeunload', () => { if (ctx) salvar(); });
+    const st = $('est-sessao-status');
+    st.addEventListener('click', mostrarDiag);
+    st.title = 'Toque para ver o diagnóstico da sincronia entre aparelhos';
+    st.style.cursor = 'pointer';
+    st.style.display = 'inline-block';
+    st.style.minWidth = '2em';   // vazio também dá para tocar
     // Voltou para a aba (ou o tablet acordou): busca logo o que o outro aparelho gravou
     document.addEventListener('visibilitychange', () => { if (!document.hidden) sincronizarAgora(); });
     criarFlutuante();
