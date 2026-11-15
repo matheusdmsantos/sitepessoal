@@ -2273,6 +2273,8 @@ html.est-desenho-aberto, html.est-desenho-aberto body { overflow: hidden; oversc
 .est-desenho-esp { min-height: 36px; padding: 4px 8px; border: 1px solid #d1d5db; border-radius: 8px; background: #fff; color: #111827; font: inherit; font-size: 0.9rem; }
 .est-desenho-dedo { display: flex; align-items: center; gap: 4px; font-size: 0.85rem; color: #374151; }
 .est-desenho-esp-vazio { flex: 1; }
+.est-desenho-diag { position: fixed; left: 8px; bottom: 8px; z-index: 2; max-width: calc(100vw - 16px); margin: 0; max-height: 40vh; overflow: hidden; pointer-events: none; opacity: 0.92; border-radius: 6px; padding: 6px 12px; background: #111827; color: #a7f3d0; font: 12px/1.4 ui-monospace, monospace; white-space: pre-wrap; }
+.est-desenho-diag[hidden] { display: none; }
 .est-desenho-barra button.est-desenho-ok { border-color: #2563eb; background: #2563eb; color: #fff; font-weight: 600; }
 .est-desenho-barra button.est-desenho-ok:hover { background: #1d4ed8; }
 .est-desenho-area { flex: 1; overflow: auto; padding: 12px; display: flex; flex-direction: column; align-items: flex-start; gap: 10px; overscroll-behavior: contain; touch-action: none; }

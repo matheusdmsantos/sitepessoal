@@ -29,6 +29,9 @@
   let ferramenta = 'caneta', cor = CORES[0], corMarca = CORES_MARCA[0], espessura = 'media';
   let atual = null, ponteiro = null, ponteiroDedo = false, mudou = false, resolver = null, editando = false;
   let apagando = false;            // traço atual é borracha (ferramenta ou botão da caneta)
+  let botaoNoAr = false;           // botão da caneta apertado com ela pairando sobre a tela
+  // Qualquer botão além da ponta (S Pen: lateral; outras canetas: borracha) — buttons é bit a bit
+  const botaoExtra = ev => ev.pointerType === 'pen' && ((ev.buttons & ~1) > 0 || ev.button > 0);
   let zoom = 1, pinca = null;
   let laco = null, sel = null, arrasto = null;   // seleção: contorno em andamento, { tracos, box }, mover/escala
   const dedos = new Map();         // dedos na folha: id → { x, y }
@@ -71,10 +74,12 @@
           <button type="button" data-acao="mais" title="Aumentar o zoom (ou pince com dois dedos)" aria-label="Aumentar o zoom">+</button>
         </div>
         <label class="est-desenho-dedo" title="Ligado: o dedo também desenha (sem caneta). Desligado: o dedo rola a folha."><input type="checkbox"> Dedo desenha</label>
+        <button type="button" data-acao="diag" title="Mostra o que a caneta envia ao navegador (para ajustar o botão da S Pen)">🔎 Caneta</button>
         <span class="est-desenho-esp-vazio"></span>
         <button type="button" data-acao="cancelar">Cancelar</button>
         <button type="button" data-acao="inserir" class="est-desenho-ok">Inserir no resumo</button>
       </div>
+      <pre class="est-desenho-diag" hidden></pre>
       <div class="est-desenho-area">
         <canvas></canvas>
         <button type="button" data-acao="espaco" class="est-desenho-mais">+ Mais espaço</button>
@@ -105,6 +110,21 @@
     cv.addEventListener('touchstart', ev => ev.preventDefault(), { passive: false });
     // Botão da caneta não abre o menu do navegador
     cv.addEventListener('contextmenu', ev => ev.preventDefault());
+    // shortcut: diagnóstico da caneta (🔎) para descobrir o que o botão da S Pen envia; tirar quando estiver ajustado
+    const diag = [];
+    const anotar = ev => {
+      const box = $('.est-desenho-diag');
+      if (box.hidden) return;
+      if (ev.type === 'pointermove' && ev.pointerType === 'touch') return;
+      const lin = ev.type.startsWith('key') ? `${ev.type} key=${ev.key} code=${ev.code}`
+        : `${ev.type} tipo=${ev.pointerType || '-'} button=${ev.button} buttons=${ev.buttons} pressão=${ev.pressure != null ? ev.pressure.toFixed(2) : '-'}`;
+      if (diag[diag.length - 1] === lin) return;   // movimentos iguais seguidos viram uma linha
+      diag.push(lin);
+      if (diag.length > 12) diag.shift();
+      box.textContent = diag.join('\n');
+    };
+    ['pointerdown', 'pointermove', 'pointerup', 'pointercancel', 'contextmenu', 'auxclick'].forEach(t => el.addEventListener(t, anotar, true));
+    ['keydown', 'keyup'].forEach(t => window.addEventListener(t, ev => { if (!el.hidden) anotar(ev); }, true));
     el.addEventListener('keydown', ev => {
       if (ev.key === 'Escape') { ev.stopPropagation(); if (sel) { sel = null; redesenhar(); atualizarBarra(); } else acao('cancelar'); }
       if ((ev.key === 'Delete' || ev.key === 'Backspace') && sel) { ev.preventDefault(); ev.stopPropagation(); acao('apagarSel'); }
@@ -390,7 +410,7 @@
     }
     if (ponteiro !== null) return;   // já há uma caneta na folha: a palma não conta
     // Botão lateral da caneta (botão 2) ou ponta de borracha (botão 5): borracha só neste traço
-    const botaoCaneta = ev.pointerType === 'pen' && (ev.button === 2 || ev.button === 5 || (ev.buttons & 34) > 0);
+    const botaoCaneta = botaoExtra(ev) || (ev.pointerType === 'pen' && botaoNoAr);
     if ((ev.button > 0 && !botaoCaneta) || ev.target !== cv) return;
     apagando = ferramenta === 'borracha' || botaoCaneta;
     ev.preventDefault();
@@ -429,8 +449,15 @@
       }
       return;
     }
-    if (ev.pointerId !== ponteiro) return;
+    if (ev.pointerId !== ponteiro) { if (ev.pointerType === 'pen') botaoNoAr = botaoExtra(ev); return; }
     ev.preventDefault();
+    // Botão apertado no meio do traço: o que foi riscado fica e dali em diante apaga
+    if (!apagando && !laco && !arrasto && botaoExtra(ev)) {
+      if (atual) { guardarHistorico(); tracos.push(atual); atual = null; mudou = true; redesenharBase(); }
+      guardarHistorico();
+      apagando = true;
+      atualizarBarra();
+    }
     const evs = ev.getCoalescedEvents ? ev.getCoalescedEvents() : [ev];
     for (const e of (evs.length ? evs : [ev])) {
       const pt = ponto(e);
@@ -511,6 +538,7 @@
     if (a === 'desfazer' && historico.length) { refazer.push(tracos); tracos = historico.pop(); mudou = true; redesenharBase(); }
     if (a === 'refazer' && refazer.length) { historico.push(tracos); tracos = refazer.pop(); mudou = true; redesenharBase(); }
     if (a === 'limpar' && tracos.length) { guardarHistorico(); tracos = []; mudou = true; redesenharBase(); }
+    if (a === 'diag') { const box = $('.est-desenho-diag'); box.hidden = !box.hidden; box.textContent = box.hidden ? '' : 'Encoste a caneta na folha com e sem o botão apertado…'; }
     if (a === 'mais') zoomNoMeio(zoom * 1.25);
     if (a === 'menos') zoomNoMeio(zoom / 1.25);
     if (a === 'zoom') zoomNoMeio(1);
