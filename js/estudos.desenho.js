@@ -76,12 +76,10 @@
           <button type="button" data-acao="mais" title="Aumentar o zoom (ou pince com dois dedos)" aria-label="Aumentar o zoom">+</button>
         </div>
         <label class="est-desenho-dedo" title="Ligado: o dedo também desenha (sem caneta). Desligado: o dedo rola a folha."><input type="checkbox"> Dedo desenha</label>
-        <button type="button" data-acao="diag" title="Mostra o que a caneta envia ao navegador (para ajustar o botão da S Pen)">🔎 Caneta</button>
         <span class="est-desenho-esp-vazio"></span>
         <button type="button" data-acao="cancelar">Cancelar</button>
         <button type="button" data-acao="inserir" class="est-desenho-ok">Inserir no resumo</button>
       </div>
-      <pre class="est-desenho-diag" hidden></pre>
       <div class="est-desenho-area">
         <canvas></canvas>
         <button type="button" data-acao="espaco" class="est-desenho-mais">+ Mais espaço</button>
@@ -112,8 +110,8 @@
     // iPad: sem isto, a Apple Pencil seleciona texto ou abre a lupa
     cv.addEventListener('touchstart', ev => ev.preventDefault(), { passive: false });
     // Botão da caneta não abre o menu do navegador
-    /* Botão da caneta = interruptor. A S Pen no Chrome/Android (Galaxy Tab S10 FE+, visto pelo
-       diagnóstico 🔎) dispara um contextmenu a cada aperto; canetas no Windows também (botão = clique
+    /* Botão da caneta = interruptor. A S Pen no Chrome/Android (Galaxy Tab S10 FE+, conferido no
+       aparelho) dispara um contextmenu a cada aperto; canetas no Windows também (botão = clique
        direito). Toque longo do dedo também abre contextmenu: esse é ignorado. */
     el.addEventListener('contextmenu', ev => {
       if (!ev.target.closest('.est-desenho-area')) return;
@@ -122,21 +120,6 @@
       ultimoBotao = Date.now();
       alternarBorracha();
     });
-    // shortcut: diagnóstico da caneta (🔎) para descobrir o que o botão da S Pen envia; tirar quando estiver ajustado
-    const diag = [];
-    const anotar = ev => {
-      const box = $('.est-desenho-diag');
-      if (box.hidden) return;
-      if (ev.type === 'pointermove' && ev.pointerType === 'touch') return;
-      const lin = ev.type.startsWith('key') ? `${ev.type} key=${ev.key} code=${ev.code}`
-        : `${ev.type} tipo=${ev.pointerType || '-'} button=${ev.button} buttons=${ev.buttons} pressão=${ev.pressure != null ? ev.pressure.toFixed(2) : '-'}`;
-      if (diag[diag.length - 1] === lin) return;   // movimentos iguais seguidos viram uma linha
-      diag.push(lin);
-      if (diag.length > 12) diag.shift();
-      box.textContent = diag.join('\n');
-    };
-    ['pointerdown', 'pointermove', 'pointerup', 'pointercancel', 'contextmenu', 'auxclick'].forEach(t => el.addEventListener(t, anotar, true));
-    ['keydown', 'keyup'].forEach(t => window.addEventListener(t, ev => { if (!el.hidden) anotar(ev); }, true));
     el.addEventListener('keydown', ev => {
       if (ev.key === 'Escape') { ev.stopPropagation(); if (sel) { sel = null; redesenhar(); atualizarBarra(); } else acao('cancelar'); }
       if ((ev.key === 'Delete' || ev.key === 'Backspace') && sel) { ev.preventDefault(); ev.stopPropagation(); acao('apagarSel'); }
@@ -551,7 +534,6 @@
     if (a === 'desfazer' && historico.length) { refazer.push(tracos); tracos = historico.pop(); mudou = true; redesenharBase(); }
     if (a === 'refazer' && refazer.length) { historico.push(tracos); tracos = refazer.pop(); mudou = true; redesenharBase(); }
     if (a === 'limpar' && tracos.length) { guardarHistorico(); tracos = []; mudou = true; redesenharBase(); }
-    if (a === 'diag') { const box = $('.est-desenho-diag'); box.hidden = !box.hidden; box.textContent = box.hidden ? '' : 'Encoste a caneta na folha com e sem o botão apertado…'; }
     if (a === 'mais') zoomNoMeio(zoom * 1.25);
     if (a === 'menos') zoomNoMeio(zoom / 1.25);
     if (a === 'zoom') zoomNoMeio(1);
