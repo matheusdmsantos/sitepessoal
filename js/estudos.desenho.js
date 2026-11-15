@@ -8,6 +8,8 @@
  * Só a caneta (e o mouse) desenha: o dedo rola a folha e a palma encostada é ignorada,
  * salvo com "Dedo desenha" ligado. Dois dedos dão zoom (pinça); também − / + e Ctrl+roda.
  * Traço com pressão; marca-texto translúcido; a borracha apaga o traço inteiro que tocar.
+ * Seleção (laço, como no Samsung Notes): contorne os traços (ou toque num) e arraste a caixa
+ * para mover, um canto para redimensionar; apagar, duplicar e trocar a cor do que está marcado.
  */
 (function () {
   const LARGURA = 1000;            // largura lógica da folha (os traços ficam nessa escala)
@@ -26,6 +28,7 @@
   let ferramenta = 'caneta', cor = CORES[0], corMarca = CORES_MARCA[0], espessura = 'media';
   let atual = null, ponteiro = null, ponteiroDedo = false, mudou = false, resolver = null, editando = false;
   let zoom = 1, pinca = null;
+  let laco = null, sel = null, arrasto = null;   // seleção: contorno em andamento, { tracos, box }, mover/escala
   const dedos = new Map();         // dedos na folha: id → { x, y }
 
   const $ = s => el.querySelector(s);
@@ -45,6 +48,11 @@
           <button type="button" data-ferr="caneta" title="Caneta">✒️ Caneta</button>
           <button type="button" data-ferr="marca" title="Marca-texto">🖍 Marca-texto</button>
           <button type="button" data-ferr="borracha" title="Borracha (apaga o traço inteiro)">🧽 Borracha</button>
+          <button type="button" data-ferr="selecao" title="Seleção: contorne os traços para mover ou redimensionar">⬚ Seleção</button>
+        </div>
+        <div class="est-desenho-grupo est-desenho-sel" role="group" aria-label="Seleção" hidden>
+          <button type="button" data-acao="dup" title="Duplicar o que está selecionado">⧉ Duplicar</button>
+          <button type="button" data-acao="apagarSel" title="Apagar o que está selecionado (Delete)">✕ Apagar</button>
         </div>
         <div class="est-desenho-grupo est-desenho-cores" role="group" aria-label="Cor"></div>
         <select class="est-desenho-esp" aria-label="Espessura">
@@ -74,7 +82,11 @@
     ctx = cv.getContext('2d');
     base = document.createElement('canvas');
 
-    el.querySelectorAll('[data-ferr]').forEach(b => b.addEventListener('click', () => { ferramenta = b.dataset.ferr; atualizarBarra(); }));
+    el.querySelectorAll('[data-ferr]').forEach(b => b.addEventListener('click', () => {
+      ferramenta = b.dataset.ferr;
+      if (ferramenta !== 'selecao' && sel) { sel = null; redesenhar(); }
+      atualizarBarra();
+    }));
     $('.est-desenho-esp').addEventListener('change', ev => { espessura = ev.target.value; });
     const dedo = $('.est-desenho-dedo input');
     dedo.checked = ler('est_desenho_dedo') === '1';
@@ -90,7 +102,8 @@
     // iPad: sem isto, a Apple Pencil seleciona texto ou abre a lupa
     cv.addEventListener('touchstart', ev => ev.preventDefault(), { passive: false });
     el.addEventListener('keydown', ev => {
-      if (ev.key === 'Escape') { ev.stopPropagation(); acao('cancelar'); }
+      if (ev.key === 'Escape') { ev.stopPropagation(); if (sel) { sel = null; redesenhar(); atualizarBarra(); } else acao('cancelar'); }
+      if ((ev.key === 'Delete' || ev.key === 'Backspace') && sel) { ev.preventDefault(); ev.stopPropagation(); acao('apagarSel'); }
       const ctrl = ev.ctrlKey || ev.metaKey;
       if (ctrl && ev.key.toLowerCase() === 'z') { ev.preventDefault(); ev.stopPropagation(); acao(ev.shiftKey ? 'refazer' : 'desfazer'); }
       if (ctrl && ev.key.toLowerCase() === 'y') { ev.preventDefault(); ev.stopPropagation(); acao('refazer'); }
@@ -108,14 +121,18 @@
 
   function atualizarBarra() {
     el.querySelectorAll('[data-ferr]').forEach(b => b.classList.toggle('ativo', b.dataset.ferr === ferramenta));
-    const lista = ferramenta === 'marca' ? CORES_MARCA : CORES;
-    const sel = ferramenta === 'marca' ? corMarca : cor;
-    $('.est-desenho-cores').innerHTML = ferramenta === 'borracha' ? '' : lista.map(c =>
-      `<button type="button" class="est-desenho-cor ${c === sel ? 'ativo' : ''}" data-cor="${c}" style="background:${c}" aria-label="Cor ${c}"></button>`).join('');
+    // Na seleção, as cores da caneta (ou do marca-texto, se só há marca-texto marcado) trocam a cor do que está marcado
+    const soMarca = sel && sel.tracos.every(t => t.f === 'marca');
+    const lista = ferramenta === 'marca' || soMarca ? CORES_MARCA : CORES;
+    const ativa = ferramenta === 'marca' ? corMarca : ferramenta === 'selecao' ? null : cor;
+    $('.est-desenho-cores').innerHTML = ferramenta === 'borracha' || (ferramenta === 'selecao' && !sel) ? '' : lista.map(c =>
+      `<button type="button" class="est-desenho-cor ${c === ativa ? 'ativo' : ''}" data-cor="${c}" style="background:${c}" aria-label="Cor ${c}"></button>`).join('');
     $('.est-desenho-cores').querySelectorAll('[data-cor]').forEach(b => b.addEventListener('click', () => {
-      if (ferramenta === 'marca') corMarca = b.dataset.cor; else cor = b.dataset.cor;
+      if (ferramenta === 'selecao') recolorir(b.dataset.cor);
+      else if (ferramenta === 'marca') corMarca = b.dataset.cor; else cor = b.dataset.cor;
       atualizarBarra();
     }));
+    $('.est-desenho-sel').hidden = !sel;
     $('.est-desenho-zoom').textContent = Math.round(zoom * 100) + '%';
     $('[data-acao="menos"]').disabled = zoom <= 1;
     $('[data-acao="mais"]').disabled = zoom >= ZOOM_MAX;
@@ -203,14 +220,142 @@
   function redesenharBase() {
     const b = base.getContext('2d'), k = fator();
     b.clearRect(0, 0, base.width, base.height);
-    tracos.forEach(t => desenharTraco(b, t, k));
+    // Enquanto a seleção é arrastada, ela fica fora da base e é desenhada a cada movimento
+    tracos.forEach(t => { if (!(arrasto && sel.tracos.includes(t))) desenharTraco(b, t, k); });
     redesenhar();
   }
 
   function redesenhar() {
+    const k = fator();
     ctx.clearRect(0, 0, cv.width, cv.height);
     ctx.drawImage(base, 0, 0);
-    if (atual) desenharTraco(ctx, atual, fator());
+    if (atual) desenharTraco(ctx, atual, k);
+    if (arrasto) sel.tracos.forEach(t => desenharTraco(ctx, t, k));
+    const px = cv.width / (cv.getBoundingClientRect().width || 1);   // pixels do canvas por pixel da tela
+    if (laco && laco.length > 2) {
+      ctx.save();
+      ctx.setLineDash([6 * px, 4 * px]);
+      ctx.lineWidth = 1.5 * px;
+      ctx.strokeStyle = '#2563eb';
+      ctx.beginPath();
+      ctx.moveTo(laco[0] * k, laco[1] * k);
+      for (let i = 2; i < laco.length; i += 2) ctx.lineTo(laco[i] * k, laco[i + 1] * k);
+      ctx.stroke();
+      ctx.restore();
+    }
+    if (sel) {
+      const b = sel.box, lado = 12 * px;
+      ctx.save();
+      ctx.setLineDash([6 * px, 4 * px]);
+      ctx.lineWidth = 1.5 * px;
+      ctx.strokeStyle = '#2563eb';
+      ctx.strokeRect(b.x * k, b.y * k, b.w * k, b.h * k);
+      ctx.setLineDash([]);
+      ctx.fillStyle = '#fff';
+      cantos(b).forEach(([x, y]) => { ctx.fillRect(x * k - lado / 2, y * k - lado / 2, lado, lado); ctx.strokeRect(x * k - lado / 2, y * k - lado / 2, lado, lado); });
+      ctx.restore();
+    }
+  }
+
+  /* ---------- seleção ---------- */
+  const cantos = b => [[b.x, b.y], [b.x + b.w, b.y], [b.x, b.y + b.h], [b.x + b.w, b.y + b.h]];
+
+  function caixaDe(lista) {
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    lista.forEach(t => {
+      const m = (t.f === 'marca' ? t.l * 2 : t.l) + 4;
+      for (let i = 0; i < t.p.length; i += 3) {
+        x0 = Math.min(x0, t.p[i] - m); x1 = Math.max(x1, t.p[i] + m);
+        y0 = Math.min(y0, t.p[i + 1] - m); y1 = Math.max(y1, t.p[i + 1] + m);
+      }
+    });
+    return { x: x0, y: y0, w: Math.max(1, x1 - x0), h: Math.max(1, y1 - y0) };
+  }
+
+  // Ponto dentro do contorno (laço fechado), pelo raio que cruza as arestas
+  function dentroDoLaco(x, y, l) {
+    let dentro = false;
+    for (let i = 0, j = l.length - 2; i < l.length; j = i, i += 2) {
+      const xi = l[i], yi = l[i + 1], xj = l[j], yj = l[j + 1];
+      if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) dentro = !dentro;
+    }
+    return dentro;
+  }
+
+  // Onde o ponto cai na seleção: índice do canto (0–3), 'dentro' ou null
+  function acertoSelecao(pt) {
+    if (!sel) return null;
+    const tol = 16 / (cv.getBoundingClientRect().width / LARGURA);   // 16 px da tela, em unidades da folha
+    const i = cantos(sel.box).findIndex(([x, y]) => Math.hypot(pt[0] - x, pt[1] - y) < tol);
+    if (i >= 0) return i;
+    const b = sel.box;
+    return pt[0] >= b.x && pt[0] <= b.x + b.w && pt[1] >= b.y && pt[1] <= b.y + b.h ? 'dentro' : null;
+  }
+
+  function fecharLaco() {
+    const l = laco;
+    laco = null;
+    let xs = [], ys = [];
+    for (let i = 0; i < l.length; i += 2) { xs.push(l[i]); ys.push(l[i + 1]); }
+    const pequeno = Math.max(...xs) - Math.min(...xs) < 8 && Math.max(...ys) - Math.min(...ys) < 8;
+    let marcados;
+    if (pequeno) {
+      // Toque: o traço de cima que passa ali
+      const t = tracos.slice().reverse().find(t => tocaTraco(t, [l[0], l[1]], 8));
+      marcados = t ? [t] : [];
+    } else {
+      // Contorno: os traços com ao menos metade dos pontos dentro
+      marcados = tracos.filter(t => {
+        let n = 0;
+        for (let i = 0; i < t.p.length; i += 3) if (dentroDoLaco(t.p[i], t.p[i + 1], l)) n++;
+        return n * 2 >= t.p.length / 3;
+      });
+    }
+    sel = marcados.length ? { tracos: marcados, box: caixaDe(marcados) } : null;
+  }
+
+  // Troca os traços marcados por cópias (o histórico guarda os originais intactos)
+  function copiarSelecao() {
+    guardarHistorico();
+    sel.tracos = sel.tracos.map(t => {
+      const c = { ...t, p: t.p.slice() };
+      tracos[tracos.indexOf(t)] = c;
+      return c;
+    });
+  }
+
+  function comecarArrasto(hit, pt) {
+    copiarSelecao();
+    arrasto = { hit, p0: pt, orig: sel.tracos.map(t => ({ p: t.p.slice(), l: t.l })), box0: { ...sel.box } };
+    redesenharBase();
+  }
+
+  function aplicarArrasto(pt) {
+    const { hit, p0, orig, box0 } = arrasto;
+    if (hit === 'dentro') {
+      const dx = pt[0] - p0[0], dy = pt[1] - p0[1];
+      sel.tracos.forEach((t, k) => { const o = orig[k].p; for (let i = 0; i < o.length; i += 3) { t.p[i] = o[i] + dx; t.p[i + 1] = o[i + 1] + dy; } });
+      sel.box = { ...box0, x: box0.x + dx, y: box0.y + dy };
+      return;
+    }
+    // Canto: escala igual nos dois sentidos, presa no canto oposto (a espessura acompanha)
+    const cs = cantos(box0), [ax, ay] = cs[3 - hit], [cx, cy] = cs[hit];
+    const vx = cx - ax, vy = cy - ay;
+    const f = Math.max(0.1, Math.min(10, ((pt[0] - ax) * vx + (pt[1] - ay) * vy) / (vx * vx + vy * vy)));
+    sel.tracos.forEach((t, k) => {
+      const o = orig[k].p;
+      for (let i = 0; i < o.length; i += 3) { t.p[i] = ax + (o[i] - ax) * f; t.p[i + 1] = ay + (o[i + 1] - ay) * f; }
+      t.l = Math.max(0.5, Math.min(30, orig[k].l * f));
+    });
+    sel.box = { x: Math.min(ax, ax + vx * f), y: Math.min(ay, ay + vy * f), w: Math.abs(vx * f), h: Math.abs(vy * f) };
+  }
+
+  function recolorir(c) {
+    if (!sel) return;
+    copiarSelecao();
+    sel.tracos.forEach(t => { t.c = c; });
+    mudou = true;
+    redesenharBase();
   }
 
   /* ---------- caneta, dedo e borracha ---------- */
@@ -230,12 +375,14 @@
       dedos.set(ev.pointerId, { x: ev.clientX, y: ev.clientY });
       if (dedos.size === 2) {
         // Segundo dedo: vira pinça; o traço que o primeiro dedo começou é descartado
-        if (ponteiroDedo) { atual = null; ponteiro = null; ponteiroDedo = false; redesenhar(); }
+        if (ponteiroDedo) { atual = null; ponteiro = null; ponteiroDedo = false; laco = null; if (arrasto) terminarArrasto(); redesenhar(); }
         const m = meio(), r = cv.getBoundingClientRect();
         pinca = { d0: m.d, z0: zoom, fixo: { fx: (m.x - r.left) / r.width, fy: (m.y - r.top) / r.height } };
         return;
       }
-      if (dedos.size > 2 || !dedoDesenha()) return;   // um dedo sem "Dedo desenha": rola (em mover)
+      // um dedo sem "Dedo desenha" rola (em mover), salvo sobre a caixa da seleção, que ele arrasta
+      const naSelecao = ferramenta === 'selecao' && ev.target === cv && acertoSelecao(ponto(ev)) !== null;
+      if (dedos.size > 2 || (!dedoDesenha() && !naSelecao)) return;
     }
     if (ponteiro !== null) return;   // já há uma caneta na folha: a palma não conta
     if (ev.button > 0 || ev.target !== cv) return;
@@ -244,6 +391,14 @@
     ponteiroDedo = ev.pointerType === 'touch';
     try { cv.setPointerCapture(ev.pointerId); } catch (e) { /* ponteiro que já saiu: segue sem captura */ }
     if (ferramenta === 'borracha') { guardarHistorico(); atual = null; apagarEm(ponto(ev)); return; }
+    if (ferramenta === 'selecao') {
+      const pt = ponto(ev), hit = acertoSelecao(pt);
+      if (hit !== null) comecarArrasto(hit, pt);
+      else { sel = null; laco = [pt[0], pt[1]]; }
+      redesenhar();
+      atualizarBarra();
+      return;
+    }
     atual = ferramenta === 'marca'
       ? { f: 'marca', c: corMarca, l: ESPESSURAS[espessura], p: ponto(ev) }
       : { f: 'caneta', c: cor, l: ESPESSURAS[espessura], p: ponto(ev) };
@@ -273,11 +428,21 @@
     for (const e of (evs.length ? evs : [ev])) {
       const pt = ponto(e);
       if (ferramenta === 'borracha') { apagarEm(pt); continue; }
+      if (laco) { laco.push(pt[0], pt[1]); continue; }
+      if (arrasto) { aplicarArrasto(pt); continue; }
+      if (!atual) continue;
       const p = atual.p, n = p.length;
       if (Math.hypot(pt[0] - p[n - 3], pt[1] - p[n - 2]) < 0.8) continue;   // ponto repetido
       p.push(...pt);
     }
-    if (atual) redesenhar();
+    if (atual || laco || arrasto) redesenhar();
+  }
+
+  function terminarArrasto() {
+    arrasto = null;
+    sel.box = caixaDe(sel.tracos);
+    mudou = true;
+    redesenharBase();
   }
 
   function fim(ev) {
@@ -285,6 +450,8 @@
     if (ev.pointerId !== ponteiro) return;
     ponteiro = null;
     ponteiroDedo = false;
+    if (laco) { fecharLaco(); redesenhar(); }
+    if (arrasto) terminarArrasto();
     if (atual) {
       guardarHistorico();
       tracos.push(atual);
@@ -302,15 +469,16 @@
     return Math.hypot(px - ax - u * dx, py - ay - u * dy);
   }
 
+  function tocaTraco(t, pt, raio) {
+    const p = t.p, folga = raio + (t.f === 'marca' ? t.l * 2 : t.l);
+    if (p.length === 3) return Math.hypot(pt[0] - p[0], pt[1] - p[1]) < folga;
+    for (let i = 3; i < p.length; i += 3) if (distTrecho(pt[0], pt[1], p[i - 3], p[i - 2], p[i], p[i + 1]) < folga) return true;
+    return false;
+  }
+
   function apagarEm(pt) {
-    const toca = t => {
-      const p = t.p, folga = RAIO_BORRACHA + (t.f === 'marca' ? t.l * 2 : t.l);
-      if (p.length === 3) return Math.hypot(pt[0] - p[0], pt[1] - p[1]) < folga;
-      for (let i = 3; i < p.length; i += 3) if (distTrecho(pt[0], pt[1], p[i - 3], p[i - 2], p[i], p[i + 1]) < folga) return true;
-      return false;
-    };
     const antes = tracos.length;
-    tracos = tracos.filter(t => !toca(t));
+    tracos = tracos.filter(t => !tocaTraco(t, pt, RAIO_BORRACHA));
     if (tracos.length !== antes) { mudou = true; redesenharBase(); }
   }
 
@@ -322,6 +490,16 @@
   }
 
   async function acao(a) {
+    if (['desfazer', 'refazer', 'limpar'].includes(a)) sel = null;   // a seleção apontaria para traços de outra versão
+    if (a === 'apagarSel' && sel) { guardarHistorico(); tracos = tracos.filter(t => !sel.tracos.includes(t)); sel = null; mudou = true; redesenharBase(); }
+    if (a === 'dup' && sel) {
+      guardarHistorico();
+      const copias = sel.tracos.map(t => ({ ...t, p: t.p.map((n, i) => (i % 3 === 2 ? n : n + 20)) }));
+      tracos.push(...copias);
+      sel = { tracos: copias, box: caixaDe(copias) };
+      mudou = true;
+      redesenharBase();
+    }
     if (a === 'desfazer' && historico.length) { refazer.push(tracos); tracos = historico.pop(); mudou = true; redesenharBase(); }
     if (a === 'refazer' && refazer.length) { historico.push(tracos); tracos = refazer.pop(); mudou = true; redesenharBase(); }
     if (a === 'limpar' && tracos.length) { guardarHistorico(); tracos = []; mudou = true; redesenharBase(); }
@@ -350,7 +528,7 @@
     out.height = Math.round(h * ESCALA_PNG);
     const c = out.getContext('2d');
     tracos.forEach(t => desenharTraco(c, t, ESCALA_PNG));
-    const dados = { v: 1, h: altura, t: tracos.map(t => ({ f: t.f, c: t.c, l: t.l, p: t.p.map(n => Math.round(n)) })) };
+    const dados = { v: 1, h: altura, t: tracos.map(t => ({ f: t.f, c: t.c, l: Math.round(t.l * 100) / 100, p: t.p.map(n => Math.round(n)) })) };
     return { src: out.toDataURL('image/png'), tracos: JSON.stringify(dados) };
   }
 
@@ -375,7 +553,8 @@
       }
     } catch (e) { console.warn('Traços do desenho ilegíveis; abre em branco.', e); }
     historico = []; refazer = []; atual = null; ponteiro = null; ponteiroDedo = false; mudou = false;
-    zoom = 1; pinca = null; dedos.clear();
+    zoom = 1; pinca = null; dedos.clear(); laco = null; sel = null; arrasto = null;
+    if (ferramenta === 'selecao') ferramenta = 'caneta';
     el.hidden = false;
     document.documentElement.classList.add('est-desenho-aberto');
     $('.est-desenho-esp').value = espessura;
