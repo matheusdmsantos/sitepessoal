@@ -27,6 +27,7 @@
   let remoto = false;
   let temSessoes = false;   // coluna sessoes.assuntos existe?
   let temErros = false;     // coluna erros.subtopico_id existe?
+  let temPai = false;       // coluna subtopicos.pai existe? (subassunto: arrastar para dentro de outro)
   let painel = null;        // ficha do item: { tId, tipo: 'mesclar' | 'reclassificar', de? }
   let visao = null;         // card de desempenho: null (disciplinas) | { dId, tId? }
 
@@ -56,13 +57,15 @@
   }
 
   async function carregar() {
-    const [r, rs, re] = await Promise.all([
+    const [r, rs, re, rp] = await Promise.all([
       sb.from('subtopicos').select('*'),
+      sb.from('subtopicos').select('pai').limit(1),
       sb.from('sessoes').select('assuntos').limit(1),
       sb.from('erros').select('subtopico_id').limit(1)
     ]);
     temSessoes = !rs.error;
     temErros = !re.error;
+    temPai = !rp.error;
     if (r.error) {
       console.warn('Tabela subtopicos indisponível; os assuntos ficam só neste navegador. Rode supabase/subtopicos.sql.', r.error);
       remoto = false;
@@ -73,7 +76,7 @@
       // Envia o que tinha sido guardado só aqui antes de a tabela existir
       const locais = lerLocal().filter(l => !subs.some(x => x.id === l.id));
       if (locais.length) {
-        const up = await sb.from('subtopicos').upsert(locais.map(({ dono, ...l }) => l));
+        const up = await sb.from('subtopicos').upsert(locais.map(linhaDoBanco));
         if (!up.error) { subs.push(...locais); localStorage.removeItem(LOCAL); }
       } else {
         localStorage.removeItem(LOCAL);
@@ -83,11 +86,17 @@
     await migrar();
   }
 
+  // Sem a coluna pai, o subassunto não é enviado (o upsert falharia)
+  function linhaDoBanco({ dono, ...l }) {
+    if (!temPai) delete l.pai;
+    return l;
+  }
+
   async function gravar(linhas) {
     const lista = [].concat(linhas);
     if (!lista.length) return true;
     if (!remoto) { salvarLocal(); return true; }
-    const { error } = await sb.from('subtopicos').upsert(lista.map(({ dono, ...l }) => l));
+    const { error } = await sb.from('subtopicos').upsert(lista.map(linhaDoBanco));
     if (error) {
       console.error('Erro ao salvar assuntos:', error);
       aviso('Não foi possível salvar o assunto no servidor. Confira sua conexão.');
@@ -124,6 +133,8 @@
 
   const doTopico = tId => subs.filter(s => s.topico_id === tId).sort((a, b) => a.ordem - b.ordem || a.nome.localeCompare(b.nome));
   const porId = id => subs.find(s => s.id === id) || null;
+  // Assunto "pai" de um subassunto (um nível só); pai apagado ou de outro item = assunto normal
+  const paiDe = s => { const p = s && s.pai ? porId(s.pai) : null; return p && p.topico_id === s.topico_id && !p.pai ? p : null; };
   // O assunto de um registro só vale se for do mesmo item (o que veio de outro edital fica "sem subtópico")
   const doRegistro = (tId, subId) => { const s = subId ? porId(subId) : null; return s && s.topico_id === tId ? s : null; };
   const errosDo = tId => (window.estErros && window.estErros.todos ? window.estErros.todos() : []).filter(er => er.topico_id === tId);
@@ -322,9 +333,11 @@
     redesenhar();
   }
 
-  // Nova ordem dos assuntos do item (arrastar na janela de estudo; a janela regrava as páginas)
-  async function ordenar(topicoId, ids) {
+  // Nova ordem dos assuntos do item (arrastar na janela de estudo; a janela regrava as páginas).
+  // pais (opcional): { id: id do pai ou null } para os assuntos que mudaram de nível
+  async function ordenar(topicoId, ids, pais = {}) {
     const lista = doTopico(topicoId);
+    lista.forEach(x => { if (x.id in pais) x.pai = pais[x.id] || null; });
     const pos = id => { const k = ids.indexOf(id); return k < 0 ? 1e9 : k; };
     lista.sort((a, b) => pos(a.id) - pos(b.id)).forEach((x, k) => { x.ordem = k; });
     await gravar(lista);
@@ -474,8 +487,8 @@
     const pdfUnico = pdfsItem.length === 1 ? pdfsItem[0] : null;
     const linhas = assuntos.map((n, i) => {
       const p = pct(n);
-      return `<li>
-        <span class="est-sub-nome">${esc(n.s.nome)}</span>
+      return `<li class="${paiDe(n.s) ? 'est-sub-filho' : ''}">
+        <span class="est-sub-nome">${paiDe(n.s) ? '↳ ' : ''}${esc(n.s.nome)}</span>
         <span class="est-sub-nums">
           <span title="PDFs onde o assunto aparece">📄 ${n.s.pdfs.length}</span>
           <span title="Erros registrados no caderno">❌ ${n.erros}</span>
@@ -720,10 +733,10 @@
 
   window.estSub = {
     carregar, migrar, doTopico, porId, doRegistro, sugestao, topicoPorNomes, ligarPaginas,
-    criar, vincular, desvincular, faixa, paginasNoPdf, atualizarCampos, definirTec, linkDoCaderno, editarTec, renomear, mover, ordenar, mesclar, reclassificar, excluir,
+    criar, vincular, desvincular, faixa, paginasNoPdf, atualizarCampos, definirTec, linkDoCaderno, editarTec, renomear, mover, ordenar, paiDe, mesclar, reclassificar, excluir,
     numerosDe, distribuir, selo, blocoFicha, abrirPainel, fecharPainel, marcarTodos, confirmarMesclar,
     confirmarReclassificar, novoPerguntando, renomearPerguntando, htmlDesempenho, ver,
-    temSessoes: () => temSessoes, temErros: () => temErros, remoto: () => remoto,
+    temSessoes: () => temSessoes, temErros: () => temErros, temPai: () => temPai, remoto: () => remoto,
     _base: base   // usado no teste
   };
 })();

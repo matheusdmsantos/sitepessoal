@@ -46,3 +46,7 @@ where c.relname = 'subtopicos';
 -- Metas por assunto (Painel de Estudos): a meta de questões de um assunto guarda o assunto.
 -- Sem esta coluna, o plano faz uma meta de questões por item, como antes.
 alter table public.metas add column if not exists subtopico_id text;
+
+-- Subassunto (Painel de Estudos): arrastar um assunto para dentro de outro na janela de estudo.
+-- Guarda o id do assunto "pai" (um nível só). Sem esta coluna, os assuntos ficam todos no mesmo nível.
+alter table public.subtopicos add column if not exists pai text;

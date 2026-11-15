@@ -262,38 +262,50 @@
     const neste = mats.length ? lista.filter(s => s.pdfs.some(p => mats.includes(p.material_id))) : lista;
     const outros = lista.filter(s => !neste.includes(s));
     const sel = subAtual();
-    const item = (s, grupo) => {
+    const item = (s, grupo, doGrupo) => {
       const p = acerto(s);
+      // Subassunto: recuado; se o pai não está no mesmo grupo, o nome dele vai na frente
+      const pai = !priorizar && window.estSub.paiDe(s);
+      const paiFora = pai && !doGrupo.includes(pai) ? `<span class="est-sessao-ass-pai">${esc(nomeNaColuna(pai))} ›</span> ` : '';
       const selos = (priorizar ? `<span class="est-sessao-ass-selo ${p === null ? '' : p < 70 ? 'ruim' : p < 85 ? 'medio' : 'bom'}">${p === null ? 'sem questões' : p + '%'}</span>` : '') +
         (cotas[s.id] ? `<span class="est-sessao-ass-selo" title="Questões sugeridas para este assunto">≈${cotas[s.id]} q</span>` : '');
       const acao = !mats.length ? ''
         : grupo === 'neste'
           ? `<button type="button" class="est-sessao-pag-x" onclick="estSessao.tirarDoPdf('${s.id}')" title="Tirar deste PDF (o assunto continua no item)" aria-label="Tirar ${esc(s.nome)} deste PDF">✕</button>`
           : `<button type="button" class="est-sessao-pag-x" onclick="estSessao.usarNestePdf('${s.id}')" title="Usar neste PDF" aria-label="Usar ${esc(s.nome)} neste PDF">＋</button>`;
-      // Arrastar muda a ordem; na lista por acerto (revisão/questões), a ordem mostrada não é a do item
-      return `<li class="${s.id === sel ? 'ativa' : ''}" ${priorizar ? '' : `draggable="true" data-sub="${s.id}" title="Arraste para mudar a ordem"`}>
-        <button type="button" class="est-sessao-pag" onclick="estSessao.irAssunto('${s.id}')">${esc(nomeNaColuna(s))}${selos ? `<span class="est-sessao-ass-selos">${selos}</span>` : ''}</button>${acao}</li>`;
+      // Arrastar muda a ordem ou põe dentro de outro; na lista por acerto (revisão/questões), a ordem mostrada não é a do item
+      return `<li class="${s.id === sel ? 'ativa' : ''} ${pai ? 'filho' : ''}" ${priorizar ? '' : `draggable="true" data-sub="${s.id}" title="Arraste para mudar a ordem; solte no meio de outro assunto para virar subassunto dele"`}>
+        <button type="button" class="est-sessao-pag" onclick="estSessao.irAssunto('${s.id}')">${paiFora}${esc(nomeNaColuna(s))}${selos ? `<span class="est-sessao-ass-selos">${selos}</span>` : ''}</button>${acao}</li>`;
     };
     $('est-sessao-lista').innerHTML = `
       <li class="${atual === 0 ? 'ativa' : ''}"><button type="button" class="est-sessao-pag est-sessao-geral" onclick="estSessao.irPagina(0)">📝 Anotações gerais</button></li>
       ${mats.length ? `<li class="est-sessao-grupo">Neste PDF</li>` : ''}
-      ${neste.map(s => item(s, 'neste')).join('')}
+      ${neste.map(s => item(s, 'neste', neste)).join('')}
       ${mats.length && !neste.length ? '<li class="est-sessao-grupo-vazio">Nenhum assunto neste PDF ainda. Use “+ Assunto”.</li>' : ''}
       ${outros.length ? `<li class="est-sessao-outros"><details ${outrosAbertos || outros.some(s => s.id === sel) ? 'open' : ''} ontoggle="estSessao.outrosAbertos(this.open)">
-        <summary>Outros assuntos do item (${outros.length})</summary><ul>${outros.map(s => item(s, 'outros')).join('')}</ul></details></li>` : ''}`;
+        <summary>Outros assuntos do item (${outros.length})</summary><ul>${outros.map(s => item(s, 'outros', outros)).join('')}</ul></details></li>` : ''}`;
     ligarArrastar();
   }
 
-  /* Arrastar um assunto para cima ou para baixo de outro: grava a nova ordem (estSub.ordenar)
-     e reordena as páginas do resumo, que seguem a ordem dos assuntos. */
+  /* Arrastar um assunto: no alto ou no pé de outro, muda a ordem; no meio, vira subassunto dele
+     (um nível só; o assunto leva junto os subassuntos que tiver). Grava a ordem e o pai
+     (estSub.ordenar) e reordena as páginas do resumo, que seguem a ordem dos assuntos. */
   let arrastando = null;
   function ligarArrastar() {
     const ul = $('est-sessao-lista');
     if (ul.dataset.arrastar) return;
     ul.dataset.arrastar = '1';
+    const sub = id => window.estSub.porId(id);
+    const filhos = id => window.estSub.doTopico(ctx.topicoId).filter(x => (window.estSub.paiDe(x) || {}).id === id).map(x => x.id);
     const alvoDe = ev => { const li = ev.target.closest && ev.target.closest('li[data-sub]'); return li && li.dataset.sub !== arrastando ? li : null; };
-    const limpar = () => ul.querySelectorAll('.arr-antes, .arr-depois').forEach(x => x.classList.remove('arr-antes', 'arr-depois'));
-    const depois = (ev, li) => { const r = li.getBoundingClientRect(); return ev.clientY > r.top + r.height / 2; };
+    const limpar = () => ul.querySelectorAll('.arr-antes, .arr-depois, .arr-dentro').forEach(x => x.classList.remove('arr-antes', 'arr-depois', 'arr-dentro'));
+    // Só entra num assunto de 1º nível, e só quem não tem subassuntos (para não virar 3 níveis)
+    const aceitaDentro = para => !window.estSub.paiDe(sub(para)) && !filhos(arrastando).length;
+    function zona(ev, li) {
+      const r = li.getBoundingClientRect(), y = (ev.clientY - r.top) / r.height;
+      if (y > 0.3 && y < 0.7 && aceitaDentro(li.dataset.sub)) return 'dentro';
+      return y >= 0.5 ? 'depois' : 'antes';
+    }
     ul.addEventListener('dragstart', ev => {
       const li = ev.target.closest && ev.target.closest('li[data-sub]');
       if (!li) return;
@@ -307,23 +319,40 @@
       if (!li) return;
       ev.preventDefault();
       limpar();
-      li.classList.add(depois(ev, li) ? 'arr-depois' : 'arr-antes');
+      li.classList.add('arr-' + zona(ev, li));
     });
     ul.addEventListener('dragend', () => { arrastando = null; limpar(); ul.querySelectorAll('.arrastando').forEach(x => x.classList.remove('arrastando')); });
     ul.addEventListener('drop', async ev => {
       const li = arrastando && alvoDe(ev);
       if (!li) return;
       ev.preventDefault();
-      const de = arrastando, para = li.dataset.sub, aposAlvo = depois(ev, li);
+      const de = arrastando, z = zona(ev, li);
+      let alvo = li.dataset.sub;
       limpar();
-      const ids = window.estSub.doTopico(ctx.topicoId).map(s => s.id).filter(id => id !== de);
-      ids.splice(ids.indexOf(para) + (aposAlvo ? 1 : 0), 0, de);
-      await window.estSub.ordenar(ctx.topicoId, ids);
+      const bloco = [de, ...filhos(de)];
+      if (bloco.includes(alvo)) return;   // soltar em cima de um subassunto dele mesmo
+      // Assunto com subassuntos não entra no 2º nível: ao lado de um subassunto, vai para o lado do pai
+      if (bloco.length > 1 && window.estSub.paiDe(sub(alvo))) alvo = window.estSub.paiDe(sub(alvo)).id;
+      const ids = window.estSub.doTopico(ctx.topicoId).map(s => s.id).filter(id => !bloco.includes(id));
+      const fimDoGrupo = id => { const g = [id, ...filhos(id)].filter(x => ids.includes(x)); return ids.indexOf(g[g.length - 1]) + 1; };
+      let pai, pos;
+      if (z === 'dentro') { pai = alvo; pos = fimDoGrupo(alvo); }
+      else {
+        const paiAlvo = window.estSub.paiDe(sub(alvo));
+        pai = paiAlvo ? paiAlvo.id : null;
+        pos = z === 'antes' ? ids.indexOf(alvo) : paiAlvo ? ids.indexOf(alvo) + 1 : fimDoGrupo(alvo);
+      }
+      ids.splice(pos, 0, ...bloco);
+      if (pai && window.estSub.remoto() && !window.estSub.temPai()) {
+        aviso('Para usar subassuntos, rode no Supabase: alter table public.subtopicos add column if not exists pai text;');
+        return;
+      }
+      await window.estSub.ordenar(ctx.topicoId, ids, { [de]: pai });
       guardarPaginaAtual();
       const aberta = paginas[atual];
-      const pos = p => { const k = ids.indexOf(p.sub); return k < 0 ? 1e9 : k; };
+      const posPag = p => { const k = ids.indexOf(p.sub); return k < 0 ? 1e9 : k; };
       const [geral, ...resto] = paginas;
-      paginas = geral.semTitulo ? [geral, ...resto.sort((a, b) => pos(a) - pos(b))] : paginas.slice().sort((a, b) => pos(a) - pos(b));
+      paginas = geral.semTitulo ? [geral, ...resto.sort((a, b) => posPag(a) - posPag(b))] : paginas.slice().sort((a, b) => posPag(a) - posPag(b));
       atual = Math.max(0, paginas.indexOf(aberta));
       renderPaginas();
       salvar();
