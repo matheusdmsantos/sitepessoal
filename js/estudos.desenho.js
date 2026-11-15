@@ -8,7 +8,8 @@
  * Só a caneta (e o mouse) desenha: o dedo rola a folha e a palma encostada é ignorada,
  * salvo com "Dedo desenha" ligado. Dois dedos dão zoom (pinça); também − / + e Ctrl+roda.
  * Traço com pressão; marca-texto translúcido; a borracha apaga o traço inteiro que tocar.
- * Botão lateral da caneta (S Pen) apertado ou ponta de borracha: o traço vira borracha.
+ * Botão lateral da caneta (S Pen): cada aperto alterna entre borracha e a caneta/marca-texto
+ * de antes. Ponta de borracha (canetas que têm): apaga enquanto encosta.
  * Seleção (laço, como no Samsung Notes): contorne os traços (ou toque num) e arraste a caixa
  * para mover, um canto para redimensionar; apagar, duplicar e trocar a cor do que está marcado.
  */
@@ -29,11 +30,10 @@
   let ferramenta = 'caneta', cor = CORES[0], corMarca = CORES_MARCA[0], espessura = 'media';
   let atual = null, ponteiro = null, ponteiroDedo = false, mudou = false, resolver = null, editando = false;
   let apagando = false;            // traço atual é borracha (ferramenta ou botão da caneta)
-  let botaoNoAr = false;           // botão da caneta apertado com ela pairando sobre a tela
-  let apagandoSemPressao = false;  // borracha pela pressão zero da S Pen (botão apertado), ver inicio()
-  let apagandoNoAr = false;        // borracha começada pela pressão (sem pointerdown), ver mover()
-  // Qualquer botão além da ponta (S Pen: lateral; outras canetas: borracha) — buttons é bit a bit
-  const botaoExtra = ev => ev.pointerType === 'pen' && ((ev.buttons & ~1) > 0 || ev.button > 0);
+  let antesDaBorracha = 'caneta';  // ferramenta para onde o botão da caneta volta
+  let ultimoBotao = 0;
+  // Ponta de borracha (button 5 / buttons 32), nas canetas que têm
+  const pontaBorracha = ev => ev.pointerType === 'pen' && (ev.button === 5 || (ev.buttons & 32) > 0);
   let zoom = 1, pinca = null;
   let laco = null, sel = null, arrasto = null;   // seleção: contorno em andamento, { tracos, box }, mover/escala
   const dedos = new Map();         // dedos na folha: id → { x, y }
@@ -93,6 +93,7 @@
 
     el.querySelectorAll('[data-ferr]').forEach(b => b.addEventListener('click', () => {
       ferramenta = b.dataset.ferr;
+      if (ferramenta === 'caneta' || ferramenta === 'marca') antesDaBorracha = ferramenta;
       if (ferramenta !== 'selecao' && sel) { sel = null; redesenhar(); }
       atualizarBarra();
     }));
@@ -111,8 +112,16 @@
     // iPad: sem isto, a Apple Pencil seleciona texto ou abre a lupa
     cv.addEventListener('touchstart', ev => ev.preventDefault(), { passive: false });
     // Botão da caneta não abre o menu do navegador
-    // S Pen no Chrome/Android: apertar o botão no ar dispara contextmenu (e buttons=1 com pressão 0)
-    cv.addEventListener('contextmenu', ev => { ev.preventDefault(); botaoNoAr = true; });
+    /* Botão da caneta = interruptor. A S Pen no Chrome/Android (Galaxy Tab S10 FE+, visto pelo
+       diagnóstico 🔎) dispara um contextmenu a cada aperto; canetas no Windows também (botão = clique
+       direito). Toque longo do dedo também abre contextmenu: esse é ignorado. */
+    el.addEventListener('contextmenu', ev => {
+      if (!ev.target.closest('.est-desenho-area')) return;
+      ev.preventDefault();
+      if (ev.pointerType === 'touch' || Date.now() - ultimoBotao < 300) return;
+      ultimoBotao = Date.now();
+      alternarBorracha();
+    });
     // shortcut: diagnóstico da caneta (🔎) para descobrir o que o botão da S Pen envia; tirar quando estiver ajustado
     const diag = [];
     const anotar = ev => {
@@ -412,13 +421,10 @@
       if (dedos.size > 2 || (!dedoDesenha() && !naSelecao)) return;
     }
     if (ponteiro !== null) return;   // já há uma caneta na folha: a palma não conta
-    // Botão da caneta: qualquer botão extra, o botão apertado no ar ou, na S Pen do Galaxy Tab,
-    // a caneta encostada com pressão zero (com o botão apertado o tablet para de medir a pressão)
-    const semPressao = ev.pointerType === 'pen' && ev.pressure === 0;
-    const botaoCaneta = botaoExtra(ev) || (ev.pointerType === 'pen' && botaoNoAr) || semPressao;
-    apagandoSemPressao = semPressao && !botaoExtra(ev);
-    if ((ev.button > 0 && !botaoCaneta) || ev.target !== cv) return;
-    apagando = ferramenta === 'borracha' || botaoCaneta;
+    // Botão lateral (button 2) não risca: ele só alterna a ferramenta, pelo contextmenu
+    const borrachaDaPonta = pontaBorracha(ev);
+    if ((ev.button > 0 && !borrachaDaPonta) || ev.target !== cv) return;
+    apagando = ferramenta === 'borracha' || borrachaDaPonta;
     ev.preventDefault();
     ponteiro = ev.pointerId;
     ponteiroDedo = ev.pointerType === 'touch';
@@ -455,24 +461,8 @@
       }
       return;
     }
-    if (ev.pointerId !== ponteiro) { if (ev.pointerType === 'pen') canetaNoAr(ev); return; }
+    if (ev.pointerId !== ponteiro) return;
     ev.preventDefault();
-    // Borracha do botão da S Pen: levantar a ponta (pressão 0, sem pointerup) encerra
-    if (apagandoNoAr && !(ev.pressure > 0)) { encerrarNoAr(); return; }
-    // Soltou o botão com a S Pen encostada (a pressão volta): dali em diante desenha
-    if (apagandoSemPressao && ev.pressure > 0) {
-      apagandoSemPressao = false;
-      apagando = ferramenta === 'borracha';
-      if (!apagando && ferramenta !== 'selecao') atual = { f: ferramenta === 'marca' ? 'marca' : 'caneta', c: ferramenta === 'marca' ? corMarca : cor, l: ESPESSURAS[espessura], p: ponto(ev) };
-      atualizarBarra();
-    }
-    // Botão apertado no meio do traço: o que foi riscado fica e dali em diante apaga
-    if (!apagando && !laco && !arrasto && botaoExtra(ev)) {
-      if (atual) { guardarHistorico(); tracos.push(atual); atual = null; mudou = true; redesenharBase(); }
-      guardarHistorico();
-      apagando = true;
-      atualizarBarra();
-    }
     const evs = ev.getCoalescedEvents ? ev.getCoalescedEvents() : [ev];
     for (const e of (evs.length ? evs : [ev])) {
       const pt = ponto(e);
@@ -487,27 +477,11 @@
     if (atual || laco || arrasto) redesenhar();
   }
 
-  /* Caneta sem estar riscando. A S Pen (Chrome/Android) manda o botão lateral como buttons=1
-     com pressão 0, e ao encostar com ele apertado não vem pointerdown: a pressão só sobe.
-     Por isso a borracha começa aqui, quando a pressão aparece com o botão apertado. */
-  function canetaNoAr(ev) {
-    const pressionando = ev.pressure > 0;
-    if (botaoExtra(ev) && !((ev.buttons & 1) && pressionando)) botaoNoAr = true;
-    if ((ev.buttons & 1) && !pressionando) botaoNoAr = true;
-    if (!ev.buttons) botaoNoAr = false;
-    if (!botaoNoAr || !pressionando || !(ev.buttons & 1) || ponteiro !== null || ev.target !== cv) return;
-    ponteiro = ev.pointerId;
-    apagando = true;
-    apagandoNoAr = true;
-    guardarHistorico();
-    apagarEm(ponto(ev));
-    atualizarBarra();
-  }
-
-  function encerrarNoAr() {
-    ponteiro = null;
-    apagando = false;
-    apagandoNoAr = false;
+  // Botão da caneta: borracha ⇄ a ferramenta de antes (caneta ou marca-texto)
+  function alternarBorracha() {
+    if (ferramenta === 'borracha') ferramenta = antesDaBorracha;
+    else { antesDaBorracha = ferramenta === 'marca' ? 'marca' : 'caneta'; ferramenta = 'borracha'; }
+    if (sel) { sel = null; redesenhar(); }
     atualizarBarra();
   }
 
@@ -524,9 +498,6 @@
     ponteiro = null;
     ponteiroDedo = false;
     apagando = false;
-    apagandoNoAr = false;
-    apagandoSemPressao = false;
-    if (!ev.buttons) botaoNoAr = false;
     if (laco) { fecharLaco(); redesenhar(); }
     if (arrasto) terminarArrasto();
     if (atual) {
