@@ -2259,6 +2259,9 @@ html.est-desenho-aberto, html.est-desenho-aberto body { overflow: hidden; oversc
 .est-desenho-barra { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 12px; background: #fff; border-bottom: 1px solid #d1d5db; }
 .est-desenho-grupo { display: flex; gap: 4px; align-items: center; }
 .est-desenho-grupo[hidden] { display: none; }
+/* Botões da seleção e cores ocupam sempre o mesmo espaço: a barra não muda de altura e a folha não pula */
+.est-desenho-sel[hidden] { display: flex; visibility: hidden; }
+.est-desenho-cores { min-width: 166px; }
 .est-desenho-sel button { border-color: #93c5fd; background: #eff6ff; }
 .est-desenho-barra button { min-height: 36px; padding: 4px 10px; border: 1px solid #d1d5db; border-radius: 8px; background: #fff; color: #111827; font: inherit; font-size: 0.9rem; cursor: pointer; }
 .est-desenho-barra button:hover:not(:disabled) { background: #f3f4f6; }

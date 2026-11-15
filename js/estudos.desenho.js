@@ -15,7 +15,7 @@
   const LARGURA = 1000;            // largura lógica da folha (os traços ficam nessa escala)
   const ALTURA_INICIAL = 700;
   const MAIS_ESPACO = 400;
-  const ESCALA_PNG = 1.5;          // PNG um pouco maior que a folha, para ficar nítido
+  const ESCALA_PNG = 2;            // PNG maior que a folha, para a letra pequena ficar nítida no resumo
   const CORES = ['#111827', '#1d4ed8', '#dc2626', '#15803d', '#7c3aed'];
   const CORES_MARCA = ['#fde047', '#86efac', '#f9a8d4', '#93c5fd'];
   const ESPESSURAS = { fina: 2, media: 3.5, grossa: 6 };
@@ -528,7 +528,7 @@
     out.height = Math.round(h * ESCALA_PNG);
     const c = out.getContext('2d');
     tracos.forEach(t => desenharTraco(c, t, ESCALA_PNG));
-    const dados = { v: 1, h: altura, t: tracos.map(t => ({ f: t.f, c: t.c, l: Math.round(t.l * 100) / 100, p: t.p.map(n => Math.round(n)) })) };
+    const dados = { v: 1, h: altura, t: tracos.map(t => ({ f: t.f, c: t.c, l: Math.round(t.l * 100) / 100, p: t.p.map((n, i) => (i % 3 === 2 ? Math.round(n) : Math.round(n * 10) / 10)) })) };   // x e y com 0,1 (letra pequena com zoom se deformava no inteiro); pressão inteira
     return { src: out.toDataURL('image/png'), tracos: JSON.stringify(dados) };
   }
 
