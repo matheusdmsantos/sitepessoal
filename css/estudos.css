@@ -2287,6 +2287,15 @@ html.est-desenho-aberto, html.est-desenho-aberto body { overflow: hidden; oversc
   pointer-events: none;   /* só as alças e a barra recebem cliques */
 }
 .est-img-alca[hidden] { display: none; }
+.est-img-dica { font-size: 0.72rem; color: #fde68a; padding: 0 6px; }
+.est-img-dica[hidden] { display: none; }
+.est-img-alca.armado { border-style: dashed; }
+.est-img-barra .est-img-editar { margin-left: 10px; }
+@media (pointer: coarse) {
+  .est-img-barra { gap: 6px; padding: 6px; }
+  .est-img-barra button { min-height: 38px; padding: 6px 12px; font-size: 0.82rem; }
+  .est-img-barra .est-img-editar { margin-left: 18px; }
+}
 .est-img-arrasto { position: absolute; inset: 0; pointer-events: auto; touch-action: none; cursor: move; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
 .est-img-alca .est-img-ponto { width: 20px; height: 20px; }
 .est-img-alca .est-img-ponto.no, .est-img-alca .est-img-ponto.so { left: -11px; }

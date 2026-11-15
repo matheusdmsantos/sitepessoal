@@ -840,6 +840,7 @@
   }
 
   function esconderAlca() {
+    if (moverArmado) desarmarMover();
     if (alca) alca.caixa.hidden = true;
     alca = alca && { caixa: alca.caixa, img: null };
   }
@@ -871,7 +872,8 @@
       <div class="est-img-barra" role="toolbar" aria-label="Tamanho da imagem">
         <span class="est-img-medida"></span>
         ${[25, 50, 75, 100].map(p => `<button type="button" data-pct="${p}">${p}%</button>`).join('')}
-        <button type="button" class="est-img-mover" title="Arraste para levar a outro ponto do texto">✥ Mover</button>
+        <button type="button" class="est-img-mover" title="Toque aqui e depois no ponto do texto para onde vai a imagem (ou arraste a própria imagem)">✥ Mover</button>
+        <span class="est-img-dica" hidden>Toque no texto onde ela deve ficar</span>
         <button type="button" class="est-img-editar" title="Continuar o desenho (ou dois cliques nele)">✏️ Editar</button>
       </div>`;
     $('est-sessao-editor').parentElement.appendChild(caixa);
@@ -884,7 +886,7 @@
       esconderAlca();
       if (img) desenhar(img);
     });
-    caixa.querySelector('.est-img-mover').addEventListener('pointerdown', arrastarImagem);
+    caixa.querySelector('.est-img-mover').addEventListener('click', () => (moverArmado ? desarmarMover() : armarMover()));
     // Arrastar a própria imagem também move; fica por cima dela, então tocar não abre o teclado
     const arrasto = caixa.querySelector('.est-img-arrasto');
     arrasto.addEventListener('pointerdown', arrastarImagem);
@@ -948,13 +950,49 @@
     return null;
   }
 
+  // Tira a imagem de onde está e põe no índice "para" do texto (com a largura). Devolve a imagem nova.
+  function moverImagem(img, para) {
+    const blot = Quill.find(img);
+    if (!blot || para === null) return img;
+    const de = quill.getIndex(blot);
+    if (para === de || para === de + 1) return img;
+    const Delta = Quill.import('delta');
+    quill.update('silent');   // a largura das alças muda o DOM direto; sem isto o Quill copiaria a antiga
+    const item = quill.getContents(de, 1);
+    // Desenho é bloco: solto no fim de uma linha, entra no começo da seguinte (sem partir o parágrafo)
+    if (item.ops[0] && item.ops[0].insert && item.ops[0].insert.desenho !== undefined && quill.getText(para, 1) === '\n') para++;
+    if (para === de || para === de + 1) return img;
+    quill.deleteText(de, 1, 'user');
+    const alvo = para > de ? para - 1 : para;
+    quill.updateContents(new Delta().retain(alvo).concat(item), 'user');
+    return [...quill.root.querySelectorAll('img')].find(i => { const b = Quill.find(i); return b && quill.getIndex(b) === alvo; }) || null;
+  }
+
+  /* "✥ Mover" por toque: o botão arma e o próximo toque no texto diz o destino (no tablet,
+     arrastar um botão pequeno não funcionava bem). Tocar de novo no botão ou Esc cancela. */
+  let moverArmado = null;
+  function armarMover() {
+    if (!alca || !alca.img) return;
+    moverArmado = alca.img;
+    alca.caixa.classList.add('armado');
+    alca.caixa.querySelector('.est-img-mover').textContent = '✕ Cancelar';
+    alca.caixa.querySelector('.est-img-dica').hidden = false;
+  }
+  function desarmarMover() {
+    moverArmado = null;
+    if (!alca) return;
+    alca.caixa.classList.remove('armado');
+    alca.caixa.querySelector('.est-img-mover').textContent = '✥ Mover';
+    alca.caixa.querySelector('.est-img-dica').hidden = true;
+  }
+
   function arrastarImagem(ev) {
     if (!alca || !alca.img || ev.button > 0) return;
     ev.preventDefault();
     const img = alca.img, caixa = alca.caixa, folha = caixa.parentElement;
     const blot = Quill.find(img);
     if (!blot) return;
-    const de = quill.getIndex(blot);
+    desarmarMover();
     try { ev.currentTarget.setPointerCapture(ev.pointerId); } catch (e) { /* segue pelos eventos da janela */ }
     const linha = document.createElement('div');
     linha.className = 'est-img-destino';
@@ -1000,17 +1038,7 @@
       img.classList.remove('est-img-movendo');
       if (!andou) return;
       esconderAlca();
-      if (para === null || para === de || para === de + 1) { mostrarAlca(img); return; }
-      const Delta = Quill.import('delta');
-      quill.update('silent');   // a largura das alças muda o DOM direto; sem isto o Quill copiaria a antiga
-      const item = quill.getContents(de, 1);
-      // Desenho é bloco: solto no fim de uma linha, entra no começo da seguinte (sem partir o parágrafo)
-      if (item.ops[0] && item.ops[0].insert && item.ops[0].insert.desenho !== undefined && quill.getText(para, 1) === '\n') para++;
-      if (para === de || para === de + 1) { mostrarAlca(img); return; }
-      quill.deleteText(de, 1, 'user');
-      const alvo = para > de ? para - 1 : para;
-      quill.updateContents(new Delta().retain(alvo).concat(item), 'user');
-      const nova = [...quill.root.querySelectorAll('img')].find(i => { const b = Quill.find(i); return b && quill.getIndex(b) === alvo; });
+      const nova = moverImagem(img, para);
       if (nova) mostrarAlca(nova);
     };
     window.addEventListener('pointermove', mover);
@@ -1163,8 +1191,24 @@
     raiz.addEventListener('click', ev => {
       if (ev.target.tagName === 'IMG') mostrarAlca(ev.target); else esconderAlca();
     });
+    // Mover armado: o toque no texto é o destino (sem cursor, sem teclado, sem o clique depois)
+    let ignorarClique = false;
+    raiz.addEventListener('pointerdown', ev => {
+      if (!moverArmado) return;
+      ev.preventDefault();
+      ev.stopPropagation();
+      const img = moverArmado;
+      desarmarMover();
+      esconderAlca();
+      ignorarClique = true;
+      const nova = moverImagem(img, indiceEm(ev.clientX, ev.clientY));
+      if (nova) mostrarAlca(nova);
+    }, true);
+    raiz.addEventListener('mousedown', ev => { if (ignorarClique) ev.preventDefault(); }, true);
+    raiz.addEventListener('click', ev => { if (ignorarClique) { ignorarClique = false; ev.stopImmediatePropagation(); } }, true);
     let toqueImg = null;
     raiz.addEventListener('touchstart', ev => {
+      if (moverArmado || ignorarClique) { ev.preventDefault(); return; }
       toqueImg = ev.touches.length === 1 && ev.target.tagName === 'IMG' ? ev.target : null;
       if (!toqueImg) return;
       ev.preventDefault();   // sem foco no texto e sem o clique que viria depois
@@ -1179,6 +1223,7 @@
     });
     raiz.addEventListener('keydown', ev => {
       if (!alca || !alca.img) return;
+      if (ev.key === 'Escape' && moverArmado) { ev.preventDefault(); ev.stopPropagation(); desarmarMover(); return; }
       if (ev.key === 'Delete' || ev.key === 'Backspace') {
         const blot = Quill.find(alca.img);
         if (blot) { ev.preventDefault(); quill.deleteText(quill.getIndex(blot), 1, 'user'); }
