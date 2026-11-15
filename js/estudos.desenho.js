@@ -8,6 +8,7 @@
  * Só a caneta (e o mouse) desenha: o dedo rola a folha e a palma encostada é ignorada,
  * salvo com "Dedo desenha" ligado. Dois dedos dão zoom (pinça); também − / + e Ctrl+roda.
  * Traço com pressão; marca-texto translúcido; a borracha apaga o traço inteiro que tocar.
+ * Botão lateral da caneta (S Pen) apertado ou ponta de borracha: o traço vira borracha.
  * Seleção (laço, como no Samsung Notes): contorne os traços (ou toque num) e arraste a caixa
  * para mover, um canto para redimensionar; apagar, duplicar e trocar a cor do que está marcado.
  */
@@ -27,6 +28,7 @@
   let tracos = [], historico = [], refazer = [], altura = ALTURA_INICIAL;
   let ferramenta = 'caneta', cor = CORES[0], corMarca = CORES_MARCA[0], espessura = 'media';
   let atual = null, ponteiro = null, ponteiroDedo = false, mudou = false, resolver = null, editando = false;
+  let apagando = false;            // traço atual é borracha (ferramenta ou botão da caneta)
   let zoom = 1, pinca = null;
   let laco = null, sel = null, arrasto = null;   // seleção: contorno em andamento, { tracos, box }, mover/escala
   const dedos = new Map();         // dedos na folha: id → { x, y }
@@ -101,6 +103,8 @@
     area.addEventListener('pointercancel', fim);
     // iPad: sem isto, a Apple Pencil seleciona texto ou abre a lupa
     cv.addEventListener('touchstart', ev => ev.preventDefault(), { passive: false });
+    // Botão da caneta não abre o menu do navegador
+    cv.addEventListener('contextmenu', ev => ev.preventDefault());
     el.addEventListener('keydown', ev => {
       if (ev.key === 'Escape') { ev.stopPropagation(); if (sel) { sel = null; redesenhar(); atualizarBarra(); } else acao('cancelar'); }
       if ((ev.key === 'Delete' || ev.key === 'Backspace') && sel) { ev.preventDefault(); ev.stopPropagation(); acao('apagarSel'); }
@@ -120,7 +124,7 @@
   }
 
   function atualizarBarra() {
-    el.querySelectorAll('[data-ferr]').forEach(b => b.classList.toggle('ativo', b.dataset.ferr === ferramenta));
+    el.querySelectorAll('[data-ferr]').forEach(b => b.classList.toggle('ativo', b.dataset.ferr === (apagando ? 'borracha' : ferramenta)));
     // Na seleção, as cores da caneta (ou do marca-texto, se só há marca-texto marcado) trocam a cor do que está marcado
     const soMarca = sel && sel.tracos.every(t => t.f === 'marca');
     const lista = ferramenta === 'marca' || soMarca ? CORES_MARCA : CORES;
@@ -385,12 +389,15 @@
       if (dedos.size > 2 || (!dedoDesenha() && !naSelecao)) return;
     }
     if (ponteiro !== null) return;   // já há uma caneta na folha: a palma não conta
-    if (ev.button > 0 || ev.target !== cv) return;
+    // Botão lateral da caneta (botão 2) ou ponta de borracha (botão 5): borracha só neste traço
+    const botaoCaneta = ev.pointerType === 'pen' && (ev.button === 2 || ev.button === 5 || (ev.buttons & 34) > 0);
+    if ((ev.button > 0 && !botaoCaneta) || ev.target !== cv) return;
+    apagando = ferramenta === 'borracha' || botaoCaneta;
     ev.preventDefault();
     ponteiro = ev.pointerId;
     ponteiroDedo = ev.pointerType === 'touch';
     try { cv.setPointerCapture(ev.pointerId); } catch (e) { /* ponteiro que já saiu: segue sem captura */ }
-    if (ferramenta === 'borracha') { guardarHistorico(); atual = null; apagarEm(ponto(ev)); return; }
+    if (apagando) { guardarHistorico(); atual = null; apagarEm(ponto(ev)); atualizarBarra(); return; }
     if (ferramenta === 'selecao') {
       const pt = ponto(ev), hit = acertoSelecao(pt);
       if (hit !== null) comecarArrasto(hit, pt);
@@ -427,7 +434,7 @@
     const evs = ev.getCoalescedEvents ? ev.getCoalescedEvents() : [ev];
     for (const e of (evs.length ? evs : [ev])) {
       const pt = ponto(e);
-      if (ferramenta === 'borracha') { apagarEm(pt); continue; }
+      if (apagando) { apagarEm(pt); continue; }
       if (laco) { laco.push(pt[0], pt[1]); continue; }
       if (arrasto) { aplicarArrasto(pt); continue; }
       if (!atual) continue;
@@ -450,6 +457,7 @@
     if (ev.pointerId !== ponteiro) return;
     ponteiro = null;
     ponteiroDedo = false;
+    apagando = false;
     if (laco) { fecharLaco(); redesenhar(); }
     if (arrasto) terminarArrasto();
     if (atual) {
