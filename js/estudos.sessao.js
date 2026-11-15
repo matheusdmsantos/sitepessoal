@@ -1257,7 +1257,7 @@
     // Uma linha por PDF (nome | páginas | alterar), com o modo de abrir no cabeçalho
     el.innerHTML = leitura.length
       ? `<div class="est-sessao-leitura-topo"><strong>📄 ${ctx.leituraParcial ? 'Ler agora' : 'Material'}</strong>` +
-        `<button type="button" class="est-sessao-trocar est-sessao-modo" title="Onde o PDF abre neste computador">${noApp() ? 'abre no Foxit' : 'abre no navegador'} ⇄</button></div>` +
+        `<button type="button" class="est-sessao-trocar est-sessao-modo" title="Onde o PDF abre neste computador (clique para trocar)">${ROTULO_MODO[modoPdf()]} ⇄</button></div>` +
         '<ul class="est-sessao-pdfs">' + leitura.map((x, i) =>
           `<li><button type="button" class="est-sessao-ler" data-i="${i}" title="Abrir o PDF${x.aprox ? '' : ' na página ' + x.de}">${escapeHtml(x.nome)} ↗</button>` +
           `<span class="est-sessao-pags">${textoPaginas(x)}</span>` +
@@ -1302,27 +1302,39 @@
     }
   }
 
-  /* Abrir no Foxit: link estudopdf: tratado pelo ferramentas/estudopdf (instalado uma vez no
-     Windows), que acha o arquivo pelo nome nas pastas escolhidas e abre na página. A escolha
-     vale para este computador (localStorage), porque a instalação é por computador. */
-  const noApp = () => { try { return localStorage.getItem('est_pdf_modo') === 'app'; } catch (e) { return false; } };
+  /* Abrir fora do navegador: link estudopdf: tratado pelo ferramentas/estudopdf (instalado uma vez
+     no Windows), que acha o arquivo pelo nome nas pastas escolhidas. 'app' abre no Foxit, na página;
+     'escolher' mostra a janela "Abrir com" do Windows (na 1ª página). A escolha vale para este
+     computador (localStorage), porque a instalação é por computador. */
+  const MODOS = ['navegador', 'app', 'escolher'];
+  const ROTULO_MODO = { navegador: 'abre no navegador', app: 'abre no Foxit', escolher: 'pergunta o aplicativo' };
+  const modoPdf = () => { try { const v = localStorage.getItem('est_pdf_modo'); return MODOS.includes(v) ? v : 'navegador'; } catch (e) { return 'navegador'; } };
+  const noApp = () => modoPdf() !== 'navegador';
 
   async function trocarModo() {
-    if (!noApp()) {
+    const proximo = MODOS[(MODOS.indexOf(modoPdf()) + 1) % MODOS.length];
+    if (proximo === 'escolher') {
+      const ok = await window.customConfirm('Perguntar o aplicativo a cada PDF?\n\n' +
+        'O Windows mostra a janela "Abrir com" para você escolher (Foxit, Adobe, Edge…). Nesse modo o PDF abre na 1ª página, não na da meta.\n\n' +
+        'Usa o mesmo atalho do Foxit: rode de novo o ferramentas\\estudopdf\\instalar.cmd neste computador para ele aprender este modo.');
+      if (!ok) { try { localStorage.setItem('est_pdf_modo', 'navegador'); } catch (e) { /* sem armazenamento */ } mostrarLeitura(); return; }
+    }
+    if (proximo === 'app') {
       const ok = await window.customConfirm('Abrir os PDFs no Foxit neste computador?\n\n' +
         'Precisa instalar uma vez: na pasta do site, dê dois cliques em ferramentas\\estudopdf\\instalar.cmd e escolha a pasta onde ficam os PDFs. ' +
         'Na primeira abertura, o navegador pergunta se pode abrir o "estudopdf": marque para sempre permitir.\n\n' +
         'O arquivo é achado pelo nome (o que você escolheu no "Ler agora" ou o nome do material + .pdf).');
       if (!ok) return;
     }
-    try { localStorage.setItem('est_pdf_modo', noApp() ? 'navegador' : 'app'); } catch (e) { /* sem armazenamento */ }
+    try { localStorage.setItem('est_pdf_modo', proximo); } catch (e) { /* sem armazenamento */ }
     mostrarLeitura();
   }
 
   async function abrirNoApp(x) {
     const h = window.showOpenFilePicker ? await lerAtalho(x.nome) : null;
     const arquivo = h ? h.name : x.nome + '.pdf';
-    location.href = 'estudopdf:abrir?arquivo=' + encodeURIComponent(arquivo) + '&pagina=' + (x.aprox ? 1 : x.de);
+    location.href = 'estudopdf:abrir?arquivo=' + encodeURIComponent(arquivo) + '&pagina=' + (x.aprox ? 1 : x.de) +
+      (modoPdf() === 'escolher' ? '&app=escolher' : '');
   }
 
   async function abrirPdf(i, trocar) {

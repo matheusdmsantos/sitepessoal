@@ -24,6 +24,11 @@ $achado = foreach ($p in $cfg.pastas) {
 $achado = $achado | Where-Object { $_.Name -eq $arquivo } | Sort-Object LastWriteTime -Descending | Select-Object -First 1
 if (-not $achado) { Aviso "Não achei `"$arquivo`" em:`n$($cfg.pastas -join "`n")`n`nConfira o nome do arquivo ou rode o instalador de novo para incluir a pasta." }
 
+# app=escolher: janela "Abrir com" do Windows (o aplicativo escolhido abre na 1ª página)
+if ($q['app'] -eq 'escolher') {
+  Start-Process -FilePath 'rundll32.exe' -ArgumentList ('shell32.dll,OpenAs_RunDLL ' + $achado.FullName)
+  exit 0
+}
 if ($cfg.foxit -and (Test-Path $cfg.foxit)) {
   $argumentos = @('"' + $achado.FullName + '"')
   if ($pagina -gt 0) { $argumentos += '/A', "page=$pagina" }
