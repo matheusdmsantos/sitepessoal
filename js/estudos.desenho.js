@@ -30,6 +30,7 @@
   let atual = null, ponteiro = null, ponteiroDedo = false, mudou = false, resolver = null, editando = false;
   let apagando = false;            // traço atual é borracha (ferramenta ou botão da caneta)
   let botaoNoAr = false;           // botão da caneta apertado com ela pairando sobre a tela
+  let apagandoSemPressao = false;  // borracha pela pressão zero da S Pen (botão apertado), ver inicio()
   let apagandoNoAr = false;        // borracha começada pela pressão (sem pointerdown), ver mover()
   // Qualquer botão além da ponta (S Pen: lateral; outras canetas: borracha) — buttons é bit a bit
   const botaoExtra = ev => ev.pointerType === 'pen' && ((ev.buttons & ~1) > 0 || ev.button > 0);
@@ -411,8 +412,11 @@
       if (dedos.size > 2 || (!dedoDesenha() && !naSelecao)) return;
     }
     if (ponteiro !== null) return;   // já há uma caneta na folha: a palma não conta
-    // Botão lateral da caneta (botão 2) ou ponta de borracha (botão 5): borracha só neste traço
-    const botaoCaneta = botaoExtra(ev) || (ev.pointerType === 'pen' && botaoNoAr);
+    // Botão da caneta: qualquer botão extra, o botão apertado no ar ou, na S Pen do Galaxy Tab,
+    // a caneta encostada com pressão zero (com o botão apertado o tablet para de medir a pressão)
+    const semPressao = ev.pointerType === 'pen' && ev.pressure === 0;
+    const botaoCaneta = botaoExtra(ev) || (ev.pointerType === 'pen' && botaoNoAr) || semPressao;
+    apagandoSemPressao = semPressao && !botaoExtra(ev);
     if ((ev.button > 0 && !botaoCaneta) || ev.target !== cv) return;
     apagando = ferramenta === 'borracha' || botaoCaneta;
     ev.preventDefault();
@@ -455,6 +459,13 @@
     ev.preventDefault();
     // Borracha do botão da S Pen: levantar a ponta (pressão 0, sem pointerup) encerra
     if (apagandoNoAr && !(ev.pressure > 0)) { encerrarNoAr(); return; }
+    // Soltou o botão com a S Pen encostada (a pressão volta): dali em diante desenha
+    if (apagandoSemPressao && ev.pressure > 0) {
+      apagandoSemPressao = false;
+      apagando = ferramenta === 'borracha';
+      if (!apagando && ferramenta !== 'selecao') atual = { f: ferramenta === 'marca' ? 'marca' : 'caneta', c: ferramenta === 'marca' ? corMarca : cor, l: ESPESSURAS[espessura], p: ponto(ev) };
+      atualizarBarra();
+    }
     // Botão apertado no meio do traço: o que foi riscado fica e dali em diante apaga
     if (!apagando && !laco && !arrasto && botaoExtra(ev)) {
       if (atual) { guardarHistorico(); tracos.push(atual); atual = null; mudou = true; redesenharBase(); }
@@ -514,6 +525,7 @@
     ponteiroDedo = false;
     apagando = false;
     apagandoNoAr = false;
+    apagandoSemPressao = false;
     if (!ev.buttons) botaoNoAr = false;
     if (laco) { fecharLaco(); redesenhar(); }
     if (arrasto) terminarArrasto();
