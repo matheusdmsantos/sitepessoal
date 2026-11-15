@@ -1665,15 +1665,16 @@ async function salvarResumo(discNome, topicNome, htmlContent, quiet = false) {
         if (updErr2) throw updErr2;
       } else {
         const newId = 'r_' + Date.now().toString(36) + Math.random().toString(36).substr(2, 5);
-        const { error: insErr } = await window.supabaseClient
-          .from('resumos')
-          .insert({
-            id: newId,
-            disciplina_nome: discNome.trim(),
-            topico_nome: topicNome.trim(),
-            conteudo: htmlContent
-          });
-        if (insErr) throw insErr;
+        const linha = { id: newId, disciplina_nome: discNome.trim(), topico_nome: topicNome.trim(), conteudo: htmlContent };
+        // O banco exige o topico_id (sem ele, o insert era recusado e o resumo ficava só neste navegador)
+        const topicoId = window.estSub && window.estSub.topicoPorNomes(discNome, topicNome);
+        let { error: insErr } = await window.supabaseClient.from('resumos').insert(topicoId ? { ...linha, topico_id: topicoId } : linha);
+        if (insErr && topicoId) ({ error: insErr } = await window.supabaseClient.from('resumos').insert(linha));
+        if (insErr) {
+          // À vista mesmo no modo silencioso: sem isto o resumo fica só aqui sem ninguém saber
+          if (quiet && window.estPlano) window.estPlano.aviso('O servidor recusou o resumo (ficou só neste navegador): ' + insErr.message);
+          throw insErr;
+        }
         resumosMap[key].id = newId;
       }
     }
