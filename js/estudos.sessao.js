@@ -611,11 +611,14 @@
         const conteudo = data.partes.map(p => (p.html === undefined ? d.porHash.get(p.h)
           : p.html.replace(/"ref:([0-9a-f]{64})"/g, (m, h) => (d.img.has(h) ? `"${d.img.get(h)}"` : (falta = true, m))))).join('');
         if (!falta && !data.partes.some(p => p.html === undefined && !d.porHash.has(p.h))) return { conteudo, updated_at: data.updated_at };
-      } else if (error.code === 'PGRST202') temRpc = false;   // função não criada: baixa o resumo inteiro
-      else return false;
+      } else {
+        // Função não criada (PGRST202) ou com erro: daqui em diante baixa o resumo inteiro
+        if (error.code !== 'PGRST202') console.warn('resumo_partes falhou; baixando o resumo inteiro.', error);
+        temRpc = false;
+      }
     }
     const { data, error } = await tabelaResumos().select('conteudo, updated_at').eq('id', id).maybeSingle();
-    if (error) return false;
+    if (error) { console.warn('Não deu para buscar o resumo no servidor.', error); return false; }
     return data ? { conteudo: data.conteudo || '', updated_at: data.updated_at } : null;
   }
 
@@ -775,9 +778,16 @@
       await enfileirar(async () => {
         if (!ctx) return;
         const id = idResumo();
-        if (!id) { await puxarRemoto(); return; }
-        const { data, error } = await tabelaResumos().select('updated_at').eq('id', id).maybeSingle();
-        if (!error && ctx && (!data || data.updated_at !== baseUpdated)) await puxarRemoto();
+        let ok = true;
+        if (!id) ok = await puxarRemoto();
+        else {
+          const { data, error } = await tabelaResumos().select('updated_at').eq('id', id).maybeSingle();
+          if (error) { console.warn('Sincronia: não deu para conferir o resumo.', error); ok = false; }
+          else if (ctx && (!data || data.updated_at !== baseUpdated)) ok = await puxarRemoto();
+        }
+        // Falha à vista (antes ficava calada); a próxima busca que der certo troca a mensagem
+        if (!ok && ctx) status('⚠ Sem conexão com o outro aparelho (tentando de novo)');
+        else if (ctx && $('est-sessao-status').textContent.startsWith('⚠ Sem conexão')) status(temMudanca() ? 'Alterações não salvas' : 'Salvo');
       });
       if (window.estTinta && ctx) await window.estTinta.puxar();
     } finally {
