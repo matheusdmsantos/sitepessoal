@@ -716,6 +716,7 @@
   async function gravarRemoto() {
     const c = ctx;
     if (baseUpdated === undefined && !(await puxarRemoto())) { guardarLocal(juntarPaginas()); status('Sem conexão: salvo só neste aparelho'); return; }
+    let semCondicao = false;
     for (let tentativa = 0; tentativa < 4 && ctx === c; tentativa++) {
       guardarPaginaAtual();
       const html = juntarPaginas();
@@ -730,11 +731,14 @@
         updated = r.data ? r.data.updated_at : null;
       } else {
         let q = tabelaResumos().update({ conteudo: html, updated_at: new Date().toISOString() }).eq('id', id);
-        q = baseUpdated == null ? q.is('updated_at', null) : q.eq('updated_at', baseUpdated);
+        if (!semCondicao) q = baseUpdated == null ? q.is('updated_at', null) : q.eq('updated_at', baseUpdated);
         const { data, error } = await q.select('updated_at');
-        if (error) { guardarLocal(html); status('Sem conexão: salvo só neste aparelho'); return; }
+        if (error) { console.warn('Sincronia: erro ao gravar o resumo.', error); guardarLocal(html); status('⚠ Sem conexão: salvo só neste aparelho'); return; }
         if (!data.length) {   // o outro aparelho gravou antes
-          if (!(await puxarRemoto())) { guardarLocal(html); status('Sem conexão: salvo só neste aparelho'); return; }
+          const antes = baseUpdated;
+          if (!(await puxarRemoto())) { guardarLocal(html); status('⚠ Sem conexão: salvo só neste aparelho'); return; }
+          // O servidor não mudou e mesmo assim a condição não casou: grava sem ela (a junção já foi feita)
+          if (baseUpdated === antes) { console.warn('Sincronia: a versão conhecida não casou com a do servidor; gravando sem conferir.', antes); semCondicao = true; }
           continue;
         }
         updated = data[0].updated_at;
@@ -749,6 +753,7 @@
       avisoConflito = '';
       return;
     }
+    if (ctx === c) { guardarLocal(juntarPaginas()); status('⚠ Não consegui salvar no servidor; ficou só neste aparelho'); }
   }
 
   function status(txt) { $('est-sessao-status').textContent = txt; }
