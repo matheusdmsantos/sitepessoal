@@ -146,9 +146,19 @@
     const paginas = window.estSessao ? window.estSessao.separarPaginas(r.conteudo) : [{ titulo: '', html: r.conteudo, semTitulo: true }];
     const soUma = paginas.length === 1 && paginas[0].semTitulo;
     const hPag = Math.min(6, hAssunto + 1);
+    // Tinta da caneta (estudos.tinta.js): cada página vai num bloco com a chave que a janela de estudo usa
+    const tId = window.estSub && window.estSub.topicoPorNomes(a.disc, a.topico);
+    const subs = tId ? window.estSub.doTopico(tId) : null;
+    const chave = p => {
+      if (p.semTitulo) return '_geral';
+      const k = p.titulo.trim().toLowerCase();
+      const s = subs && subs.find(x => x.nome.trim().toLowerCase() === k);
+      return s ? s.id : 't:' + k;
+    };
     return paginas.map(p => {
       const titulo = soUma || (p.semTitulo && vazio(p.html)) ? '' : `<h${hPag} class="est-pagina">${esc(p.titulo)}</h${hPag}>`;
-      return titulo + rebaixarTitulos(vazio(p.html) ? '' : p.html, soUma ? hAssunto : hPag);
+      const corpo = rebaixarTitulos(vazio(p.html) ? '' : p.html, soUma ? hAssunto : hPag);
+      return titulo + (r.id && corpo ? `<div class="est-res-pag" data-tinta-resumo="${esc(r.id)}" data-tinta-pagina="${esc(chave(p))}">${corpo}</div>` : corpo);
     }).join('');
   }
 
@@ -319,6 +329,8 @@
       </div>`}`;
     el.scrollTop = rolagem;
     if (pastaOk) mostrarPasta();
+    const doc = el.querySelector('.est-res-doc');
+    if (doc && window.estTinta) window.estTinta.desenharNoDocumento(doc);
   }
 
   function escolher(chave) {
@@ -535,6 +547,22 @@
         await Promise.all(Array.from(familias, f => document.fonts.load(`16px "${f}"`).catch(() => null)));
         const el = document.createElement('div');
         el.innerHTML = `<style>${ESTILO_EXPORT.replace(/body/g, '.est-res-pdf')}</style><div class="est-res-pdf">${corpo}</div>`;
+        // Tinta da caneta: desenhada fora da tela na largura da folha A4 (210 − 2×15 mm), antes da captura
+        if (window.estTinta && el.querySelector('[data-tinta-resumo]')) {
+          el.style.cssText = 'position:fixed;left:-10000px;top:0;width:680px;';
+          document.body.appendChild(el);
+          try {
+            await window.estTinta.desenharNoDocumento(el.querySelector('.est-res-pdf'), false);
+            // O html2pdf copia a página antes de capturar, e a cópia de um canvas sai em branco. Vira um
+            // div com a imagem de fundo (um <img> cairia no "avoid: img" da quebra de página)
+            el.querySelectorAll('canvas.est-tinta-doc').forEach(c => {
+              const d = document.createElement('div');
+              d.style.cssText = c.style.cssText;
+              d.style.background = `url(${c.toDataURL('image/png')}) 0 0 / 100% 100% no-repeat`;
+              c.replaceWith(d);
+            });
+          } finally { el.remove(); el.style.cssText = ''; }
+        }
         blob = await html2pdf().set({
           margin: 15,
           image: { type: 'jpeg', quality: 0.95 },

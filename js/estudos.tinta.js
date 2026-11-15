@@ -10,7 +10,7 @@
  * public.resumo_tinta (supabase/sincronia.sql), um por linha, buscados a cada poucos segundos
  * pela sincronização da janela (estTinta.puxar), então aparecem no outro aparelho.
  * Botão da S Pen: alterna borracha ⇄ caneta (como no desenho). A borracha apaga o traço inteiro.
- * Não sai no Word/PDF nem em Meus Resumos (fica só na janela de estudo).
+ * Também aparece em Meus Resumos e no PDF exportado (desenharNoDocumento); no Word, não.
  */
 (function () {
   const CORES = ['#dc2626', '#1d4ed8', '#111827', '#15803d'];
@@ -390,8 +390,100 @@
     trocarResumo();
   }
 
+  /* ---------- Meus Resumos e o PDF dele ----------
+     O documento marca cada página de resumo com data-tinta-resumo (id) e data-tinta-pagina (a
+     mesma chave da janela). Ali não há Quill: o texto é lido do HTML contando como ele (cada
+     linha termina em \n; foto, desenho e tabela = 1 caractere), a âncora é achada do mesmo jeito
+     e a tinta vai num canvas por página. O tamanho acompanha a letra do documento (12pt na tela). */
+  const LETRA_DO_EDITOR = 16;   // 12pt, a letra padrão da janela de estudo
+  let repintarDoc = null;       // redesenha o documento de Meus Resumos aberto (fonte que chegou depois)
+
+  function mapaDoTrecho(raiz) {
+    let t = '';
+    const refs = [];
+    const um = (c, ref) => { t += c; refs.push(ref); };
+    const inline = nos => nos.forEach(n => {
+      if (n.nodeType === 3) { for (let k = 0; k < n.data.length; k++) um(n.data[k], { no: n, k }); }
+      else if (n.nodeType === 1 && n.tagName === 'IMG') um('￼', { el: n });
+      else if (n.nodeType === 1 && n.tagName !== 'BR') inline(n.childNodes);
+    });
+    const bloco = el => { const ini = refs.length; inline(el.childNodes); um('\n', { fim: el, ini }); };
+    raiz.childNodes.forEach(n => {
+      if (n.nodeType === 3) { if (n.data.trim()) inline([n]); return; }
+      if (n.nodeType !== 1 || n.tagName === 'CANVAS') return;
+      if (n.matches('ol, ul')) n.querySelectorAll(':scope > li').forEach(bloco);
+      else if (n.matches('table, img')) um('￼', { el: n });
+      else bloco(n);
+    });
+    return { t, refs };
+  }
+
+  // Canto de cima à esquerda do caractere i, como o getBounds do Quill (fim de linha: depois da última letra)
+  function lugarNoTrecho(m, i) {
+    const caixa = (no, k) => { const r = document.createRange(); r.setStart(no, k); r.setEnd(no, k + 1); return r.getBoundingClientRect(); };
+    const ref = m.refs[i];
+    if (!ref) return null;
+    if (ref.no) { const q = caixa(ref.no, ref.k); return { x: q.left, y: q.top }; }
+    if (ref.el) { const q = ref.el.getBoundingClientRect(); return { x: q.left, y: q.top }; }
+    const ant = i > ref.ini ? m.refs[i - 1] : null;
+    if (ant && ant.no) { const q = caixa(ant.no, ant.k); return { x: q.right, y: q.top }; }
+    const q = ref.fim.getBoundingClientRect();
+    return { x: q.left + (parseFloat(getComputedStyle(ref.fim).paddingLeft) || 0), y: q.top };
+  }
+
+  function pintarDocumento(raiz, linhas) {
+    const MARGEM = 24;   // a tinta pode passar um pouco da página (setas, círculos)
+    const escala = (parseFloat(getComputedStyle(raiz).fontSize) || LETRA_DO_EDITOR) / LETRA_DO_EDITOR;
+    raiz.querySelectorAll('[data-tinta-resumo]').forEach(bl => {
+      const velho = bl.querySelector(':scope > canvas.est-tinta-doc');
+      if (velho) velho.remove();
+      const minhas = linhas.filter(l => l.resumo_id === bl.dataset.tintaResumo && l.pagina === bl.dataset.tintaPagina);
+      if (!minhas.length) return;
+      const m = mapaDoTrecho(bl);
+      if (!m.t.length) return;
+      const caixa = bl.getBoundingClientRect();
+      const w = caixa.width + 2 * MARGEM, h = caixa.height + 2 * MARGEM;
+      const dpr = Math.min(window.devicePixelRatio || 1, 2, Math.sqrt(16e6 / (w * h)));
+      const c = document.createElement('canvas');
+      c.className = 'est-tinta-doc';
+      c.width = Math.round(w * dpr);
+      c.height = Math.round(h * dpr);
+      c.style.cssText = `position:absolute;left:-${MARGEM}px;top:-${MARGEM}px;width:${w}px;height:${h}px;pointer-events:none;`;
+      const gg = c.getContext('2d');
+      minhas.forEach(l => {
+        const p = lugarNoTrecho(m, acharIndice(l.ancora, m.t));
+        if (!p) return;
+        gg.setTransform(dpr * escala, 0, 0, dpr * escala, (p.x - caixa.left + MARGEM) * dpr, (p.y - caixa.top + MARGEM) * dpr);
+        window.estDesenho.desenharTraco(gg, l.traco, 1);
+      });
+      bl.style.position = 'relative';
+      bl.appendChild(c);
+    });
+  }
+
+  // Busca a tinta das páginas marcadas em raiz e desenha. Na tela, redesenha quando a largura muda.
+  async function desenharNoDocumento(raiz, naTela = true) {
+    const ids = [...new Set([...raiz.querySelectorAll('[data-tinta-resumo]')].map(b => b.dataset.tintaResumo))];
+    if (!ids.length || disponivel === false || !window.estDesenho) return;
+    const { data, error } = await sb().from('resumo_tinta').select('resumo_id, pagina, ancora, traco').in('resumo_id', ids).eq('apagado', false);
+    if (semTabela(error)) { disponivel = false; return; }
+    // Fonte que ainda está chegando muda onde o texto quebra a linha
+    if (document.fonts) await document.fonts.ready;
+    if (error || !raiz.isConnected) return;
+    pintarDocumento(raiz, data || []);
+    if (!naTela) return;
+    // Largura nova ou foto que terminou de carregar mudam onde o texto está (os canvas não mudam o tamanho)
+    let t = null;
+    const repintar = () => { clearTimeout(t); t = setTimeout(() => { if (raiz.isConnected) pintarDocumento(raiz, data || []); }, 150); };
+    if (raiz._tintaObs) raiz._tintaObs.disconnect();
+    raiz._tintaObs = new ResizeObserver(repintar);
+    raiz._tintaObs.observe(raiz);
+    if (!repintarDoc && document.fonts) document.fonts.addEventListener('loadingdone', () => repintarDoc && repintarDoc());
+    repintarDoc = repintar;
+  }
+
   window.estTinta = {
-    iniciar, ligar, ligada: () => ligada, puxar, abrirResumo, fechar, pagina: agendar, posicionar,
+    iniciar, ligar, ligada: () => ligada, puxar, abrirResumo, fechar, pagina: agendar, posicionar, desenharNoDocumento,
     _acharIndice: acharIndice, _pos: id => pos.get(id), _tracos: () => [...tracos.values()]   // usados no teste
   };
 })();
