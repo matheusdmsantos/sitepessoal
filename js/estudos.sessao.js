@@ -866,6 +866,7 @@
     caixa.className = 'est-img-alca';
     caixa.hidden = true;
     caixa.innerHTML = `
+      <div class="est-img-arrasto" title="Arraste para levar a outro ponto do texto"></div>
       ${['no', 'ne', 'so', 'se'].map(c => `<span class="est-img-ponto ${c}" data-canto="${c}" aria-hidden="true"></span>`).join('')}
       <div class="est-img-barra" role="toolbar" aria-label="Tamanho da imagem">
         <span class="est-img-medida"></span>
@@ -884,6 +885,13 @@
       if (img) desenhar(img);
     });
     caixa.querySelector('.est-img-mover').addEventListener('pointerdown', arrastarImagem);
+    // Arrastar a própria imagem também move; fica por cima dela, então tocar não abre o teclado
+    const arrasto = caixa.querySelector('.est-img-arrasto');
+    arrasto.addEventListener('pointerdown', arrastarImagem);
+    arrasto.addEventListener('dblclick', () => {
+      const img = alca && alca.img;
+      if (img && img.classList.contains('est-desenho')) { esconderAlca(); desenhar(img); }
+    });
 
     // Arrastar um canto: a largura muda pelo deslocamento horizontal (a altura acompanha)
     caixa.querySelectorAll('.est-img-ponto').forEach(p => p.addEventListener('pointerdown', ev => {
@@ -941,20 +949,20 @@
   }
 
   function arrastarImagem(ev) {
-    if (!alca || !alca.img) return;
+    if (!alca || !alca.img || ev.button > 0) return;
     ev.preventDefault();
     const img = alca.img, caixa = alca.caixa, folha = caixa.parentElement;
     const blot = Quill.find(img);
     if (!blot) return;
     const de = quill.getIndex(blot);
+    try { ev.currentTarget.setPointerCapture(ev.pointerId); } catch (e) { /* segue pelos eventos da janela */ }
     const linha = document.createElement('div');
     linha.className = 'est-img-destino';
     linha.hidden = true;
     folha.appendChild(linha);
-    caixa.classList.add('movendo');
-    img.classList.add('est-img-movendo');
     const rolavel = rolavelDe(quill.root);
-    let para = null, giro = null, ultimo = null;
+    const x0 = ev.clientX, y0 = ev.clientY;
+    let para = null, giro = null, ultimo = null, andou = false;
     const marcar = () => {
       if (!ultimo) return;
       const i = indiceEm(ultimo.x, ultimo.y);
@@ -975,6 +983,9 @@
       giro = requestAnimationFrame(rolar);
     };
     const mover = e => {
+      // Só começa a mover depois de 6 px: um toque parado deixa a imagem selecionada
+      if (!andou && Math.hypot(e.clientX - x0, e.clientY - y0) < 6) return;
+      if (!andou) { andou = true; caixa.classList.add('movendo'); img.classList.add('est-img-movendo'); }
       ultimo = { x: e.clientX, y: e.clientY };
       marcar();
       if (!giro) giro = requestAnimationFrame(rolar);
@@ -987,18 +998,18 @@
       linha.remove();
       caixa.classList.remove('movendo');
       img.classList.remove('est-img-movendo');
+      if (!andou) return;
       esconderAlca();
-      if (para === null || para === de || para === de + 1) return;
+      if (para === null || para === de || para === de + 1) { mostrarAlca(img); return; }
       const Delta = Quill.import('delta');
       quill.update('silent');   // a largura das alças muda o DOM direto; sem isto o Quill copiaria a antiga
       const item = quill.getContents(de, 1);
       // Desenho é bloco: solto no fim de uma linha, entra no começo da seguinte (sem partir o parágrafo)
       if (item.ops[0] && item.ops[0].insert && item.ops[0].insert.desenho !== undefined && quill.getText(para, 1) === '\n') para++;
-      if (para === de || para === de + 1) return;
+      if (para === de || para === de + 1) { mostrarAlca(img); return; }
       quill.deleteText(de, 1, 'user');
       const alvo = para > de ? para - 1 : para;
       quill.updateContents(new Delta().retain(alvo).concat(item), 'user');
-      quill.setSelection(alvo + 1, 0, 'silent');
       const nova = [...quill.root.querySelectorAll('img')].find(i => { const b = Quill.find(i); return b && quill.getIndex(b) === alvo; });
       if (nova) mostrarAlca(nova);
     };
@@ -1152,6 +1163,17 @@
     raiz.addEventListener('click', ev => {
       if (ev.target.tagName === 'IMG') mostrarAlca(ev.target); else esconderAlca();
     });
+    let toqueImg = null;
+    raiz.addEventListener('touchstart', ev => {
+      toqueImg = ev.touches.length === 1 && ev.target.tagName === 'IMG' ? ev.target : null;
+      if (!toqueImg) return;
+      ev.preventDefault();   // sem foco no texto e sem o clique que viria depois
+      if (document.activeElement === raiz) raiz.blur();
+    }, { passive: false });
+    raiz.addEventListener('touchend', ev => {
+      if (toqueImg && ev.target === toqueImg) { ev.preventDefault(); mostrarAlca(toqueImg); }
+      toqueImg = null;
+    }, { passive: false });
     raiz.addEventListener('dblclick', ev => {
       if (ev.target.tagName === 'IMG' && ev.target.classList.contains('est-desenho')) { esconderAlca(); desenhar(ev.target); }
     });
@@ -1362,6 +1384,7 @@
     if (!window.estDesenho) return;
     const blot = img && Quill.find(img);
     let index = blot ? quill.getIndex(blot) : (quill.getSelection() || { index: quill.getLength() - 1 }).index;
+    quill.blur();
     const r = await window.estDesenho.abrir(img ? img.getAttribute('data-tracos') : '');
     if (!r) return;
     const largura = img && img.getAttribute('width');
@@ -1369,7 +1392,10 @@
     if (r.apagar) return;
     quill.insertEmbed(index, 'desenho', r, 'user');
     if (largura) quill.formatText(index, 1, 'width', largura, 'user');
-    quill.setSelection(index + 1, 0, 'silent');
+    // No tablet, pôr o cursor abriria o teclado; o desenho fica selecionado para mover ou redimensionar
+    const novo = [...quill.root.querySelectorAll('img.est-desenho')].find(i => { const b = Quill.find(i); return b && quill.getIndex(b) === index; });
+    if (matchMedia('(pointer: coarse)').matches) { if (novo) mostrarAlca(novo); }
+    else quill.setSelection(index + 1, 0, 'silent');
   }
 
   /* dados = { tipo: 'meta' | 'revisao', id, disc, topico, rotulo, minutos, concluida }

@@ -2248,7 +2248,7 @@ html, body {
 /* Desenho à mão (estudos.desenho.js) */
 .ql-editor img.est-desenho { display: block; max-width: 100%; height: auto; margin: 6px 0; border: 1px dashed transparent; border-radius: 6px; cursor: pointer; }
 .ql-editor img.est-img-movendo { opacity: 0.35; }
-.est-img-alca.movendo { pointer-events: none; }
+.est-img-alca.movendo, .est-img-alca.movendo * { pointer-events: none !important; }
 .est-img-alca.movendo .est-img-barra { opacity: 0.4; }
 .est-img-destino { position: absolute; z-index: 6; width: 3px; margin-left: -1px; border-radius: 2px; background: #2563eb; pointer-events: none; }
 .est-img-barra .est-img-mover { cursor: grab; touch-action: none; }
@@ -2287,6 +2287,12 @@ html.est-desenho-aberto, html.est-desenho-aberto body { overflow: hidden; oversc
   pointer-events: none;   /* só as alças e a barra recebem cliques */
 }
 .est-img-alca[hidden] { display: none; }
+.est-img-arrasto { position: absolute; inset: 0; pointer-events: auto; touch-action: none; cursor: move; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+.est-img-alca .est-img-ponto { width: 20px; height: 20px; }
+.est-img-alca .est-img-ponto.no, .est-img-alca .est-img-ponto.so { left: -11px; }
+.est-img-alca .est-img-ponto.ne, .est-img-alca .est-img-ponto.se { right: -11px; }
+.est-img-alca .est-img-ponto.no, .est-img-alca .est-img-ponto.ne { top: -11px; }
+.est-img-alca .est-img-ponto.so, .est-img-alca .est-img-ponto.se { bottom: -11px; }
 .est-img-ponto {
   position: absolute;
   width: 14px;
