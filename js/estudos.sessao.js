@@ -100,6 +100,24 @@
     Tabela.className = 'est-tabela';
     Quill.register(Tabela, true);
 
+    // Desenho à mão (estudos.desenho.js): PNG + traços em data-tracos, para reabrir e continuar.
+    // Clicar abre o desenho de novo. Só aceita PNG embutido (nada de endereço externo).
+    class Desenho extends BlockEmbed {
+      static create(v) {
+        const node = super.create();
+        const src = v && typeof v.src === 'string' && v.src.startsWith('data:image/png;base64,') ? v.src : '';
+        node.setAttribute('src', src);
+        if (v && v.tracos) node.setAttribute('data-tracos', v.tracos);
+        node.setAttribute('alt', 'Desenho à mão');
+        return node;
+      }
+      static value(node) { return { src: node.getAttribute('src') || '', tracos: node.getAttribute('data-tracos') || '' }; }
+    }
+    Desenho.blotName = 'desenho';
+    Desenho.tagName = 'IMG';
+    Desenho.className = 'est-desenho';
+    Quill.register(Desenho, true);
+
     // Nome de cada fonte no seletor: na lista, escrito com ela; na caixa fechada, em fonte normal
     const primeiraMao = FONTES.find(f => f.mao).id;
     const css = `
@@ -1023,7 +1041,8 @@
     });
 
     raiz.addEventListener('click', ev => {
-      if (ev.target.tagName === 'IMG') mostrarAlca(ev.target); else esconderAlca();
+      if (ev.target.tagName === 'IMG' && ev.target.classList.contains('est-desenho')) { esconderAlca(); desenhar(ev.target); }
+      else if (ev.target.tagName === 'IMG') mostrarAlca(ev.target); else esconderAlca();
     });
     raiz.addEventListener('keydown', ev => {
       if (!alca || !alca.img) return;
@@ -1202,11 +1221,11 @@
             [{ 'color': [] }, { 'background': [] }],
             [{ 'list': 'ordered' }, { 'list': 'bullet' }, { 'indent': '-1' }, { 'indent': '+1' }],
             [{ 'align': [] }],
-            ['blockquote', 'code-block', 'link', 'image'],
+            ['blockquote', 'code-block', 'link', 'image', 'desenho'],
             ['clean'],
             ...(window.isOwner && window.isOwner() ? [['ia']] : [])
           ],
-          handlers: { ia: melhorarComIA }
+          handlers: { ia: melhorarComIA, desenho: () => desenhar() }
         }
       }
     });
@@ -1216,8 +1235,28 @@
       botaoIa.title = 'Melhorar com IA o trecho selecionado: organiza, grifa, cria tabelas e emojis (Ctrl+Z desfaz)';
       botaoIa.setAttribute('aria-label', 'Melhorar com IA o trecho selecionado');
     }
+    const botaoDes = quill.getModule('toolbar').container.querySelector('.ql-desenho');
+    if (botaoDes) {
+      botaoDes.textContent = '✍️';
+      botaoDes.title = 'Desenhar à mão (caneta do tablet)';
+      botaoDes.setAttribute('aria-label', 'Desenhar à mão');
+    }
     quill.on('text-change', (delta, old, fonte) => { if (fonte === 'user') agendarSalvar(); });
     iniciarImagens();
+  }
+
+  /* Desenho à mão: sem img, insere um novo onde está o cursor (sem cursor, no fim da página);
+     com img (clique num desenho), reabre e troca, ou apaga se a folha ficou vazia. */
+  async function desenhar(img) {
+    if (!window.estDesenho) return;
+    const blot = img && Quill.find(img);
+    let index = blot ? quill.getIndex(blot) : (quill.getSelection() || { index: quill.getLength() - 1 }).index;
+    const r = await window.estDesenho.abrir(img ? img.getAttribute('data-tracos') : '');
+    if (!r) return;
+    if (blot) quill.deleteText(index, 1, 'user');
+    if (r.apagar) return;
+    quill.insertEmbed(index, 'desenho', r, 'user');
+    quill.setSelection(index + 1, 0, 'silent');
   }
 
   /* dados = { tipo: 'meta' | 'revisao', id, disc, topico, rotulo, minutos, concluida }
