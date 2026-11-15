@@ -934,6 +934,23 @@
     aviso(novas.length ? `${novas.length} metas geradas para esta semana.` : 'Não há tópicos pendentes para gerar metas.');
   }
 
+  /* Motor: terminou a semana antes, gera a seguinte já (na segunda, garantirSemanaMotor a encontra
+     pronta e não gera de novo). Parte do progresso de hoje, então metas em aberto podem se repetir. */
+  async function gerarProximaSemana() {
+    const e = editalAtivo();
+    if (!e || !planoDe(e.id) || !usarMotor(e)) return;
+    const atual = segundaDe(hoje()), semana = somarDias(atual, 7);
+    if (metasDaSemana(e.id, semana).length) return;
+    const abertas = metasDaSemana(e.id, atual).filter(m => !m.concluida).length;
+    if (abertas && !await customConfirm(`Ainda há ${abertas} meta${abertas > 1 ? 's' : ''} em aberto nesta semana. A semana seguinte é montada pelo que você já concluiu, então o conteúdo delas pode se repetir. Gerar mesmo assim?`)) return;
+    const novas = await gerarSemanaMotor(e, semana);
+    metas.push(...novas);
+    await gravar('metas', novas);
+    semanaVista = semana;
+    renderTudo();
+    aviso(novas.length ? `${novas.length} metas geradas para a semana de ${fmtData(semana)}.` : 'Não há o que gerar para a semana seguinte.');
+  }
+
   /* =============================================
      REVISÕES ADAPTATIVAS
   ============================================= */
@@ -1910,8 +1927,10 @@
     if (!semanaVista) semanaVista = atual;
     const projecao = plano ? projetar(e) : null;
     const prevista = semanaVista > atual;
+    const motor = usarMotor(e);
     const semanaPrevista = prevista && projecao ? projecao.semanas.find(w => w.semana === semanaVista) : null;
-    const lista = prevista ? (semanaPrevista ? semanaPrevista.metas : []) : metasDaSemana(e.id, semanaVista);
+    // No motor não há projeção: uma semana futura só tem as metas gravadas por "Gerar a semana seguinte"
+    const lista = prevista && !motor ? (semanaPrevista ? semanaPrevista.metas : []) : metasDaSemana(e.id, semanaVista);
     const fim = somarDias(semanaVista, 6);
     const metaMin = plano ? Number(plano.horas_semana) * 60 : 0;
 
@@ -1993,7 +2012,17 @@
         <button class="est-btn-register" onclick="estPlano.agendarEstudados()">Incluir no plano</button>
       </div>` : ''}
 
-      ${prevista ? `<p class="est-plano-vazio">${lista.length || revSemana.length
+      ${prevista && motor ? (lista.length
+        ? '<p class="est-plano-vazio">Semana gerada antes de começar. Na segunda, ↻ Regerar refaz as metas em aberto com o progresso do dia.</p>'
+        : semanaVista === somarDias(atual, 7) ? `
+      <div class="est-plano-cta">
+        <div>
+          <strong>Semana seguinte ainda não gerada</strong>
+          <p>Ela é gerada sozinha na segunda. Se já terminou esta semana, gere agora a partir do que você já concluiu.</p>
+        </div>
+        <button class="est-btn-register" onclick="estPlano.gerarProximaSemana()">Gerar a semana seguinte</button>
+      </div>` : '<p class="est-plano-vazio">Só a semana seguinte pode ser gerada antes da hora.</p>') : ''}
+      ${prevista && !motor ? `<p class="est-plano-vazio">${lista.length || revSemana.length
         ? 'Previsão: os tópicos novos são confirmados quando a semana começar, e as revisões mudam conforme o seu acerto até lá.'
         : 'Nada previsto para esta semana: nessa altura o edital já foi estudado e as revisões dos tópicos acabaram.'}</p>` : ''}
       ${semanaVista === atual && !lista.length ? '<p class="est-plano-vazio">Nenhum tópico novo nesta semana: todos os tópicos das disciplinas incluídas já estão estudados, ou não sobraram dias de estudo.</p>' : ''}
@@ -3576,7 +3605,7 @@
 
   window.estPlano = {
     init, renderHoje, renderSecao, topicoConcluido, sessaoCriada, sessaoRemovida,
-    abrirConclusao, abrirEstudo, adiarRevisao, removerMeta, regerarSemana, adiantar, reiniciarPlanejamento, metasDoTopico, agendarEstudados,
+    abrirConclusao, abrirEstudo, adiarRevisao, removerMeta, regerarSemana, gerarProximaSemana, adiantar, reiniciarPlanejamento, metasDoTopico, agendarEstudados,
     agendarReforco, mudarSemana, irParaSemana, alternarConfig, editalTrocado, projetar,
     incidenciaDaDisciplina, pctIncidencia, salvarIncidencias,
     materiaisDaDisciplina, paginasDoTopico, prioridadeDosTopicos, salvarMateriais, ordemPdfDe, porPdfDe, criarEditalPorPdf, juntarTopicos,
