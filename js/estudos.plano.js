@@ -3136,6 +3136,8 @@
   const motorDe = id => motorPdfs.find(x => x.id === id);
   const itemIdDoPdf = id => (((materiais.find(m => m.id === id) || {}).topicos || [])[0] || {}).topico_id || null;
   const nomeDoPdf = id => (materiais.find(m => m.id === id) || {}).nome || 'PDF';
+  // Caderno do PDF: o da Tela do PDF ou, sem ele, o do item do PDF (ficha do Edital, userscript)
+  const cadernoDoPdf = id => (motorDe(id) || {}).tec_link || ((acharTopico(itemIdDoPdf(id)) || {}).t || {}).tecLink || '';
   const subtopicosDoPdf = id => { const t = itemIdDoPdf(id); return t && window.estSub ? window.estSub.doTopico(t).filter(s => s.material_id === id) : []; };
   // Página lida: a da linha do motor ou, antes dela existir, a que as metas antigas registraram
   const lidasDoPdf = id => { const t = itemIdDoPdf(id); return Math.max(Number((motorDe(id) || {}).lidas) || 0, t ? Math.round(paginasLidas(t)) : 0); };
@@ -3281,9 +3283,9 @@
       const q = (m.alvos || []).reduce((a, x) => a + (x.questoes || 0), 0);
       tag = m.tipo_bloco === 'manutencao' ? `Questões · manutenção · ${disc} · ${q} questões · ${fmtMin(m.minutos)}`
         : `Questões · ${pdf} · Bloco ${i.n} · D+${i.dias} · Previsto ${i.prev}% · ${q} questões · ${fmtMin(m.minutos)}`;
-      const pdfTec = (motorDe(m.material_id) || {}).tec_link || '';
+      const pdfTec = cadernoDoPdf(m.material_id);
       const alvos = (m.alvos || []).map(a => {
-        if (a.material_id) { const t = (motorDe(a.material_id) || {}).tec_link; return `${escapeHtml(nomeDoPdf(a.material_id))} (${a.questoes})${t ? ` <a href="${attr(t)}" target="_blank" rel="noopener">TEC ↗</a>` : ''}`; }
+        if (a.material_id) { const t = cadernoDoPdf(a.material_id); return `${escapeHtml(nomeDoPdf(a.material_id))} (${a.questoes})${t ? ` <a href="${attr(t)}" target="_blank" rel="noopener">TEC ↗</a>` : ''}`; }
         const s = a.subtopico_id && window.estSub && window.estSub.porId(a.subtopico_id);
         const link = (s && s.tec_link) || pdfTec;
         const naoLido = s && !s.estudado_em ? ' <small>(leia antes)</small>' : '';
