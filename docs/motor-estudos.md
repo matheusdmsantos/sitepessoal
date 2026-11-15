@@ -2,7 +2,7 @@
 
 Documento para a sessão que vai construir as telas do motor. Descreve o schema, as funções públicas, os eventos que a interface precisa disparar, os parâmetros e o que ficou pendente.
 
-Estado: branch `feat/motor-estudos`, não publicada. Prévia em `feat-motor-estudos.matheusmirandaeng.pages.dev`, que usa o mesmo banco da produção. O motor **ainda não grava metas**: na prévia, o botão "Ver a semana do motor" mostra o que ele geraria.
+Estado: publicado na main. O motor gera e grava as metas da semana no edital por PDF; os outros editais seguem o plano antigo.
 
 ## 1. Os quatro pilares
 
@@ -23,7 +23,7 @@ Estado: branch `feat/motor-estudos`, não publicada. Prévia em `feat-motor-estu
 | `js/estudos.motor.erros.js` | C. Agenda de erros (`window.estMotorErros`) |
 | `js/estudos.motor.questoes.js` | D. Questões por PDF e modelo de memória (`window.estMotorQuestoes`) |
 | `js/estudos.motor.semana.js` | E. Orçamento, rampa, geração da semana e projeção (`window.estMotorSemana`) |
-| `js/estudos.plano.js` | A ligação com a interface atual: carrega `motor_pdfs` e `motor_blocos` e expõe `migrarMotor`, `verSemanaDoMotor` e `converterAgendaErros` |
+| `js/estudos.plano.js` | A ligação com a interface atual: carrega `motor_pdfs` e `motor_blocos` e expõe `migrarMotor` e `converterAgendaErros` |
 | `supabase/motor.sql` | Schema (só aditivo) |
 | `ferramentas/testes/motor.html` + `motor-etapas.js` | 72 testes, rodam no navegador pelo servidor local |
 
