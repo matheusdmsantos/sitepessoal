@@ -2246,7 +2246,12 @@ html, body {
 .est-sessao-folha .ql-snow.ql-toolbar button.ql-desenho { width: auto; padding: 2px 6px; font-size: 1rem; line-height: 1; }
 
 /* Desenho à mão (estudos.desenho.js) */
-.ql-editor img.est-desenho { display: block; width: 100%; height: auto; margin: 6px 0; border: 1px dashed transparent; border-radius: 6px; cursor: pointer; }
+.ql-editor img.est-desenho { display: block; max-width: 100%; height: auto; margin: 6px 0; border: 1px dashed transparent; border-radius: 6px; cursor: pointer; }
+.ql-editor img.est-img-movendo { opacity: 0.35; }
+.est-img-alca.movendo { pointer-events: none; }
+.est-img-alca.movendo .est-img-barra { opacity: 0.4; }
+.est-img-destino { position: absolute; z-index: 6; width: 3px; margin-left: -1px; border-radius: 2px; background: #2563eb; pointer-events: none; }
+.est-img-barra .est-img-mover { cursor: grab; touch-action: none; }
 .ql-editor img.est-desenho:hover { border-color: #cbd5e1; }
 .est-desenho-modal { position: fixed; inset: 0; z-index: 1040; display: flex; flex-direction: column; background: #e5e7eb; color: #111827; }
 .est-desenho-modal[hidden] { display: none; }
@@ -2265,7 +2270,9 @@ html.est-desenho-aberto, html.est-desenho-aberto body { overflow: hidden; oversc
 .est-desenho-esp-vazio { flex: 1; }
 .est-desenho-barra button.est-desenho-ok { border-color: #2563eb; background: #2563eb; color: #fff; font-weight: 600; }
 .est-desenho-barra button.est-desenho-ok:hover { background: #1d4ed8; }
-.est-desenho-area { flex: 1; overflow: auto; padding: 12px; display: flex; flex-direction: column; align-items: center; gap: 10px; overscroll-behavior: contain; }
+.est-desenho-area { flex: 1; overflow: auto; padding: 12px; display: flex; flex-direction: column; align-items: flex-start; gap: 10px; overscroll-behavior: contain; touch-action: none; }
+.est-desenho-area > * { margin: 0 auto; }
+.est-desenho-barra button.est-desenho-zoom { min-width: 62px; }
 .est-desenho-area canvas { flex-shrink: 0; background: #fff; border-radius: 4px; box-shadow: 0 1px 4px rgba(0,0,0,0.15); touch-action: none; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; cursor: crosshair; }
 .est-desenho-area .est-desenho-mais { padding: 6px 14px; border: 1px dashed #9ca3af; border-radius: 8px; background: transparent; color: #374151; font: inherit; cursor: pointer; }
 

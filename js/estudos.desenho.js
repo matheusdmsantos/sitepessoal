@@ -6,8 +6,8 @@
  * (blot "desenho": <img class="est-desenho" data-tracos="…">).
  *
  * Só a caneta (e o mouse) desenha: o dedo rola a folha e a palma encostada é ignorada,
- * salvo com "Dedo desenha" ligado. Traço com pressão; marca-texto translúcido; a borracha
- * apaga o traço inteiro que tocar.
+ * salvo com "Dedo desenha" ligado. Dois dedos dão zoom (pinça); também − / + e Ctrl+roda.
+ * Traço com pressão; marca-texto translúcido; a borracha apaga o traço inteiro que tocar.
  */
 (function () {
   const LARGURA = 1000;            // largura lógica da folha (os traços ficam nessa escala)
@@ -18,11 +18,15 @@
   const CORES_MARCA = ['#fde047', '#86efac', '#f9a8d4', '#93c5fd'];
   const ESPESSURAS = { fina: 2, media: 3.5, grossa: 6 };
   const RAIO_BORRACHA = 12;
+  const ZOOM_MAX = 4;
+  const PIXELS_MAX = 16e6;         // limite de área do canvas no iPad (Safari)
 
   let el = null, cv = null, ctx = null, base = null;
   let tracos = [], historico = [], refazer = [], altura = ALTURA_INICIAL;
   let ferramenta = 'caneta', cor = CORES[0], corMarca = CORES_MARCA[0], espessura = 'media';
-  let atual = null, ponteiro = null, rolando = null, mudou = false, resolver = null, editando = false;
+  let atual = null, ponteiro = null, ponteiroDedo = false, mudou = false, resolver = null, editando = false;
+  let zoom = 1, pinca = null;
+  const dedos = new Map();         // dedos na folha: id → { x, y }
 
   const $ = s => el.querySelector(s);
   const ler = s => { try { return localStorage.getItem(s); } catch (e) { return null; } };
@@ -51,6 +55,11 @@
           <button type="button" data-acao="refazer" title="Refazer (Ctrl+Y)" aria-label="Refazer">↷</button>
           <button type="button" data-acao="limpar" title="Apagar tudo (dá para desfazer)">🗑 Limpar</button>
         </div>
+        <div class="est-desenho-grupo" role="group" aria-label="Zoom">
+          <button type="button" data-acao="menos" title="Diminuir o zoom" aria-label="Diminuir o zoom">−</button>
+          <button type="button" data-acao="zoom" class="est-desenho-zoom" title="Voltar à folha inteira">100%</button>
+          <button type="button" data-acao="mais" title="Aumentar o zoom (ou pince com dois dedos)" aria-label="Aumentar o zoom">+</button>
+        </div>
         <label class="est-desenho-dedo" title="Ligado: o dedo também desenha (sem caneta). Desligado: o dedo rola a folha."><input type="checkbox"> Dedo desenha</label>
         <span class="est-desenho-esp-vazio"></span>
         <button type="button" data-acao="cancelar">Cancelar</button>
@@ -72,10 +81,12 @@
     dedo.addEventListener('change', () => gravar('est_desenho_dedo', dedo.checked ? '1' : '0'));
     el.querySelectorAll('[data-acao]').forEach(b => b.addEventListener('click', () => acao(b.dataset.acao)));
 
-    cv.addEventListener('pointerdown', inicio);
-    cv.addEventListener('pointermove', mover);
-    cv.addEventListener('pointerup', fim);
-    cv.addEventListener('pointercancel', fim);
+    // Na área toda (a pinça vale também na margem); caneta e mouse só desenham sobre a folha
+    const area = $('.est-desenho-area');
+    area.addEventListener('pointerdown', inicio);
+    area.addEventListener('pointermove', mover);
+    area.addEventListener('pointerup', fim);
+    area.addEventListener('pointercancel', fim);
     // iPad: sem isto, a Apple Pencil seleciona texto ou abre a lupa
     cv.addEventListener('touchstart', ev => ev.preventDefault(), { passive: false });
     el.addEventListener('keydown', ev => {
@@ -85,6 +96,14 @@
       if (ctrl && ev.key.toLowerCase() === 'y') { ev.preventDefault(); ev.stopPropagation(); acao('refazer'); }
     });
     window.addEventListener('resize', () => { if (!el.hidden) dimensionar(); });
+    // Ctrl+roda (ou pinça no touchpad, que o navegador manda assim): zoom no ponto do mouse
+    $('.est-desenho-area').addEventListener('wheel', ev => {
+      if (!ev.ctrlKey) return;
+      ev.preventDefault();
+      zoomEm(zoom * Math.exp(-ev.deltaY / 300), ev.clientX, ev.clientY);
+      clearTimeout(zoomEm.t);
+      zoomEm.t = setTimeout(dimensionar, 150);
+    }, { passive: false });
   }
 
   function atualizarBarra() {
@@ -97,20 +116,50 @@
       if (ferramenta === 'marca') corMarca = b.dataset.cor; else cor = b.dataset.cor;
       atualizarBarra();
     }));
+    $('.est-desenho-zoom').textContent = Math.round(zoom * 100) + '%';
+    $('[data-acao="menos"]').disabled = zoom <= 1;
+    $('[data-acao="mais"]').disabled = zoom >= ZOOM_MAX;
     $('[data-acao="desfazer"]').disabled = !historico.length;
     $('[data-acao="refazer"]').disabled = !refazer.length;
   }
 
   /* ---------- tamanho e desenho ---------- */
-  function dimensionar() {
-    const area = $('.est-desenho-area');
-    const larguraCss = Math.min(LARGURA, area.clientWidth - 24);
-    const k = larguraCss / LARGURA, dpr = window.devicePixelRatio || 1;
+  // Tamanho na tela: a folha inteira na largura da área, vezes o zoom
+  function tamanhoCss() {
+    const larguraCss = Math.min(LARGURA, $('.est-desenho-area').clientWidth - 24) * zoom;
     cv.style.width = larguraCss + 'px';
-    cv.style.height = Math.round(altura * k) + 'px';
-    cv.width = base.width = Math.round(larguraCss * dpr);
-    cv.height = base.height = Math.round(altura * k * dpr);
+    cv.style.height = Math.round(altura * larguraCss / LARGURA) + 'px';
+    return larguraCss;
+  }
+
+  // Tamanho e resolução (lento: redesenha tudo). Durante a pinça só muda o tamanho na tela.
+  function dimensionar() {
+    const larguraCss = tamanhoCss();
+    const w = larguraCss * (window.devicePixelRatio || 1), h = w * altura / LARGURA;
+    const f = Math.min(1, Math.sqrt(PIXELS_MAX / (w * h)), 8192 / w);
+    cv.width = base.width = Math.round(w * f);
+    cv.height = base.height = Math.round(h * f);
     redesenharBase();
+    atualizarBarra();
+  }
+
+  // Zoom mantendo parado o ponto da folha que está em (cx, cy) na tela
+  // (fixo: o ponto da folha, em fração, que deve ficar em (cx, cy); a pinça usa o do começo)
+  function zoomEm(z, cx, cy, fixo) {
+    const area = $('.est-desenho-area');
+    let r = cv.getBoundingClientRect();
+    const { fx, fy } = fixo || { fx: (cx - r.left) / r.width, fy: (cy - r.top) / r.height };
+    zoom = Math.max(1, Math.min(ZOOM_MAX, z));
+    tamanhoCss();
+    r = cv.getBoundingClientRect();
+    area.scrollLeft += r.left + fx * r.width - cx;
+    area.scrollTop += r.top + fy * r.height - cy;
+  }
+
+  function zoomNoMeio(z) {
+    const a = $('.est-desenho-area').getBoundingClientRect();
+    zoomEm(z, a.left + a.width / 2, a.top + a.height / 2);
+    dimensionar();
   }
 
   const fator = () => cv.width / LARGURA;   // lógico → pixels do canvas
@@ -173,14 +222,26 @@
     return [Math.round(x * 10) / 10, Math.round(y * 10) / 10, Math.round(pr * 100)];
   }
 
-  const desenha = ev => ev.pointerType !== 'touch' || $('.est-desenho-dedo input').checked;
+  const dedoDesenha = () => $('.est-desenho-dedo input').checked;
+  const meio = () => { const [a, b] = [...dedos.values()]; return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2, d: Math.hypot(a.x - b.x, a.y - b.y) || 1 }; };
 
   function inicio(ev) {
+    if (ev.pointerType === 'touch') {
+      dedos.set(ev.pointerId, { x: ev.clientX, y: ev.clientY });
+      if (dedos.size === 2) {
+        // Segundo dedo: vira pinça; o traço que o primeiro dedo começou é descartado
+        if (ponteiroDedo) { atual = null; ponteiro = null; ponteiroDedo = false; redesenhar(); }
+        const m = meio(), r = cv.getBoundingClientRect();
+        pinca = { d0: m.d, z0: zoom, fixo: { fx: (m.x - r.left) / r.width, fy: (m.y - r.top) / r.height } };
+        return;
+      }
+      if (dedos.size > 2 || !dedoDesenha()) return;   // um dedo sem "Dedo desenha": rola (em mover)
+    }
     if (ponteiro !== null) return;   // já há uma caneta na folha: a palma não conta
-    if (!desenha(ev)) { rolando = { id: ev.pointerId, y: ev.clientY, x: ev.clientX }; return; }
-    if (ev.button > 0) return;
+    if (ev.button > 0 || ev.target !== cv) return;
     ev.preventDefault();
     ponteiro = ev.pointerId;
+    ponteiroDedo = ev.pointerType === 'touch';
     try { cv.setPointerCapture(ev.pointerId); } catch (e) { /* ponteiro que já saiu: segue sem captura */ }
     if (ferramenta === 'borracha') { guardarHistorico(); atual = null; apagarEm(ponto(ev)); return; }
     atual = ferramenta === 'marca'
@@ -190,12 +251,20 @@
   }
 
   function mover(ev) {
-    if (rolando && ev.pointerId === rolando.id) {
+    const dedo = dedos.get(ev.pointerId);
+    if (dedo && ev.pointerId !== ponteiro) {
+      const antes = { x: dedo.x, y: dedo.y };
+      dedo.x = ev.clientX;
+      dedo.y = ev.clientY;
       const area = $('.est-desenho-area');
-      area.scrollTop -= ev.clientY - rolando.y;
-      area.scrollLeft -= ev.clientX - rolando.x;
-      rolando.y = ev.clientY;
-      rolando.x = ev.clientX;
+      if (pinca && dedos.size === 2) {
+        // o ponto que estava entre os dedos fica entre eles: abrir dá zoom, andar junto arrasta
+        const m = meio();
+        zoomEm(pinca.z0 * m.d / pinca.d0, m.x, m.y, pinca.fixo);
+      } else if (dedos.size === 1) {
+        area.scrollLeft -= dedo.x - antes.x;
+        area.scrollTop -= dedo.y - antes.y;
+      }
       return;
     }
     if (ev.pointerId !== ponteiro) return;
@@ -212,9 +281,10 @@
   }
 
   function fim(ev) {
-    if (rolando && ev.pointerId === rolando.id) { rolando = null; return; }
+    if (dedos.delete(ev.pointerId) && pinca && dedos.size < 2) { pinca = null; dimensionar(); }
     if (ev.pointerId !== ponteiro) return;
     ponteiro = null;
+    ponteiroDedo = false;
     if (atual) {
       guardarHistorico();
       tracos.push(atual);
@@ -255,6 +325,9 @@
     if (a === 'desfazer' && historico.length) { refazer.push(tracos); tracos = historico.pop(); mudou = true; redesenharBase(); }
     if (a === 'refazer' && refazer.length) { historico.push(tracos); tracos = refazer.pop(); mudou = true; redesenharBase(); }
     if (a === 'limpar' && tracos.length) { guardarHistorico(); tracos = []; mudou = true; redesenharBase(); }
+    if (a === 'mais') zoomNoMeio(zoom * 1.25);
+    if (a === 'menos') zoomNoMeio(zoom / 1.25);
+    if (a === 'zoom') zoomNoMeio(1);
     if (a === 'espaco') { altura += MAIS_ESPACO; dimensionar(); $('.est-desenho-area').scrollTop += MAIS_ESPACO / 2; }
     if (a === 'cancelar') {
       if (mudou && tracos.length && window.customConfirm && !(await window.customConfirm('Descartar o que foi desenhado?'))) return;
@@ -301,7 +374,8 @@
         altura = Math.max(ALTURA_INICIAL, Number(d.h) || 0);
       }
     } catch (e) { console.warn('Traços do desenho ilegíveis; abre em branco.', e); }
-    historico = []; refazer = []; atual = null; ponteiro = null; rolando = null; mudou = false;
+    historico = []; refazer = []; atual = null; ponteiro = null; ponteiroDedo = false; mudou = false;
+    zoom = 1; pinca = null; dedos.clear();
     el.hidden = false;
     document.documentElement.classList.add('est-desenho-aberto');
     $('.est-desenho-esp').value = espessura;

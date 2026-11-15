@@ -112,6 +112,12 @@
         return node;
       }
       static value(node) { return { src: node.getAttribute('src') || '', tracos: node.getAttribute('data-tracos') || '' }; }
+      // Largura escolhida nas alças (como a das fotos)
+      static formats(node) { return node.hasAttribute('width') ? { width: node.getAttribute('width') } : {}; }
+      format(nome, valor) {
+        if (nome !== 'width') { super.format(nome, valor); return; }
+        if (valor) this.domNode.setAttribute('width', valor); else this.domNode.removeAttribute('width');
+      }
     }
     Desenho.blotName = 'desenho';
     Desenho.tagName = 'IMG';
@@ -822,7 +828,7 @@
   }
 
   function posicionarAlca() {
-    if (!alca) return;
+    if (!alca || !alca.img) return;
     const folha = alca.caixa.parentElement.getBoundingClientRect();
     const r = alca.img.getBoundingClientRect();
     Object.assign(alca.caixa.style, {
@@ -830,6 +836,7 @@
       width: r.width + 'px', height: r.height + 'px'
     });
     alca.caixa.querySelector('.est-img-medida').textContent = `${Math.round(r.width)} px`;
+    alca.caixa.querySelector('.est-img-editar').hidden = !alca.img.classList.contains('est-desenho');
   }
 
   function esconderAlca() {
@@ -863,12 +870,20 @@
       <div class="est-img-barra" role="toolbar" aria-label="Tamanho da imagem">
         <span class="est-img-medida"></span>
         ${[25, 50, 75, 100].map(p => `<button type="button" data-pct="${p}">${p}%</button>`).join('')}
+        <button type="button" class="est-img-mover" title="Arraste para levar a outro ponto do texto">✥ Mover</button>
+        <button type="button" class="est-img-editar" title="Continuar o desenho (ou dois cliques nele)">✏️ Editar</button>
       </div>`;
     $('est-sessao-editor').parentElement.appendChild(caixa);
 
     caixa.querySelectorAll('[data-pct]').forEach(b => b.addEventListener('click', () => {
       definirLargura(larguraUtil() * Number(b.dataset.pct) / 100);
     }));
+    caixa.querySelector('.est-img-editar').addEventListener('click', () => {
+      const img = alca && alca.img;
+      esconderAlca();
+      if (img) desenhar(img);
+    });
+    caixa.querySelector('.est-img-mover').addEventListener('pointerdown', arrastarImagem);
 
     // Arrastar um canto: a largura muda pelo deslocamento horizontal (a altura acompanha)
     caixa.querySelectorAll('.est-img-ponto').forEach(p => p.addEventListener('pointerdown', ev => {
@@ -896,6 +911,100 @@
       p.addEventListener('pointercancel', soltar);
     }));
     return caixa;
+  }
+
+  /* "✥ Mover": arrasta a foto ou o desenho selecionado; uma linha mostra onde vai entrar e,
+     ao soltar, ele sai de onde estava e entra ali (com a largura). Perto da borda, a folha rola. */
+  function caretEm(x, y) {
+    if (document.caretRangeFromPoint) {
+      const r = document.caretRangeFromPoint(x, y);
+      return r && { no: r.startContainer, pos: r.startOffset };
+    }
+    const c = document.caretPositionFromPoint && document.caretPositionFromPoint(x, y);
+    return c && { no: c.offsetNode, pos: c.offset };
+  }
+
+  function indiceEm(x, y) {
+    const c = caretEm(x, y);
+    if (!c || !quill.root.contains(c.no)) return null;
+    const blot = Quill.find(c.no, true);
+    if (!blot || blot === quill.scroll) return null;
+    return quill.getIndex(blot) + (c.no.nodeType === 3 ? c.pos : 0);
+  }
+
+  function rolavelDe(el) {
+    for (let e = el; e && e !== document.body; e = e.parentElement) {
+      const st = getComputedStyle(e);
+      if (/(auto|scroll)/.test(st.overflowY) && e.scrollHeight > e.clientHeight) return e;
+    }
+    return null;
+  }
+
+  function arrastarImagem(ev) {
+    if (!alca || !alca.img) return;
+    ev.preventDefault();
+    const img = alca.img, caixa = alca.caixa, folha = caixa.parentElement;
+    const blot = Quill.find(img);
+    if (!blot) return;
+    const de = quill.getIndex(blot);
+    const linha = document.createElement('div');
+    linha.className = 'est-img-destino';
+    linha.hidden = true;
+    folha.appendChild(linha);
+    caixa.classList.add('movendo');
+    img.classList.add('est-img-movendo');
+    const rolavel = rolavelDe(quill.root);
+    let para = null, giro = null, ultimo = null;
+    const marcar = () => {
+      if (!ultimo) return;
+      const i = indiceEm(ultimo.x, ultimo.y);
+      para = i;
+      if (i === null) { linha.hidden = true; return; }
+      const b = quill.getBounds(i), f = folha.getBoundingClientRect(), c = quill.container.getBoundingClientRect();
+      Object.assign(linha.style, { left: (c.left - f.left + b.left) + 'px', top: (c.top - f.top + b.top) + 'px', height: Math.max(18, b.height) + 'px' });
+      linha.hidden = false;
+    };
+    const rolar = () => {
+      giro = null;
+      if (!rolavel || !ultimo) return;
+      const r = rolavel.getBoundingClientRect();
+      const d = ultimo.y < r.top + 40 ? -14 : ultimo.y > r.bottom - 40 ? 14 : 0;
+      if (!d) return;
+      rolavel.scrollTop += d;
+      marcar();
+      giro = requestAnimationFrame(rolar);
+    };
+    const mover = e => {
+      ultimo = { x: e.clientX, y: e.clientY };
+      marcar();
+      if (!giro) giro = requestAnimationFrame(rolar);
+    };
+    const soltar = () => {
+      window.removeEventListener('pointermove', mover);
+      window.removeEventListener('pointerup', soltar);
+      window.removeEventListener('pointercancel', soltar);
+      if (giro) cancelAnimationFrame(giro);
+      linha.remove();
+      caixa.classList.remove('movendo');
+      img.classList.remove('est-img-movendo');
+      esconderAlca();
+      if (para === null || para === de || para === de + 1) return;
+      const Delta = Quill.import('delta');
+      quill.update('silent');   // a largura das alças muda o DOM direto; sem isto o Quill copiaria a antiga
+      const item = quill.getContents(de, 1);
+      // Desenho é bloco: solto no fim de uma linha, entra no começo da seguinte (sem partir o parágrafo)
+      if (item.ops[0] && item.ops[0].insert && item.ops[0].insert.desenho !== undefined && quill.getText(para, 1) === '\n') para++;
+      if (para === de || para === de + 1) return;
+      quill.deleteText(de, 1, 'user');
+      const alvo = para > de ? para - 1 : para;
+      quill.updateContents(new Delta().retain(alvo).concat(item), 'user');
+      quill.setSelection(alvo + 1, 0, 'silent');
+      const nova = [...quill.root.querySelectorAll('img')].find(i => { const b = Quill.find(i); return b && quill.getIndex(b) === alvo; });
+      if (nova) mostrarAlca(nova);
+    };
+    window.addEventListener('pointermove', mover);
+    window.addEventListener('pointerup', soltar);
+    window.addEventListener('pointercancel', soltar);
   }
 
   /* =============================================
@@ -1041,8 +1150,10 @@
     });
 
     raiz.addEventListener('click', ev => {
+      if (ev.target.tagName === 'IMG') mostrarAlca(ev.target); else esconderAlca();
+    });
+    raiz.addEventListener('dblclick', ev => {
       if (ev.target.tagName === 'IMG' && ev.target.classList.contains('est-desenho')) { esconderAlca(); desenhar(ev.target); }
-      else if (ev.target.tagName === 'IMG') mostrarAlca(ev.target); else esconderAlca();
     });
     raiz.addEventListener('keydown', ev => {
       if (!alca || !alca.img) return;
@@ -1253,9 +1364,11 @@
     let index = blot ? quill.getIndex(blot) : (quill.getSelection() || { index: quill.getLength() - 1 }).index;
     const r = await window.estDesenho.abrir(img ? img.getAttribute('data-tracos') : '');
     if (!r) return;
+    const largura = img && img.getAttribute('width');
     if (blot) quill.deleteText(index, 1, 'user');
     if (r.apagar) return;
     quill.insertEmbed(index, 'desenho', r, 'user');
+    if (largura) quill.formatText(index, 1, 'width', largura, 'user');
     quill.setSelection(index + 1, 0, 'silent');
   }
 
