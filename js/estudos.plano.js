@@ -2910,8 +2910,10 @@
     const dias = diasDoMotor(e, plano, semana);
     const todosSubs = window.estSub ? e.disciplinas.flatMap(d => d.topicos.flatMap(t => window.estSub.doTopico(t.id))) : [];
     const subtopicos = {}, stats = {};
-    const disciplinas = e.disciplinas.map(d => ({
-      id: d.id, nome: d.nome, peso: configDisc(plano, d.id).peso,
+    // Prioridade da matéria na leitura: peso na prova × (4 − nível), como no plano antigo (iniciante pesa 3×, avançado 1×).
+    // Matéria desligada no plano fica fora da leitura.
+    const disciplinas = e.disciplinas.filter(d => configDisc(plano, d.id).ativa).map(d => ({
+      id: d.id, nome: d.nome, peso: configDisc(plano, d.id).peso * (4 - configDisc(plano, d.id).nivel),
       pdfs: motorPdfs.filter(x => x.disciplina_id === d.id).sort((a, b) => a.ordem - b.ordem).map(x => {
         const m = materiais.find(y => y.id === x.id) || {};
         const item = ((m.topicos || [])[0] || {}).topico_id;

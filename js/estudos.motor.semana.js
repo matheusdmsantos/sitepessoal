@@ -138,7 +138,8 @@
         const cand = discs.filter(d => d.pdfs.some(p => L().faltam(p) > 0));
         if (!cand.length) break;
         const peso = d => (Number(d.peso) > 0 ? Number(d.peso) : 1);
-        const d = cand.sort((a, b) => (alocado[a.id] || 0) / peso(a) - (alocado[b.id] || 0) / peso(b))[0];
+        // Quem recebeu menos tempo em relação à prioridade; no empate (início da semana), a de maior prioridade
+        const d = cand.sort((a, b) => (alocado[a.id] || 0) / peso(a) - (alocado[b.id] || 0) / peso(b) || peso(b) - peso(a))[0];
         const m = L().proximaMeta(d.pdfs, Math.min(cfgL.alvoMin, livre));
         if (!m || m.minutos > livre + 1e-9) break;
         const pdf = d.pdfs.find(p => p.id === m.material_id);

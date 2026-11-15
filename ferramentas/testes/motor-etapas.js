@@ -136,6 +136,12 @@
     teste('PDF sem subtópicos: 1º contato do PDF inteiro no dia seguinte ao fim, sem revisão junto',
       !fimP2 || (doP2.length === 1 && doP2[0].tipo_bloco === 'primeiro' && doP2[0].dia > fimP2 && doP2[0].alvos[0].subtopico_id === null),
       fimP2 ? doP2.map(m => m.dia + ' ' + m.tipo_bloco).join('; ') : 'P2 não termina nesta semana');
+    const prio = Sm.gerarSemana({ dias: dias(120), disciplinas: [
+      { id: 'leve', peso: 1, pdfs: [pdf('PL', 900, [])] }, { id: 'forte', peso: 6, pdfs: [pdf('PF', 900, [])] }], modelos: [], subtopicos: {}, erros: [] });
+    const minDe = id => prio.metas.filter(m => m.tipo === 'leitura' && m.disciplina_id === id).reduce((a, m) => a + m.minutos, 0);
+    const primeira = prio.metas.find(m => m.tipo === 'leitura');
+    teste('leitura pela prioridade: a de maior peso × nível começa a semana e recebe mais tempo, mesmo vindo depois no edital',
+      primeira.disciplina_id === 'forte' && minDe('forte') > 3 * minDe('leve') && minDe('leve') > 0, `forte ${minDe('forte')} min, leve ${minDe('leve')} min`);
     const curto = Sm.gerarSemana({ dias: dias(200), disciplinas: [disciplina('dd', [pdf('P3', 30, [])])], modelos: [], subtopicos: {}, erros: [] });
     const qP3 = curto.metas.filter(m => m.tipo === 'questoes'), fimP3 = curto.metas.find(m => m.fimDoPdf).dia;
     teste('PDF curto sem subtópicos: 1º contato em D+1 e a revisão só depois dele',
