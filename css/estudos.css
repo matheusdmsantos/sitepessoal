@@ -2183,6 +2183,10 @@ html, body {
 #est-sessao-lista li { display: flex; align-items: center; border-radius: var(--est-r-sm); }
 #est-sessao-lista li.ativa { background: var(--est-blue-dim); }
 #est-sessao-lista li:not(.ativa):hover { background: var(--est-silver-glow); }
+#est-sessao-lista li[draggable="true"] { cursor: grab; }
+#est-sessao-lista li.arrastando { opacity: 0.4; }
+#est-sessao-lista li.arr-antes { box-shadow: inset 0 2px 0 var(--est-blue); }
+#est-sessao-lista li.arr-depois { box-shadow: inset 0 -2px 0 var(--est-blue); }
 .est-sessao-pag {
   flex: 1;
   min-width: 0;

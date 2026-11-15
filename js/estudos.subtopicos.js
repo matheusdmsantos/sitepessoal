@@ -322,6 +322,15 @@
     redesenhar();
   }
 
+  // Nova ordem dos assuntos do item (arrastar na janela de estudo; a janela regrava as páginas)
+  async function ordenar(topicoId, ids) {
+    const lista = doTopico(topicoId);
+    const pos = id => { const k = ids.indexOf(id); return k < 0 ? 1e9 : k; };
+    lista.sort((a, b) => pos(a.id) - pos(b.id)).forEach((x, k) => { x.ordem = k; });
+    await gravar(lista);
+    redesenhar();
+  }
+
   // Muda os assuntos das sessões escolhidas e grava (só o campo assuntos)
   async function trocarNasSessoes(filtro, novo) {
     const alvo = studyData.filter(filtro);
@@ -711,7 +720,7 @@
 
   window.estSub = {
     carregar, migrar, doTopico, porId, doRegistro, sugestao, topicoPorNomes, ligarPaginas,
-    criar, vincular, desvincular, faixa, paginasNoPdf, atualizarCampos, definirTec, linkDoCaderno, editarTec, renomear, mover, mesclar, reclassificar, excluir,
+    criar, vincular, desvincular, faixa, paginasNoPdf, atualizarCampos, definirTec, linkDoCaderno, editarTec, renomear, mover, ordenar, mesclar, reclassificar, excluir,
     numerosDe, distribuir, selo, blocoFicha, abrirPainel, fecharPainel, marcarTodos, confirmarMesclar,
     confirmarReclassificar, novoPerguntando, renomearPerguntando, htmlDesempenho, ver,
     temSessoes: () => temSessoes, temErros: () => temErros, remoto: () => remoto,

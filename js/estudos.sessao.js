@@ -270,7 +270,8 @@
         : grupo === 'neste'
           ? `<button type="button" class="est-sessao-pag-x" onclick="estSessao.tirarDoPdf('${s.id}')" title="Tirar deste PDF (o assunto continua no item)" aria-label="Tirar ${esc(s.nome)} deste PDF">✕</button>`
           : `<button type="button" class="est-sessao-pag-x" onclick="estSessao.usarNestePdf('${s.id}')" title="Usar neste PDF" aria-label="Usar ${esc(s.nome)} neste PDF">＋</button>`;
-      return `<li class="${s.id === sel ? 'ativa' : ''}">
+      // Arrastar muda a ordem; na lista por acerto (revisão/questões), a ordem mostrada não é a do item
+      return `<li class="${s.id === sel ? 'ativa' : ''}" ${priorizar ? '' : `draggable="true" data-sub="${s.id}" title="Arraste para mudar a ordem"`}>
         <button type="button" class="est-sessao-pag" onclick="estSessao.irAssunto('${s.id}')">${esc(nomeNaColuna(s))}${selos ? `<span class="est-sessao-ass-selos">${selos}</span>` : ''}</button>${acao}</li>`;
     };
     $('est-sessao-lista').innerHTML = `
@@ -280,6 +281,53 @@
       ${mats.length && !neste.length ? '<li class="est-sessao-grupo-vazio">Nenhum assunto neste PDF ainda. Use “+ Assunto”.</li>' : ''}
       ${outros.length ? `<li class="est-sessao-outros"><details ${outrosAbertos || outros.some(s => s.id === sel) ? 'open' : ''} ontoggle="estSessao.outrosAbertos(this.open)">
         <summary>Outros assuntos do item (${outros.length})</summary><ul>${outros.map(s => item(s, 'outros')).join('')}</ul></details></li>` : ''}`;
+    ligarArrastar();
+  }
+
+  /* Arrastar um assunto para cima ou para baixo de outro: grava a nova ordem (estSub.ordenar)
+     e reordena as páginas do resumo, que seguem a ordem dos assuntos. */
+  let arrastando = null;
+  function ligarArrastar() {
+    const ul = $('est-sessao-lista');
+    if (ul.dataset.arrastar) return;
+    ul.dataset.arrastar = '1';
+    const alvoDe = ev => { const li = ev.target.closest && ev.target.closest('li[data-sub]'); return li && li.dataset.sub !== arrastando ? li : null; };
+    const limpar = () => ul.querySelectorAll('.arr-antes, .arr-depois').forEach(x => x.classList.remove('arr-antes', 'arr-depois'));
+    const depois = (ev, li) => { const r = li.getBoundingClientRect(); return ev.clientY > r.top + r.height / 2; };
+    ul.addEventListener('dragstart', ev => {
+      const li = ev.target.closest && ev.target.closest('li[data-sub]');
+      if (!li) return;
+      arrastando = li.dataset.sub;
+      li.classList.add('arrastando');
+      ev.dataTransfer.effectAllowed = 'move';
+      ev.dataTransfer.setData('text/plain', arrastando);
+    });
+    ul.addEventListener('dragover', ev => {
+      const li = arrastando && alvoDe(ev);
+      if (!li) return;
+      ev.preventDefault();
+      limpar();
+      li.classList.add(depois(ev, li) ? 'arr-depois' : 'arr-antes');
+    });
+    ul.addEventListener('dragend', () => { arrastando = null; limpar(); ul.querySelectorAll('.arrastando').forEach(x => x.classList.remove('arrastando')); });
+    ul.addEventListener('drop', async ev => {
+      const li = arrastando && alvoDe(ev);
+      if (!li) return;
+      ev.preventDefault();
+      const de = arrastando, para = li.dataset.sub, aposAlvo = depois(ev, li);
+      limpar();
+      const ids = window.estSub.doTopico(ctx.topicoId).map(s => s.id).filter(id => id !== de);
+      ids.splice(ids.indexOf(para) + (aposAlvo ? 1 : 0), 0, de);
+      await window.estSub.ordenar(ctx.topicoId, ids);
+      guardarPaginaAtual();
+      const aberta = paginas[atual];
+      const pos = p => { const k = ids.indexOf(p.sub); return k < 0 ? 1e9 : k; };
+      const [geral, ...resto] = paginas;
+      paginas = geral.semTitulo ? [geral, ...resto.sort((a, b) => pos(a) - pos(b))] : paginas.slice().sort((a, b) => pos(a) - pos(b));
+      atual = Math.max(0, paginas.indexOf(aberta));
+      renderPaginas();
+      salvar();
+    });
   }
 
   function mostrarTecDoAssunto() {
