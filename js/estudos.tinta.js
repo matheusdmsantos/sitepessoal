@@ -332,7 +332,7 @@
   const semTabela = e => e && (e.code === '42P01' || e.code === 'PGRST205' || /resumo_tinta/.test(e.message || ''));
 
   async function enviar() {
-    if (!pendentes.size || disponivel === false) return;
+    if (!pendentes.size || disponivel === false || !navigator.onLine) return;
     const lote = [...pendentes.values()].map(l => ({ l, apagado: l.apagado }));
     const { error } = await sb().from('resumo_tinta').upsert(lote.map(({ l }) => ({
       id: l.id, resumo_id: l.resumo_id, pagina: l.pagina, ancora: l.ancora, apagado: l.apagado,
@@ -347,7 +347,7 @@
 
   // Traz o que o outro aparelho riscou ou apagou (a sincronização da janela chama a cada poucos segundos)
   async function puxar() {
-    if (!o || disponivel === false) return;
+    if (!o || disponivel === false || !navigator.onLine) return;   // offline: a cópia do sw.js é velha
     const id = o.resumoId();
     if (id !== resumoId) { resumoId = id; tracos.clear(); pendentes.clear(); desfazer = []; ultimo = null; agendar(); }
     if (!resumoId) return;

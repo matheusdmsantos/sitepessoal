@@ -55,9 +55,14 @@
   };
 
   /** Login com e-mail e senha. Retorna { ok: true } ou { ok: false, message }. */
+  // Cópia das leituras do Supabase guardada pelo sw.js para abrir offline: sai junto com a conta
+  async function apagarCopiaDosDados() {
+    try { if (window.caches) await caches.delete('mm-dados'); } catch { /* sem Cache API */ }
+  }
+
   window.login = async function (email, password) {
     const { error } = await client.auth.signInWithPassword({ email, password });
-    if (!error) return { ok: true };
+    if (!error) { await apagarCopiaDosDados(); return { ok: true }; }
     const msg = /invalid login credentials/i.test(error.message)
       ? 'E-mail ou senha incorretos.'
       : /email not confirmed/i.test(error.message)
@@ -68,6 +73,7 @@
 
   window.logout = async function () {
     try { await client.auth.signOut(); } catch { /* sai mesmo offline */ }
+    await apagarCopiaDosDados();
     localStorage.removeItem(STORAGE_KEY);
     location.replace(LOGIN_PAGE);
   };
@@ -114,7 +120,10 @@
   window.authReady = (async function () {
     const isLoginPage = location.pathname === LOGIN_PAGE || location.pathname === '/';
     const { data, error } = await client.auth.getUser();
-    const user = !error && data ? data.user : null;
+    let user = !error && data ? data.user : null;
+    // Sem internet (app aberto offline, sw.js): vale a sessão guardada; os dados são a última cópia
+    const semRede = error && (!navigator.onLine || error.name === 'AuthRetryableFetchError' || error.status === 0 || /fetch|network/i.test(error.message || ''));
+    if (!user && semRede) user = (readStoredSession() || {}).user || null;
     if (!user && !isLoginPage) goToLogin();
     return user;
   })();
@@ -126,5 +135,24 @@
   });
 })();
 
-// App instalável (manifest.webmanifest + sw.js): o Chrome só oferece "Instalar" com o service worker
+// App instalável e offline (manifest.webmanifest + sw.js): sem internet, abre a última cópia
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
+
+// Aviso fixo no topo enquanto estiver sem internet (o que mudar não chega ao servidor)
+(function () {
+  let faixa = null;
+  function mostrar() {
+    if (navigator.onLine) { if (faixa) faixa.hidden = true; return; }
+    if (!faixa) {
+      faixa = document.createElement('div');
+      faixa.setAttribute('role', 'status');
+      faixa.textContent = '📡 Sem internet: mostrando a última cópia. O que você mudar agora não será salvo.';
+      faixa.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:2147483000;padding:6px 12px;background:#b45309;color:#fff;font:600 13px/1.4 system-ui,sans-serif;text-align:center;box-shadow:0 2px 8px rgba(0,0,0,.3)';
+      document.body.appendChild(faixa);
+    }
+    faixa.hidden = false;
+  }
+  window.addEventListener('online', mostrar);
+  window.addEventListener('offline', mostrar);
+  if (document.body) mostrar(); else document.addEventListener('DOMContentLoaded', mostrar);
+})();

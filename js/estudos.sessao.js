@@ -621,6 +621,7 @@
 
   // O resumo no servidor: { conteudo, updated_at }, null se não existe mais, false se não deu para ler
   async function baixar(id) {
+    if (!navigator.onLine) return false;   // a cópia do sw.js pode ser mais velha que a daqui
     if (temRpc) {
       const d = await dadosDaBase();
       const { data, error } = await window.supabaseClient.rpc('resumo_partes', { p_id: id, p_hashes: d.hashes, p_imagens: d.imagens });
@@ -831,7 +832,8 @@
 
   // A cada SINC_MS com a janela à vista: o outro aparelho gravou? (só a data; o conteúdo só se mudou)
   async function sincronizarAgora() {
-    if (!ctx || document.hidden || sincOcupado) return;
+    // Offline, o sw.js devolveria a cópia antiga e o resumo "voltaria" para ela
+    if (!ctx || document.hidden || sincOcupado || !navigator.onLine) return;
     sincOcupado = true;
     try {
       await enfileirar(async () => {
