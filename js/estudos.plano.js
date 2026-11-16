@@ -952,14 +952,29 @@
       cand = metas.filter(podeMover);
     }
     if (!cand.length) { aviso('Nada para adiantar: o que falta são revisões e questões, que dependem da data.'); return; }
-    const dia = cand.reduce((a, m) => (m.dia < a ? m.dia : a), cand[0].dia);
-    const ordem0 = metas.filter(m => m.edital_id === e.id && m.dia === h).length;
-    const mover = cand.filter(m => m.dia === dia).sort((a, b) => a.ordem - b.ordem);
-    mover.forEach((m, i) => Object.assign(m, { semana: atual, dia: h, ordem: ordem0 + i }));
+    /* Em cascata: o próximo dia com meta vem para hoje e cada dia seguinte sobe para o dia de estudo
+       anterior (terça → segunda, quarta → terça…), sem deixar dias vazios no meio. Antes, só o próximo
+       dia vinha e o lugar dele ficava vazio (adiantar no domingo esvaziava o começo da semana seguinte). */
+    const plano = planoDe(e.id);
+    const estuda = d => !plano || !(plano.dias_semana || []).length || plano.dias_semana.includes(diaDaSemana(d));
+    const proximoDeEstudo = d => { let x = somarDias(d, 1); for (let i = 0; i < 14 && !estuda(x); i++) x = somarDias(x, 1); return x; };
+    const dias = [...new Set(cand.map(m => m.dia))].sort();
+    const mover = [];
+    let alvo = h;
+    dias.forEach((d, k) => {
+      if (k > 0) alvo = proximoDeEstudo(alvo);
+      if (alvo >= d) return;   // nunca leva uma meta para depois
+      const ordem0 = metas.filter(m => m.edital_id === e.id && m.dia === alvo && !mover.includes(m)).length;
+      cand.filter(m => m.dia === d).sort((a, b) => a.ordem - b.ordem).forEach((m, i) => {
+        Object.assign(m, { semana: segundaDe(alvo), dia: alvo, ordem: ordem0 + i });
+        mover.push(m);
+      });
+    });
     await gravar('metas', mover);
     semanaVista = atual;
     renderTudo();
-    aviso(`${mover.length} meta${mover.length > 1 ? 's' : ''} de ${fmtData(dia)} adiantada${mover.length > 1 ? 's' : ''} para hoje.`);
+    const doDia = mover.filter(m => m.dia === h).length;
+    aviso(`${doDia} meta${doDia > 1 ? 's' : ''} de ${fmtData(dias[0])} adiantada${doDia > 1 ? 's' : ''} para hoje; os dias seguintes subiram um dia.`);
   }
 
   /* Motor: terminou a semana antes, gera a seguinte já (na segunda, garantirSemanaMotor a encontra
