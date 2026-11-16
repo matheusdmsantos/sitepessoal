@@ -1,0 +1,8 @@
+[{
+  "relation": ["delegate_permission/common.handle_all_urls"],
+  "target": {
+    "namespace": "android_app",
+    "package_name": "br.com.matheusmirandaeng.twa",
+    "sha256_cert_fingerprints": ["4F:62:C6:FA:38:45:0A:B7:A0:BE:4C:BF:DF:65:0B:3A:61:D7:01:72:92:73:39:92:28:9E:35:7C:64:9B:47:ED"]
+  }
+}]
