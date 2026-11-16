@@ -125,3 +125,6 @@
     if (event === 'SIGNED_OUT' && !isLoginPage) goToLogin();
   });
 })();
+
+// App instalável (manifest.webmanifest + sw.js): o Chrome só oferece "Instalar" com o service worker
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});

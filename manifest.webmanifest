@@ -1,0 +1,21 @@
+{
+  "id": "/apps.html",
+  "name": "Matheus Miranda — Apps",
+  "short_name": "MM Apps",
+  "description": "Apps pessoais: Painel de Estudos, Gestão de Contratos e outros.",
+  "lang": "pt-BR",
+  "start_url": "/apps.html",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#1c2033",
+  "theme_color": "#1c2033",
+  "icons": [
+    { "src": "/assets/app/icone-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/assets/app/icone-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/assets/app/icone-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "Painel de Estudos", "url": "/estudos.html", "icons": [{ "src": "/assets/app/icone-192.png", "sizes": "192x192" }] }
+  ]
+}
