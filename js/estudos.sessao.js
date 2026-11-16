@@ -444,9 +444,12 @@
   const emTelaCheia = () => $('est-modal-sessao').classList.contains('tela-cheia');
   function telaCheia(ligar) {
     $('est-modal-sessao').classList.toggle('tela-cheia', ligar);
-    const b = $('est-sessao-tec-cheia');
-    b.textContent = ligar ? '⛶ Sair da tela cheia' : '⛶ Tela cheia';
-    b.setAttribute('aria-pressed', ligar);
+    // O botão do topo da janela (sempre à vista) e o do quadro do TEC
+    ['est-sessao-cheia', 'est-sessao-tec-cheia'].forEach(id => {
+      const b = $(id);
+      b.textContent = ligar ? '⛶ Sair da tela cheia' : '⛶ Tela cheia';
+      b.setAttribute('aria-pressed', ligar);
+    });
     const raiz = document.documentElement;   // a página inteira: as outras janelas (erro, conclusão) continuam visíveis
     if (ligar && !document.fullscreenElement && raiz.requestFullscreen) raiz.requestFullscreen().catch(() => {});   // recusado: fica só a janela inteira
     if (!ligar && document.fullscreenElement) document.exitFullscreen().catch(() => {});
@@ -2087,6 +2090,7 @@
     $('est-sessao-fechar').addEventListener('click', fechar);
     $('est-sessao-tec-voltar').addEventListener('click', mostrarResumo);
     $('est-sessao-tec-cheia').addEventListener('click', () => telaCheia(!emTelaCheia()));
+    $('est-sessao-cheia').addEventListener('click', () => telaCheia(!emTelaCheia()));
     document.addEventListener('fullscreenchange', () => { if (!document.fullscreenElement && emTelaCheia()) telaCheia(false); });   // Esc do navegador
     $('est-sessao-concluir').addEventListener('click', concluir);
     $('est-sessao-play').addEventListener('click', alternarPlay);
