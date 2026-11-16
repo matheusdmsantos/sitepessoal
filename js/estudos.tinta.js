@@ -37,6 +37,12 @@
   const novoId = () => 'tn_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
   const aviso = msg => (window.estPlano ? window.estPlano.aviso(msg) : alert(msg));
   const r1 = n => Math.round(n * 10) / 10;
+  /* Quem rola o texto é o .ql-editor (o CSS do Quill dá a ele height: 100% e overflow-y: auto), não o
+     .ql-container. Soma os dois para valer em qualquer caso; getBounds é relativo ao container. */
+  const editor = () => o.quill.root;
+  const rolY = () => editor().scrollTop + cont.scrollTop;
+  const rolX = () => editor().scrollLeft + cont.scrollLeft;
+  const rolador = () => (editor().scrollHeight > editor().clientHeight + 1 ? editor() : cont);
   const daPagina = () => [...tracos.values()].filter(t => !t.apagado && t.pagina === o.pagina());
 
   function iniciar(opcoes) {
@@ -64,6 +70,7 @@
     });
 
     cont.addEventListener('scroll', redesenhar, { passive: true });
+    o.quill.root.addEventListener('scroll', redesenhar, { passive: true });
     o.quill.on('text-change', agendar);
     o.quill.root.addEventListener('load', agendar, true);   // foto que termina de carregar empurra o texto
     if (document.fonts) document.fonts.addEventListener('loadingdone', agendar);
@@ -75,7 +82,7 @@
     cv.addEventListener('pointercancel', fim);
     // Sem isto a caneta seleciona texto, abre a lupa ou o teclado
     cv.addEventListener('touchstart', ev => ev.preventDefault(), { passive: false });
-    cv.addEventListener('wheel', ev => { cont.scrollTop += ev.deltaY; ev.preventDefault(); }, { passive: false });
+    cv.addEventListener('wheel', ev => { rolador().scrollTop += ev.deltaY; ev.preventDefault(); }, { passive: false });
     // Botão da S Pen (Chrome/Android manda um contextmenu a cada aperto): borracha ⇄ caneta
     cv.addEventListener('contextmenu', ev => {
       ev.preventDefault();
@@ -125,7 +132,8 @@
   function posicionar() {
     if (!cv) return;
     const dpr = window.devicePixelRatio || 1;
-    const w = cont.clientWidth, h = cont.clientHeight;
+    // Sobre a parte visível do editor, sem cobrir a barra de rolagem dele
+    const ed = editor(), w = Math.min(cont.clientWidth, ed.clientWidth || cont.clientWidth), h = Math.min(cont.clientHeight, ed.clientHeight || cont.clientHeight);
     cv.style.top = cont.offsetTop + 'px';
     cv.style.left = cont.offsetLeft + 'px';
     cv.style.width = w + 'px';
@@ -158,7 +166,7 @@
 
   function noConteudo(i) {
     const b = o.quill.getBounds(i);
-    return { x: b.left + cont.scrollLeft, y: b.top + cont.scrollTop };
+    return { x: b.left + rolX(), y: b.top + rolY() };
   }
 
   function recalcular() {
@@ -183,7 +191,7 @@
     const dpr = window.devicePixelRatio || 1;
     g.setTransform(1, 0, 0, 1, 0, 0);
     g.clearRect(0, 0, cv.width, cv.height);
-    const st = cont.scrollTop, sl = cont.scrollLeft, h = cont.clientHeight;
+    const st = rolY(), sl = rolX(), h = cont.clientHeight;
     const pinta = (t, x, y) => {
       g.setTransform(dpr, 0, 0, dpr, (x - sl) * dpr, (y - st) * dpr);
       window.estDesenho.desenharTraco(g, t, 1);
@@ -212,7 +220,7 @@
   function ponto(ev) {
     const r = cont.getBoundingClientRect();
     const pr = ev.pointerType === 'pen' && ev.pressure > 0 ? ev.pressure : 0.5;
-    return [r1(ev.clientX - r.left + cont.scrollLeft), r1(ev.clientY - r.top + cont.scrollTop), Math.round(pr * 100)];
+    return [r1(ev.clientX - r.left + rolX()), r1(ev.clientY - r.top + rolY()), Math.round(pr * 100)];
   }
 
   function inicio(ev) {
@@ -237,7 +245,7 @@
 
   function mover(ev) {
     if (dedo && ev.pointerId === dedo.id) {
-      cont.scrollTop -= ev.clientY - dedo.y;
+      rolador().scrollTop -= ev.clientY - dedo.y;
       dedo.y = ev.clientY;
       return;
     }

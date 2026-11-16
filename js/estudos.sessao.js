@@ -868,10 +868,60 @@
     try { return JSON.parse(localStorage.getItem(CHAVE_CRONO)) || {}; } catch (e) { return {}; }
   }
 
-  function gravarCrono(id, estado) {
+  /* enviar: é uma ação do usuário (iniciar, pausar, zerar, Pomodoro, assunto, concluir) e vai para o
+     outro aparelho. As gravações de cada segundo (renderCrono) ficam só aqui: o tempo corre pelos
+     horários, então os dois aparelhos chegam à mesma conta sem trocar nada enquanto roda. */
+  function gravarCrono(id, estado, enviar) {
     const todos = lerCronos();
+    if (enviar) estado = estado ? { ...estado, mudado: Date.now() } : null;
     if (estado) todos[id] = estado; else delete todos[id];
     try { localStorage.setItem(CHAVE_CRONO, JSON.stringify(todos)); } catch (e) { /* armazenamento cheio ou bloqueado */ }
+    if (enviar) { filaCrono.set(id, estado || { apagado: true, mudado: Date.now() }); enviarCronos(); }
+  }
+
+  /* Cronômetro nos dois aparelhos (tabela cronometros, supabase/sincronia.sql): a cada CRONO_SINC_MS
+     busca o que o outro aparelho mudou e fica com o estado da ação mais recente (mudado). Concluir ou
+     zerar a meta grava { apagado }, para o outro aparelho também tirar o cronômetro. Sem a tabela,
+     cada aparelho fica com o seu, como antes. */
+  const CRONO_SINC_MS = 4000;
+  const filaCrono = new Map();   // id → estado a enviar
+  let cronoRemoto = null;        // null: não testado; false: sem a tabela
+  let cronoUltimo = null;        // atualizado_em mais recente já visto
+  const semTabelaCrono = e => e && (e.code === '42P01' || e.code === 'PGRST205' || /cronometros/.test(e.message || ''));
+
+  async function enviarCronos() {
+    if (cronoRemoto === false || !navigator.onLine || !filaCrono.size) return;
+    const lote = [...filaCrono];
+    filaCrono.clear();
+    const { error } = await window.supabaseClient.from('cronometros').upsert(lote.map(([id, estado]) => ({ id, estado })));
+    if (!error) { cronoRemoto = true; return; }
+    if (semTabelaCrono(error)) { cronoRemoto = false; return; }
+    console.warn('Cronômetro não enviado; tenta de novo.', error);
+    lote.forEach(([id, e]) => { if (!filaCrono.has(id)) filaCrono.set(id, e); });
+  }
+
+  async function puxarCronos() {
+    if (cronoRemoto === false || !navigator.onLine || document.hidden) return;
+    await enviarCronos();
+    const desde = cronoUltimo ? Date.parse(cronoUltimo) - 15000 : Date.now() - 30 * 86400000;
+    const { data, error } = await window.supabaseClient.from('cronometros').select('id, estado, atualizado_em').gt('atualizado_em', new Date(desde).toISOString());
+    if (error) { if (semTabelaCrono(error)) cronoRemoto = false; return; }
+    cronoRemoto = true;
+    const todos = lerCronos();
+    let mudou = false;
+    (data || []).forEach(l => {
+      if (!cronoUltimo || l.atualizado_em > cronoUltimo) cronoUltimo = l.atualizado_em;
+      const e = l.estado || {}, aqui = todos[l.id];
+      if (filaCrono.has(l.id) || (aqui && (aqui.mudado || 0) >= (e.mudado || 0))) return;
+      if (e.apagado) { if (aqui) { delete todos[l.id]; mudou = true; } return; }
+      todos[l.id] = e;
+      mudou = true;
+    });
+    if (!mudou) return;
+    try { localStorage.setItem(CHAVE_CRONO, JSON.stringify(todos)); } catch (e) { /* armazenamento cheio */ }
+    if (ctx && ctx.id) renderCrono();
+    renderFlutuante();
+    if (window.estPlano) window.estPlano.renderTudo();   // selo ⏱ da lista
   }
 
   function crono() {
@@ -1001,8 +1051,8 @@
       if (!a || !id) return;
       if (a === 'pausar' || a === 'dispensar') {
         const c = lerCronos()[id];
-        if (c && a === 'pausar') { atualizarCrono(c); c.rodando = !c.rodando; c.oculto = false; c.desde = Date.now(); gravarCrono(id, c); }
-        if (c && a === 'dispensar') { c.oculto = true; gravarCrono(id, c); }
+        if (c && a === 'pausar') { atualizarCrono(c); c.rodando = !c.rodando; c.oculto = false; c.desde = Date.now(); gravarCrono(id, c, true); }
+        if (c && a === 'dispensar') { c.oculto = true; gravarCrono(id, c, true); }
         renderFlutuante();
         if (window.estPlano) window.estPlano.renderTudo();   // selo ⏱ da lista
       } else window.estPlano.abrirEstudo(el.dataset.tipo, id);
@@ -1018,7 +1068,7 @@
     c.rodando = !c.rodando;
     c.oculto = false;
     c.desde = Date.now();
-    gravarCrono(ctx.id, c);
+    gravarCrono(ctx.id, c, true);
     renderCrono();
   }
 
@@ -1026,7 +1076,7 @@
     const c = crono();
     atualizarCrono(c);
     if (c.acum > 60000 && !(await window.customConfirm('Zerar o cronômetro desta meta?'))) return;
-    gravarCrono(ctx.id, { ...c, acum: 0, rodando: false, fase: 'foco', faseMs: 0, porAssunto: {} });
+    gravarCrono(ctx.id, { ...c, acum: 0, rodando: false, fase: 'foco', faseMs: 0, porAssunto: {} }, true);
     renderCrono();
   }
 
@@ -1036,7 +1086,7 @@
     c.pomodoro = $('est-sessao-pomodoro').checked;
     c.fase = 'foco';
     c.faseMs = 0;
-    gravarCrono(ctx.id, c);
+    gravarCrono(ctx.id, c, true);
     renderCrono();
   }
 
@@ -1066,8 +1116,9 @@
     if (!ctx || !ctx.id) return;
     const c = crono();
     atualizarCrono(c);
+    if (c.assunto === subAtual()) return;
     c.assunto = subAtual();
-    gravarCrono(ctx.id, c);
+    gravarCrono(ctx.id, c, c.rodando || c.acum > 0);   // assunto sem cronômetro usado não precisa ir
   }
 
   /* Minutos de cada assunto numa meta/revisão: o total estudado dividido pelo tempo em que cada
@@ -1876,7 +1927,7 @@
     const c = crono();
     atualizarCrono(c);
     c.rodando = false;
-    gravarCrono(id, c);
+    gravarCrono(id, c, true);
     await fechar();
     window.estPlano.abrirConclusao(tipo, id, Math.round(c.acum / 60000));
   }
@@ -2068,8 +2119,10 @@
     st.style.display = 'inline-block';
     st.style.minWidth = '2em';   // vazio também dá para tocar
     // Voltou para a aba (ou o tablet acordou): busca logo o que o outro aparelho gravou
-    document.addEventListener('visibilitychange', () => { if (!document.hidden) sincronizarAgora(); });
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) { sincronizarAgora(); puxarCronos(); } });
     criarFlutuante();
+    puxarCronos();
+    setInterval(puxarCronos, CRONO_SINC_MS);
   }
 
   document.addEventListener('DOMContentLoaded', init);
@@ -2079,7 +2132,7 @@
     irPagina: mostrarPagina, apagarPagina,
     irAssunto: id => mostrarPagina(paginaDoAssunto(id)), tirarDoPdf, usarNestePdf,
     outrosAbertos: v => { outrosAbertos = v; },
-    zerarCrono: id => gravarCrono(id, null),
+    zerarCrono: id => gravarCrono(id, null, true),
     // Usados pelo Caderno de Erros (estudos.erros.js)
     contexto: () => ctx && { disc: ctx.disc, topico: ctx.topico, topicoId: ctx.topicoId, subtopicoId: subAtual() },
     limparHtmlColado, reduzirImagem,
