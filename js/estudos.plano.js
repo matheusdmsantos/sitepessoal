@@ -3398,16 +3398,17 @@
     <label><input type="number" class="est-form-input" data-k="m" min="0" max="59" value="${min % 60 || ''}" placeholder="0" aria-label="Minutos" /> min</label></div>`;
   const lerTempo = c => (parseInt(c.querySelector('[data-k="h"]').value, 10) || 0) * 60 + (parseInt(c.querySelector('[data-k="m"]').value, 10) || 0);
 
-  // Sessão no histórico e totais do item (como a conclusão de sempre)
-  async function registrarSessao(m, { minutos, questoes = 0, acertos = 0, assuntos = [], tipo = 'estudo' }) {
+  // Sessão no histórico e totais do item (como a conclusão de sempre). Também usada pelos cadernos do
+  // TEC (estudos.cadernos.js), que passam a data do caderno. Devolve a sessão criada.
+  async function registrarSessao(m, { minutos, questoes = 0, acertos = 0, assuntos = [], tipo = 'estudo', data = null }) {
     const ref = acharTopico(m.topico_id);
-    if (!ref) return;
+    if (!ref) return null;
     const { e, d, t } = ref;
     t.tempoGasto = (t.tempoGasto || 0) + minutos;
     t.questoesFeitas = (t.questoesFeitas || 0) + questoes;
     t.questoesCertas = (t.questoesCertas || 0) + acertos;
     const comAss = assuntos.length && window.estSub && window.estSub.temSessoes();
-    const sessao = { id: novoId('s'), date: hoje(), timestamp: new Date().toISOString(), editalId: e.id, discId: d.id, topicId: t.id,
+    const sessao = { id: novoId('s'), date: data || hoje(), timestamp: new Date().toISOString(), editalId: e.id, discId: d.id, topicId: t.id,
       discipline: d.nome, topic: t.nome, timeMinutes: minutos, questionsTotal: questoes, questionsCorrect: acertos, tipo, metaDone: false,
       ...(comAss ? { assuntos } : {}) };
     studyData.push(sessao);
@@ -3417,6 +3418,7 @@
     const { error } = await sb.from('topicos').update(upd).eq('id', t.id);
     if (error) console.error('Erro ao atualizar o item:', error);
     saveEditais();
+    return sessao;
   }
 
   function abrirConclusaoMotor(m, minutosCrono) {
@@ -3623,6 +3625,6 @@
     incidenciaDaDisciplina, pctIncidencia, salvarIncidencias,
     materiaisDaDisciplina, paginasDoTopico, prioridadeDosTopicos, salvarMateriais, ordemPdfDe, porPdfDe, criarEditalPorPdf, juntarTopicos,
     migrarMotor, converterAgendaErros, salvarMotorPlano, planoDoEdital: id => planoDe(id), abrirParametros, projecaoMotor: e => { const p = planoDe(e.id); aplicarConfigMotor(p); const x = paginasDoMotor(e); return window.estMotorSemana.projetar({ ...x, minutosSemana: Math.round(Number(p.horas_semana) * 60), dataProva: motorDataProva(p), hoje: segundaDe(hoje()) }); }, criarReleitura, revisarErrosDaMeta, _recarregarMotor: carregarMotor, salvarMotorPdf, trocarSubtopico, itensDoEditalDeOrigem, editalAtivoPorPdf, pdfsDaDisciplina, temMotor: () => temMotor, motorPdfs: () => motorPdfs,
-    renderTudo, fmtMin, aviso, revisoesDoTopico, paginasLidas, aproveitarDe
+    renderTudo, fmtMin, aviso, revisoesDoTopico, paginasLidas, aproveitarDe, registrarSessao, segundaDe, fmtData
   };
 })();

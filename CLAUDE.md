@@ -55,6 +55,7 @@ js/
   estudos.tinta.js    Tinta da caneta por cima do texto do resumo (grifar, sublinhar, setas), presa ao texto e sincronizada entre aparelhos
   estudos.resumos.js  Meus Resumos: resumo geral da matéria montado dos resumos dos assuntos; exporta Word/PDF
   estudos.edital.js   Edital Verticalizado: painel, filtros, selos por tópico, ficha lateral, exporta PDF/Excel
+  estudos.cadernos.js Cadernos do TEC: registro por caderno resolvido (estudo por questões, ex.: Sensei da Aprovação) e estatísticas
   estudos.erros.js    Caderno de Erros: questões erradas do TEC, revisão por cartão (1/7/30/90 dias)
   estudos.subtopicos.js Assuntos (subtópicos) dos itens do edital: cadastro, mesclar, reclassificar, migração das páginas, desempenho por assunto
   estudos.aproveitar.js Aproveitar estudos de outro edital: liga tópicos novos aos antigos e copia o progresso
@@ -81,6 +82,7 @@ supabase/obras.sql    tabelas do Controle de Obras e o bucket "obras-docs"
 supabase/acompanhamento.sql  tabelas do Acompanhamento de Obra (obras, obra_*), já com dono e RLS
 supabase/agenda.sql   tabela agenda_links (link secreto da agenda iCal), já com dono e RLS
 supabase/financeiro.sql  tabela recebimentos (financeiro), já com dono e RLS; copia as mensalidades de obra_honorarios
+supabase/cadernos.sql    tabela cadernos (cadernos do TEC resolvidos), com dono e RLS
 supabase/sincronia.sql   função resumo_partes (só as páginas novas do resumo) e tabela resumo_tinta (tinta por cima do texto), com dono e RLS
 ```
 
@@ -182,6 +184,7 @@ A página usa `<body class="auth-pending">` (com `visibility: hidden`) e remove 
 - [ ] Coluna `topicos.origem` criada (`alter table public.topicos add column if not exists origem text;`, no fim do `estudos-plano.sql`).
 - [ ] Coluna `processos.mensal` criada (`alter table public.processos add column if not exists mensal boolean not null default false;`, também no fim do `obras.sql`).
 - [ ] Coluna `subtopicos.pai` criada (`alter table public.subtopicos add column if not exists pai text;`, no fim do `subtopicos.sql`): subassuntos.
+- [ ] `supabase/cadernos.sql` executado (Cadernos do TEC; sem ele, os registros ficam no navegador e sobem depois).
 - [ ] `supabase/sincronia.sql` executado de novo (16/11/2026: acrescentou a tabela `cronometros`; a tinta e o `resumo_partes` já estavam).
 
 **Plano semanal no Painel de Estudos (branch `feat/plano-semanal`, ainda não publicada).** Inspirado na Guruja:
@@ -240,6 +243,8 @@ A página usa `<body class="auth-pending">` (com `visibility: hidden`) e remove 
   - Conclusão: a meta de um assunto registra direto nele (sem "Dividir por assunto"); a de estudo divide o tempo pelas páginas de cada assunto, se você não dividir à mão.
   - Revisão: assuntos abaixo de 70% (≥ 5 questões) aparecem no card pedindo mais 15 questões e o registro dos erros (`assuntosFracos`).
 - Ficou para depois: criar o caderno do TEC de um assunto pelo userscript (o link é colado), filtro por assunto no Caderno de Erros.
+
+**Cadernos do TEC (`js/estudos.cadernos.js`, `window.estCadernos`; seção "📒 Cadernos do TEC").** Estudo por questões (ex.: metas do Sensei da Aprovação, ~5 cadernos do TEC por meta; as metas ficam no Sensei, o site só guarda o resultado). "+ Registrar caderno": link do TEC (o número em `…/cadernos/N` vira `tec_id`), nome, disciplina, item do edital, assunto opcional, feitas, certas, minutos e data (o próximo registro vem com a disciplina/item/assunto do último, `est_cad_ultimo`). Grava em `cadernos` (`supabase/cadernos.sql`; sem a tabela, `localStorage['est_cadernos']`, que sobe quando ela existir) e cria a sessão no histórico por `estPlano.registrarSessao` (tipo `questoes`, com a data do caderno e `assuntos` se houver assunto), então entra nos totais do item, no Edital e no Desempenho; com erros, oferece abrir o Caderno de Erros já no item/assunto. ↻ registra de novo o mesmo caderno (refeito); ✕ apaga o registro, a sessão e tira dos totais do item. Estatísticas só dos cadernos do edital ativo (`estatisticas`, pura): KPIs, questões por semana (12) e por dia (14), acerto por assunto (ou item inteiro) do pior para o melhor com a tendência dos últimos 14 dias × antes, e cadernos refeitos (mesmo `tec_id` ou nome: 1ª vez × última).
 
 **Caderno de Erros (`js/estudos.erros.js`, branch `feat/caderno-erros`).** Seção "Caderno de Erros" do painel (antes um espaço reservado):
 - *Registro por questão* (só do TEC): link ou número da questão (`tec_id`/`link`; o número também é achado no texto colado), enunciado colado num editor simples (contenteditable; limpeza por `estSessao.limparHtmlColado` e depois `sanitizar`, que só deixa tags de texto, tabelas e imagens; imagem colada reduzida por `estSessao.reduzirImagem`), tipo Certo/Errado ou A–E (detectado no texto colado), gabarito, a resposta dada (no C/E pode ser "em branco"), motivo (`MOTIVOS`: conteúdo, esqueci, leitura, pegadinha, pressa, gabarito discutível), a regra certa em uma frase e um comentário opcional. Disciplina e tópico vêm do contexto ou do último registro (`est_erros_ultimo`). "Salvar e registrar outra" mantém disciplina e tópico.

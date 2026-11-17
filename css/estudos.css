@@ -3014,3 +3014,44 @@ html.est-desenho-aberto, html.est-desenho-aberto body { overflow: hidden; oversc
 .est-vespera-rec { flex-shrink: 0; padding: 0 6px; border-radius: 6px; background: var(--est-amber-dim); color: var(--est-amber); font-size: 0.74rem; font-weight: 700; }
 .est-vespera-acoes { display: flex; gap: 2px; opacity: 0.55; }
 .est-vespera-sub li:hover .est-vespera-acoes, .est-vespera-sub li:focus-within .est-vespera-acoes { opacity: 1; }
+
+/* Cadernos do TEC (estudos.cadernos.js) */
+.est-cad-aviso { font-size: 0.84rem; color: var(--est-silver-bright); }
+.est-cad-barras { display: flex; align-items: flex-end; gap: 6px; height: 170px; padding-top: 18px; }
+.est-cad-col { flex: 1; min-width: 0; height: 100%; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; gap: 4px; }
+.est-cad-barra { width: 100%; max-width: 38px; min-height: 2px; background: var(--est-blue); border-radius: 4px 4px 0 0; opacity: 0.75; }
+.est-cad-col.atual .est-cad-barra { opacity: 1; }
+.est-cad-num { font-size: 0.72rem; color: var(--est-silver-bright); font-variant-numeric: tabular-nums; }
+.est-cad-rot { font-size: 0.66rem; color: var(--est-accent); white-space: nowrap; }
+.est-cad-col.atual .est-cad-rot { color: var(--est-silver-bright); font-weight: 600; }
+.est-cad-tabela-rolagem { overflow-x: auto; }
+.est-cad-tabela { width: 100%; border-collapse: collapse; font-size: 0.84rem; color: var(--est-silver-bright); }
+.est-cad-tabela th { text-align: left; font-weight: 600; font-size: 0.74rem; color: var(--est-accent); text-transform: uppercase; letter-spacing: 0.03em; padding: 6px 8px; border-bottom: 1px solid var(--est-border); }
+.est-cad-tabela td { padding: 7px 8px; border-bottom: 1px dashed var(--est-border); vertical-align: middle; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.est-cad-tabela td:first-child { white-space: normal; min-width: 220px; }
+.est-cad-tabela td small { color: var(--est-accent); margin-left: 4px; }
+.est-cad-tabela tr.poucas td { opacity: 0.6; }
+.est-cad-tabela a { color: var(--est-blue); }
+.est-cad-item { display: block; font-size: 0.74rem; color: var(--est-accent); }
+.est-cad-acerto { display: inline-block; width: 70px; height: 6px; margin-right: 8px; vertical-align: middle; background: rgba(255,255,255,0.08); border-radius: 3px; overflow: hidden; position: relative; }
+.est-cad-acerto::after { content: ''; position: absolute; left: 70%; top: -2px; bottom: -2px; width: 1px; background: var(--est-accent); }
+.est-cad-acerto > span { display: block; height: 100%; background: var(--est-blue); }
+.est-cad-acerto > span.fraco { background: var(--est-red); }
+.est-cad-sobe { color: var(--est-green); }
+.est-cad-desce { color: var(--est-red); }
+.est-cad-mudo { color: var(--est-accent); }
+.est-cad-lista { list-style: none; margin: 0; padding: 0; }
+.est-cad-lista li { display: flex; align-items: center; gap: 10px; padding: 7px 0; border-bottom: 1px dashed var(--est-border); font-size: 0.84rem; color: var(--est-silver-bright); }
+.est-cad-data { width: 44px; flex-shrink: 0; color: var(--est-accent); font-variant-numeric: tabular-nums; }
+.est-cad-desc { flex: 1; min-width: 0; }
+.est-cad-desc a { color: var(--est-blue); }
+.est-cad-desc small { display: block; color: var(--est-accent); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.est-cad-nums { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.page-estudos .est-cad-x { padding: 2px 8px; border-radius: 6px; color: var(--est-accent); cursor: pointer; }
+.page-estudos .est-cad-x:hover { color: var(--est-silver-bright); background: rgba(255,255,255,0.06); }
+.est-cad-form { max-width: 560px; }
+.est-cad-campos { display: flex; flex-direction: column; gap: 10px; }
+.est-cad-campos .est-form-group { display: flex; flex-direction: column; gap: 4px; margin: 0; font-size: 0.8rem; color: var(--est-silver); }
+.est-cad-linha { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.est-cad-msg { margin: 0; min-height: 1em; font-size: 0.8rem; color: var(--est-red); }
+@media (max-width: 560px) { .est-cad-linha { grid-template-columns: repeat(2, minmax(0, 1fr)); } }

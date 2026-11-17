@@ -13,7 +13,7 @@
   <!-- Fontes do editor de resumo (js/estudos.sessao.js, FONTES): só são baixadas quando usadas -->
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Architects+Daughter&family=Caveat:wght@400;700&family=Dancing+Script:wght@400;700&family=Gloria+Hallelujah&family=Indie+Flower&family=Kalam:wght@400;700&family=Lato:ital,wght@0,400;0,700;1,400&family=Lora:ital,wght@0,400;0,700;1,400&family=Merriweather:ital,wght@0,400;0,700;1,400&family=Montserrat:ital,wght@0,400;0,700;1,400&family=Open+Sans:ital,wght@0,400;0,700;1,400&family=Patrick+Hand&family=Permanent+Marker&family=Roboto+Mono:wght@400;700&family=Roboto:ital,wght@0,400;0,700;1,400&family=Shadows+Into+Light&display=swap" />
   <link href="https://cdn.quilljs.com/1.3.6/quill.snow.css" rel="stylesheet">
-  <link rel="stylesheet" href="css/estudos.css?v=62" />
+  <link rel="stylesheet" href="css/estudos.css?v=63" />
 </head>
 <body class="page-estudos">
 
@@ -84,6 +84,11 @@
       <button class="est-sidebar-item" data-section="erros">
         <span class="est-sidebar-icon">❌</span>
         <span>Caderno de Erros</span>
+      </button>
+
+      <button class="est-sidebar-item" data-section="cadernos">
+        <span class="est-sidebar-icon">📒</span>
+        <span>Cadernos do TEC</span>
       </button>
 
       <button class="est-sidebar-item" data-section="vespera">
@@ -300,6 +305,11 @@
       <!-- ─── SEÇÃO: CADERNO DE ERROS (renderizada por estudos.erros.js) ─── -->
       <section id="est-section-erros" class="est-placeholder-section est-plano-section" data-section="erros" aria-label="Caderno de erros">
         <div id="est-erros"></div>
+      </section>
+
+      <!-- Cadernos do TEC (js/estudos.cadernos.js): registro por caderno e estatísticas -->
+      <section id="est-section-cadernos" class="est-placeholder-section est-plano-section" data-section="cadernos" aria-label="Cadernos do TEC">
+        <div id="est-cadernos"></div>
       </section>
 
       <!-- Resumo de véspera (js/estudos.vespera.js): as regras certas dos erros, por PDF e subtópico -->
@@ -973,7 +983,7 @@
   <script src="js/estudos.motor.erros.js?v=1"></script>
   <script src="js/estudos.motor.questoes.js?v=1"></script>
   <script src="js/estudos.motor.semana.js?v=2"></script>
-  <script src="js/estudos.plano.js?v=45"></script>
+  <script src="js/estudos.plano.js?v=46"></script>
   <script src="js/estudos.estatisticas.js?v=1"></script>
   <script src="js/estudos.pdf.cadastro.js?v=2"></script>
   <script src="js/estudos.pdf.js?v=3"></script>
@@ -988,6 +998,7 @@
   <script src="js/estudos.materiais.js?v=6"></script>
   <script src="js/estudos.erros.js?v=7"></script>
   <script src="js/estudos.vespera.js?v=1"></script>
+  <script src="js/estudos.cadernos.js?v=1"></script>
   <script src="js/estudos.aproveitar.js?v=2"></script>
   <script src="js/estudos.tec.js?v=6"></script>
 </body>
