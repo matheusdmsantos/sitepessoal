@@ -865,6 +865,18 @@
     };
   }
 
+  /* Pontos fracos do Desempenho: os subtópicos do item com questões, do pior acerto para o melhor
+     (e o que ficou sem subtópico), para ver onde está o problema dentro do item */
+  function subtopicosFracos(t) {
+    if (!window.estSub) return '';
+    const n = window.estSub.numerosDe(t.id);
+    const linhas = n.assuntos.filter(a => a.q > 0).map(a => ({ nome: a.s.nome, q: a.q, pct: Math.round(a.c / a.q * 100) }));
+    if (!linhas.length) return '';
+    if (n.sem.q > 0) linhas.push({ nome: 'sem subtópico', q: n.sem.q, pct: Math.round(n.sem.c / n.sem.q * 100), sem: true });
+    linhas.sort((x, y) => x.pct - y.pct);
+    return `<span class="est-plano-item-subs">${linhas.map(l => `<span class="est-plano-item-sub ${l.sem ? 'sem' : ''}">${escapeHtml(l.nome)} <span class="est-plano-acerto ${classeAcerto(l.pct)}">${l.pct}% de ${l.q}</span></span>`).join('')}</span>`;
+  }
+
   /* Gera a semana atual automaticamente, se o plano existe e ela ainda está vazia */
   function garantirSemanaAtual() {
     const e = editalAtivo();
@@ -2572,6 +2584,7 @@
               <div class="est-plano-item-info">
                 <span class="est-plano-item-disc">${escapeHtml(d.nome)}</span>
                 <span class="est-plano-item-top">${escapeHtml(t.nome)} <span class="est-plano-acerto ${classeAcerto(pct)}">${pct}% de ${t.questoesFeitas}</span></span>
+                ${subtopicosFracos(t)}
               </div>
               <div class="est-plano-item-acoes">
                 ${botaoTec(t)}

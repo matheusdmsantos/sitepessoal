@@ -3077,3 +3077,7 @@ html.est-desenho-aberto, html.est-desenho-aberto body { overflow: hidden; oversc
 .est-cad-fraco li strong { color: var(--est-red); }
 .est-cad-forte li strong { color: var(--est-green); }
 @media (max-width: 700px) { .est-cad-ff { grid-template-columns: 1fr; } }
+/* Pontos fracos do Desempenho: subtópicos do item */
+.est-plano-item-subs { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-top: 6px; }
+.est-plano-item-sub { font-size: 0.8rem; color: var(--est-silver); }
+.est-plano-item-sub.sem { font-style: italic; color: var(--est-accent); }
