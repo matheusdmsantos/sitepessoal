@@ -3055,3 +3055,16 @@ html.est-desenho-aberto, html.est-desenho-aberto body { overflow: hidden; oversc
 .est-cad-linha { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
 .est-cad-msg { margin: 0; min-height: 1em; font-size: 0.8rem; color: var(--est-red); }
 @media (max-width: 560px) { .est-cad-linha { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.est-cad-linha.est-cad-linha2 { grid-template-columns: minmax(0, 3fr) minmax(0, 1fr); }
+.est-cad-barras.acerto { position: relative; }
+.est-cad-barras.acerto::before { content: ''; position: absolute; left: 0; right: 0; bottom: calc(22px + (100% - 40px) * 0.7); border-top: 1px dashed var(--est-accent); opacity: 0.6; pointer-events: none; }
+.est-cad-col.fraco .est-cad-barra { background: var(--est-red); }
+.est-cad-meta { max-width: 980px; width: 96vw; }
+.est-cad-linhas { display: flex; flex-direction: column; gap: 8px; max-height: 50vh; overflow-y: auto; }
+.est-cad-lin { padding: 8px 10px; border: 1px solid var(--est-border); border-radius: 8px; }
+.est-cad-lin.feito { opacity: 0.6; }
+.est-cad-lin-nome { font-size: 0.84rem; font-weight: 600; color: var(--est-silver-bright); margin-bottom: 6px; }
+.est-cad-lin-nome small { font-weight: 400; color: var(--est-green); }
+.est-cad-lin-campos { display: grid; grid-template-columns: 1.2fr 1.6fr 1.2fr 1.2fr 70px 70px 64px; gap: 6px; }
+.est-cad-lin-campos .est-form-input, .est-cad-lin-campos .est-form-select { min-width: 0; font-size: 0.8rem; padding: 6px 8px; }
+@media (max-width: 760px) { .est-cad-lin-campos { grid-template-columns: repeat(3, minmax(0, 1fr)); } }

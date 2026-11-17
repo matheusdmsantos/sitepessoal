@@ -16,10 +16,12 @@ create table if not exists public.cadernos (
   feitas integer not null check (feitas > 0),
   certas integer not null check (certas >= 0 and certas <= feitas),
   minutos integer not null default 0,
+  meta integer,                    -- nº da meta do Sensei (o nome do caderno traz "DISCIPLINA - Assunto")
   sessao_id text,                  -- sessoes.id criada junto
   criado_em timestamptz not null default now(),
   dono uuid default auth.uid()
 );
+alter table public.cadernos add column if not exists meta integer;   -- para quem rodou a 1ª versão
 create index if not exists cadernos_edital_idx on public.cadernos (edital_id, data);
 
 alter table public.cadernos enable row level security;
