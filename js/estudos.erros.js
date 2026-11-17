@@ -193,6 +193,16 @@
   const pendentes = lista => lista.filter(er => situacao(er) === 'hoje')
     .sort((a, b) => (a.proxima || '').localeCompare(b.proxima || ''));
 
+  /* Refazer da semana: os erros registrados nos últimos 7 dias, ainda não dominados e na agenda, sem
+     esperar a data marcada (dia de refazer os erros no fim de semana). A resposta conta como uma
+     revisão normal: acertou, avança; errou, volta para o começo. Mais antigos primeiro. */
+  const DIAS_SEMANA = 7;
+  const daSemana = lista => {
+    const corte = new Date(Date.now() - DIAS_SEMANA * 86400000).toISOString();
+    return lista.filter(er => !er.dominado_em && naAgenda(er) && (er.criado_em || '') >= corte)
+      .sort((a, b) => (a.criado_em || '').localeCompare(b.criado_em || ''));
+  };
+
   function aplicarResposta(er, r) {
     const certo = r === er.gabarito;
     er.revisoes = (er.revisoes || 0) + 1;
@@ -723,6 +733,7 @@
     const todos = doEdital();
     const lista = filtrados().sort((a, b) => (b.criado_em || '').localeCompare(a.criado_em || ''));
     const paraHoje = pendentes(filtrados()).length;
+    const semana = daSemana(filtrados()).length;
     const discs = e ? e.disciplinas.filter(d => todos.some(x => x.disciplina_id === d.id)) : [];
     const refD = filtro.disc && acharDisc(filtro.disc);
     const tops = refD ? refD.d.topicos.filter(t => todos.some(x => x.topico_id === t.id)) : [];
@@ -737,6 +748,7 @@
         </div>
         <div class="est-plano-topo-acoes">
           <button type="button" class="est-plano-btn" data-acao="novo">＋ Registrar erro</button>
+          <button type="button" class="est-plano-btn" data-acao="refazer-semana" ${semana ? '' : 'disabled'} title="Refaz todos os erros registrados nos últimos ${DIAS_SEMANA} dias (com os filtros desta tela), sem esperar a data marcada">↻ Refazer os da semana ${semana ? `(${semana})` : ''}</button>
           <button type="button" class="est-plano-btn primario" data-acao="revisar" ${paraHoje ? '' : 'disabled'}>▶ Revisar ${paraHoje ? `(${paraHoje})` : ''}</button>
         </div>
       </div>
@@ -875,6 +887,7 @@
       switch (b.dataset.acao) {
         case 'novo': novo(filtro.disc ? { discId: filtro.disc, topicoId: filtro.topico } : {}); break;
         case 'revisar': revisar(); break;
+        case 'refazer-semana': revisar(daSemana(filtrados()).map(x => x.id)); break;
         case 'revisar-um': revisar([id]); break;
         case 'editar': editar(id); break;
         case 'abrir':

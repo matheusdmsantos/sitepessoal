@@ -3068,3 +3068,12 @@ html.est-desenho-aberto, html.est-desenho-aberto body { overflow: hidden; oversc
 .est-cad-lin-campos { display: grid; grid-template-columns: 1.2fr 1.6fr 1.2fr 1.2fr 70px 70px 64px; gap: 6px; }
 .est-cad-lin-campos .est-form-input, .est-cad-lin-campos .est-form-select { min-width: 0; font-size: 0.8rem; padding: 6px 8px; }
 @media (max-width: 760px) { .est-cad-lin-campos { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+.est-cad-ff { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.est-cad-ff ul { list-style: none; margin: 0; padding: 0; }
+.est-cad-ff li { display: flex; align-items: baseline; gap: 10px; padding: 6px 0; border-bottom: 1px dashed var(--est-border); font-size: 0.86rem; color: var(--est-silver-bright); }
+.est-cad-ff li > span { flex: 1; min-width: 0; }
+.est-cad-ff li small { display: block; color: var(--est-accent); font-size: 0.74rem; }
+.est-cad-ff li > small { display: inline; }
+.est-cad-fraco li strong { color: var(--est-red); }
+.est-cad-forte li strong { color: var(--est-green); }
+@media (max-width: 700px) { .est-cad-ff { grid-template-columns: 1fr; } }

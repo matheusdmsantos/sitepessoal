@@ -171,6 +171,18 @@
     <tbody>${linhas.map(l => `<tr class="${l.poucas ? 'poucas' : ''}"><td>${l.rotulo}</td><td>${l.q}</td><td>${barraAcerto(l.acerto)}</td><td>${tendencia(l.tendencia)}</td></tr>`).join('')}</tbody>
   </table></div>`;
 
+  // Os 3 assuntos de pior e de melhor acerto, só com amostra suficiente (POUCAS questões ou mais)
+  function fortesFracos(assuntos) {
+    const ok = assuntos.filter(a => !a.poucas);
+    if (ok.length < 2) return '';
+    const n = Math.min(3, Math.floor(ok.length / 2));
+    const item = a => { const x = nomes(a.topico_id, a.subtopico_id); return `<li><span>${esc(x.assunto || x.item)}<small>${esc(x.disc)}</small></span><strong>${a.acerto}%</strong><small>${a.q} q.</small></li>`; };
+    return `<div class="est-cad-ff">
+      <div class="est-plano-card est-cad-fraco"><h3 class="est-plano-card-title">⚠ Pontos fracos</h3><ul>${ok.slice(0, n).map(item).join('')}</ul></div>
+      <div class="est-plano-card est-cad-forte"><h3 class="est-plano-card-title">✓ Pontos fortes</h3><ul>${ok.slice(-n).reverse().map(item).join('')}</ul></div>
+    </div>`;
+  }
+
   async function render() {
     const el = $('est-cadernos');
     if (!el) return;
@@ -195,6 +207,7 @@
         <div class="est-plano-kpi"><span>Tempo</span><strong>${fmtMin(st.total.m)}</strong><small>${st.total.q ? (st.total.m / st.total.q).toFixed(1).replace('.', ',') + ' min por questão' : ''}</small></div>
         <div class="est-plano-kpi"><span>Últimos 7 dias</span><strong>${st.ult7.q}</strong><small>${st.ult7.q ? pct(st.ult7.c, st.ult7.q) + '% de acerto' : 'sem questões'}</small></div>
       </div>
+      ${fortesFracos(st.assuntos)}
       <div class="est-plano-card">
         <h3 class="est-plano-card-title">Questões por semana</h3>
         <p class="est-plano-sub">Últimas ${SEMANAS} semanas (a data é a segunda-feira). Passe o mouse para ver o acerto e o tempo.</p>
@@ -247,6 +260,7 @@
           <span class="est-cad-desc">${r.link ? `<a href="${esc(r.link)}" target="_blank" rel="noopener">${esc(r.nome || 'Caderno')}</a>` : esc(r.nome || 'Caderno')}
             <small>${r.meta ? `Meta ${r.meta} · ` : ''}${esc(n.item)}${n.assunto ? ' › ' + esc(n.assunto) : ''}</small></span>
           <span class="est-cad-nums">${r.certas}/${r.feitas} · <strong>${pct(r.certas, r.feitas)}%</strong>${r.minutos ? ' · ' + fmtMin(r.minutos) : ''}</span>
+          ${r.certas < r.feitas ? `<button type="button" class="est-cad-x" data-a="erros" data-id="${esc(r.id)}" title="Registrar as questões erradas deste caderno no Caderno de Erros (já no item e no assunto dele)">❌ ${r.feitas - r.certas}</button>` : ''}
           <button type="button" class="est-cad-x" data-a="refazer" data-id="${esc(r.id)}" title="Registrar de novo este caderno (refeito)">↻</button>
           <button type="button" class="est-cad-x" data-a="apagar" data-id="${esc(r.id)}" title="Apagar este registro (e a sessão dele)" aria-label="Apagar registro">✕</button></li>`; }).join('')}</ul>
       </div>`}`;
@@ -330,10 +344,7 @@
       if (typeof renderDashboard === 'function') renderDashboard();
       render();
       aviso(`Caderno registrado: ${certas}/${feitas} (${pct(certas, feitas)}%).`);
-      if (certas < feitas && window.estErros && await window.customConfirm(`Você errou ${feitas - certas} questão(ões). Registrar no Caderno de Erros agora?`)) {
-        const mat = window.estPlano.materiaisDaDisciplina ? window.estPlano.materiaisDaDisciplina(r.disciplina_id).find(m => (m.topicos || []).some(l => l.topico_id === tId)) : null;
-        window.estErros.novo({ discId: r.disciplina_id, topicoId: tId, subtopicoId: sub || '', materialId: mat ? mat.id : undefined });
-      }
+      if (certas < feitas && window.estErros && await window.customConfirm(`Você errou ${feitas - certas} questão(ões). Registrar no Caderno de Erros agora?`)) registrarErros(r);
     });
   }
 
@@ -472,7 +483,17 @@
       render();
       const q = novos.slice(0, ok).reduce((a, r) => ({ f: a.f + r.feitas, c: a.c + r.certas }), { f: 0, c: 0 });
       aviso(`${ok} caderno${ok === 1 ? '' : 's'}${meta ? ' da meta ' + meta : ''} registrado${ok === 1 ? '' : 's'}: ${q.c}/${q.f} (${pct(q.c, q.f)}%).`);
+      const comErro = novos.slice(0, ok).filter(r => r.certas < r.feitas);
+      if (comErro.length && window.estErros && await window.customConfirm(`Há erros em ${comErro.length} caderno${comErro.length === 1 ? '' : 's'}. Registrar agora no Caderno de Erros, começando por “${comErro[0].nome}”? (Os outros têm o botão ❌ na lista de registros.)`)) registrarErros(comErro[0]);
     });
+  }
+
+  // Caderno de Erros já com disciplina, item (ou o PDF do item, no edital por PDF) e assunto do caderno.
+  // O formulário tem "Salvar e registrar outra", que mantém tudo para o próximo erro do mesmo caderno.
+  function registrarErros(r) {
+    if (!window.estErros) return;
+    const mat = window.estPlano.materiaisDaDisciplina ? window.estPlano.materiaisDaDisciplina(r.disciplina_id).find(m => (m.topicos || []).some(l => l.topico_id === r.topico_id)) : null;
+    window.estErros.novo({ discId: r.disciplina_id, topicoId: r.topico_id, subtopicoId: r.subtopico_id || '', materialId: mat ? mat.id : undefined });
   }
 
   async function apagar(id) {
@@ -512,6 +533,7 @@
       if (b.dataset.a === 'novo') abrirForm();
       if (b.dataset.a === 'meta') abrirMeta();
       if (b.dataset.a === 'apagar') apagar(b.dataset.id);
+      if (b.dataset.a === 'erros') { const r = regs.find(x => x.id === b.dataset.id); if (r) registrarErros(r); }
       if (b.dataset.a === 'refazer') {
         const r = regs.find(x => x.id === b.dataset.id);
         if (r) abrirForm({ id: r.id, link: r.link, nome: r.nome, meta: r.meta, disciplina_id: r.disciplina_id, topico_id: r.topico_id, subtopico_id: r.subtopico_id });
