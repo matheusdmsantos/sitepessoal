@@ -869,7 +869,7 @@
      (e o que ficou sem subtópico), para ver onde está o problema dentro do item */
   function subtopicosFracos(t) {
     if (!window.estSub) return '';
-    const n = window.estSub.numerosDe(t.id);
+    const n = window.estSub.numerosDe(t.id, true);   // subassuntos somados no de cima
     const linhas = n.assuntos.filter(a => a.q > 0).map(a => ({ nome: a.s.nome, q: a.q, pct: Math.round(a.c / a.q * 100) }));
     if (!linhas.length) return '';
     if (n.sem.q > 0) linhas.push({ nome: 'sem subtópico', q: n.sem.q, pct: Math.round(n.sem.c / n.sem.q * 100), sem: true });
@@ -1735,7 +1735,7 @@
 
   /* Na revisão: assuntos abaixo de 70% (com ao menos 5 questões) pedem mais questões e o registro dos erros */
   function assuntosFracos(tId) {
-    const fracos = window.estSub ? window.estSub.numerosDe(tId).assuntos.filter(n => n.q >= 5 && n.c / n.q < 0.7) : [];
+    const fracos = window.estSub ? window.estSub.numerosDe(tId, true).assuntos.filter(n => n.q >= 5 && n.c / n.q < 0.7) : [];
     return fracos.length ? `<span class="est-plano-item-fracos">⚠ ${fracos.map(n => `${escapeHtml(n.s.nome)} (${Math.round(n.c / n.q * 100)}%)`).join(', ')}: ` +
       `faça mais ${QUESTOES_POR_ASSUNTO} questões${fracos.length > 1 ? ' de cada' : ''} e registre os erros no Caderno de Erros.</span>` : '';
   }

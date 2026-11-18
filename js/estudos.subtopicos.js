@@ -424,20 +424,25 @@
   /* Números de cada assunto do item e do que ficou sem subtópico. Questões, acertos e tempo vêm das
      sessões (sessoes.assuntos); erros, do caderno; "sem subtópico" = total do item − soma dos assuntos
      (inclui o que foi lançado só no total, como "Registrar questões" e "Corrigir totais"). */
-  function numeros(t) {
-    const por = new Map(doTopico(t.id).map(s => [s.id, { s, q: 0, c: 0, min: 0, erros: 0 }]));
+  /* agrupar: só os assuntos de 1º nível, com os números dos subassuntos somados no de cima. Os
+     subassuntos servem para dividir o resumo; o desempenho e as metas de questões olham o de cima. */
+  const doNivel1 = tId => doTopico(tId).filter(s => !paiDe(s));
+  function numeros(t, agrupar) {
+    const lista = agrupar ? doNivel1(t.id) : doTopico(t.id);
+    const por = new Map(lista.map(s => [s.id, { s, q: 0, c: 0, min: 0, erros: 0 }]));
+    const alvo = id => { if (!agrupar) return id; const p = paiDe(porId(id)); return p ? p.id : id; };
     const sem = { sessoes: [], errosLista: [] };
     studyData.filter(x => x.topicId === t.id).forEach(x => {
-      const partes = (x.assuntos || []).filter(a => por.has(a.subtopico_id));
+      const partes = (x.assuntos || []).filter(a => por.has(alvo(a.subtopico_id)));
       partes.forEach(a => {
-        const n = por.get(a.subtopico_id);
+        const n = por.get(alvo(a.subtopico_id));
         n.q += a.questoes || 0; n.c += a.acertos || 0; n.min += a.minutos || 0;
       });
       if (!partes.length) sem.sessoes.push(x);
     });
     errosDo(t.id).forEach(er => {
       const s = doRegistro(t.id, er.subtopico_id);
-      if (s) por.get(s.id).erros++; else sem.errosLista.push(er);
+      if (s && por.has(alvo(s.id))) por.get(alvo(s.id)).erros++; else sem.errosLista.push(er);
     });
     const assuntos = [...por.values()];
     const soma = k => assuntos.reduce((a, n) => a + n[k], 0);
@@ -448,15 +453,15 @@
     return { assuntos, sem };
   }
 
-  function numerosDe(tId) {
+  function numerosDe(tId, agrupar) {
     const ref = acharTopico(tId);
-    return ref ? numeros(ref.t) : { assuntos: [], sem: { q: 0, c: 0, min: 0, erros: 0, sessoes: [], errosLista: [] } };
+    return ref ? numeros(ref.t, agrupar) : { assuntos: [], sem: { q: 0, c: 0, min: 0, erros: 0, sessoes: [], errosLista: [] } };
   }
 
   /* Meta de questões (opção A): quantas questões fazer em cada assunto do item. Mais para os de pior
      acerto e para os que ainda não têm questões; a soma é sempre o total. Devolve { [id]: n }. */
   function distribuir(tId, total) {
-    const ns = numerosDe(tId).assuntos;
+    const ns = numerosDe(tId, true).assuntos;   // cotas só para os assuntos de 1º nível
     if (!ns.length || !(total > 0)) return {};
     const peso = n => (n.q ? Math.max(0, 1 - n.c / n.q) + 0.25 : 1);
     const somaPesos = ns.reduce((a, n) => a + peso(n), 0);
@@ -678,7 +683,7 @@
   function nivelDisciplinas(e) {
     return e.disciplinas.map(d => {
       const lacunas = d.topicos.filter(t => !temPdf(t)).length;
-      const nSub = d.topicos.reduce((a, t) => a + doTopico(t.id).length, 0);
+      const nSub = d.topicos.reduce((a, t) => a + doNivel1(t.id).length, 0);
       return linhaViz({
         nome: d.nome, q: somaT(d.topicos, 'questoesFeitas'), c: somaT(d.topicos, 'questoesCertas'), acao: `estSub.ver('${d.id}')`,
         sub: [plural(d.topicos.length, 'item', 'itens'), nSub && `🧩 ${plural(nSub, 'assunto', 'assuntos')}`, lacunas && `${lacunas} sem PDF`].filter(Boolean).join(' · ')
@@ -688,7 +693,7 @@
 
   function nivelItens(d) {
     const linhas = d.topicos.map(t => {
-      const n = doTopico(t.id).length, er = errosDo(t.id).length;
+      const n = doNivel1(t.id).length, er = errosDo(t.id).length;
       return linhaViz({
         nome: curto(t.nome), q: t.questoesFeitas || 0, c: t.questoesCertas || 0, acao: `estSub.ver('${d.id}', '${t.id}')`,
         extra: temPdf(t) ? '' : 'sem PDF',
@@ -704,7 +709,7 @@
   }
 
   function nivelAssuntos(t) {
-    const { assuntos, sem } = numeros(t);
+    const { assuntos, sem } = numeros(t, true);   // subassuntos somados no assunto de cima
     const comparaveis = assuntos.filter(n => n.q >= MIN_Q);
     const pior = comparaveis.length > 1 ? comparaveis.reduce((a, n) => (n.c / n.q < a.c / a.q ? n : a)) : null;
     const detalhe = n => [plural(n.q, 'questão', 'questões'), n.erros && `❌ ${plural(n.erros, 'erro', 'erros')}`, n.min && `⏱ ${fmtMin(n.min)}`].filter(Boolean);
@@ -753,9 +758,9 @@
     const sel = document.getElementById('est-sub-select');
     const tId = (document.getElementById('est-topic-select') || {}).value;
     if (!sel) return;
-    const lista = tId ? doTopico(tId) : [];
+    const lista = tId ? doNivel1(tId) : [];   // subassuntos são só do resumo
     sel.innerHTML = !tId ? '<option value="">Escolha o tópico primeiro</option>'
-      : lista.length ? '<option value="">Tópico inteiro (sem subtópico)</option>' + lista.map(s => `<option value="${esc(s.id)}">${paiDe(s) ? '↳ ' : ''}${esc(s.nome)}</option>`).join('')
+      : lista.length ? '<option value="">Tópico inteiro (sem subtópico)</option>' + lista.map(s => `<option value="${esc(s.id)}">${esc(s.nome)}</option>`).join('')
       : '<option value="">Este tópico ainda não tem subtópicos</option>';
     sel.disabled = !lista.length;
   }
@@ -764,7 +769,7 @@
   }, true);
 
   window.estSub = {
-    carregar, migrar, doTopico, porId, doRegistro, sugestao, topicoPorNomes, ligarPaginas, atualizarDoItem,
+    carregar, migrar, doTopico, doNivel1, porId, doRegistro, sugestao, topicoPorNomes, ligarPaginas, atualizarDoItem,
     criar, vincular, desvincular, faixa, paginasNoPdf, atualizarCampos, definirTec, linkDoCaderno, editarTec, renomear, mover, ordenar, paiDe, mesclar, reclassificar, excluir,
     numerosDe, distribuir, selo, blocoFicha, abrirPainel, fecharPainel, marcarTodos, confirmarMesclar,
     confirmarReclassificar, novoPerguntando, renomearPerguntando, htmlDesempenho, ver,

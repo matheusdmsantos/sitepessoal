@@ -297,7 +297,7 @@
       preencherSubs(base.subtopico_id || (tSel === ult.topicoId ? ult.subtopicoId : ''));
     };
     const preencherSubs = sSel => {
-      const subs = c('item').value && window.estSub ? window.estSub.doTopico(c('item').value) : [];
+      const subs = c('item').value && window.estSub ? window.estSub.doNivel1(c('item').value) : [];   // subassuntos: só do resumo
       c('sub').innerHTML = opcoes(subs, sSel, subs.length ? '(item inteiro)' : 'Sem assuntos neste item');
       c('sub').disabled = !subs.length;
     };
@@ -366,7 +366,7 @@
     if (!d && C && disc) { const id = C(e.disciplinas)(disc); d = e.disciplinas.find(x => x.id === id); }
     if (!d) return { discId: '', topicoId: '', subtopicoId: '' };
     // Itens e assuntos da disciplina numa lista só: o assunto (subtópico) achado leva o item junto
-    const subs = window.estSub ? d.topicos.flatMap(t => window.estSub.doTopico(t.id).map(s => ({ id: 's:' + s.id, nome: s.nome, t: t.id, s: s.id }))) : [];
+    const subs = window.estSub ? d.topicos.flatMap(t => window.estSub.doNivel1(t.id).map(s => ({ id: 's:' + s.id, nome: s.nome, t: t.id, s: s.id }))) : [];
     const alvos = [...d.topicos.map(t => ({ id: 't:' + t.id, nome: t.nome, t: t.id, s: '' })), ...subs];
     const id = C ? C(alvos)(assunto || nome) : '';
     const a = alvos.find(x => x.id === id);
@@ -400,7 +400,7 @@
     const c = k => ov.querySelector(`[data-k="${k}"]`);
     const caixa = c('linhas');
     const itensDe = (dId, tSel) => { const d = e.disciplinas.find(x => x.id === dId); return opcoes(d ? d.topicos : [], tSel, 'Item do edital…'); };
-    const subsDe = (tId, sSel) => { const l = tId && window.estSub ? window.estSub.doTopico(tId) : []; return opcoes(l, sSel, l.length ? '(item inteiro)' : 'sem assuntos'); };
+    const subsDe = (tId, sSel) => { const l = tId && window.estSub ? window.estSub.doNivel1(tId) : []; return opcoes(l, sSel, l.length ? '(item inteiro)' : 'sem assuntos'); };
     let nomes = [];
     function montar() {
       nomes = lerMeta(c('texto').value).nomes;
