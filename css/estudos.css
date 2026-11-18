@@ -3062,7 +3062,7 @@ html.est-desenho-aberto, html.est-desenho-aberto body { overflow: hidden; oversc
 .est-cad-meta { max-width: 980px; width: 96vw; }
 .est-cad-linhas { display: flex; flex-direction: column; gap: 8px; max-height: 50vh; overflow-y: auto; }
 .est-cad-lin { padding: 8px 10px; border: 1px solid var(--est-border); border-radius: 8px; }
-.est-cad-lin.feito { opacity: 0.6; }
+.est-cad-lin.feito { border-style: dashed; }
 .est-cad-lin-nome { font-size: 0.84rem; font-weight: 600; color: var(--est-silver-bright); margin-bottom: 6px; }
 .est-cad-lin-nome small { font-weight: 400; color: var(--est-green); }
 .est-cad-lin-campos { display: grid; grid-template-columns: 1.2fr 1.6fr 1.2fr 1.2fr 70px 70px 64px; gap: 6px; }

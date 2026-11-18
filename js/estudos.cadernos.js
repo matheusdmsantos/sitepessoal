@@ -9,7 +9,8 @@
    O Sensei entrega os cadernos em metas ("Meta 6": ~5 linhas "DISCIPLINA - Assunto"): "Registrar meta"
    recebe o texto colado da meta, monta uma linha por caderno com o item do edital sugerido pelo nome
    (estIncidencia.montarComparador; correções lembradas em est_cad_mapa) e grava só as linhas preenchidas.
-   A disciplina do Sensei (antes do " - ") e o nº da meta dão as estatísticas por disciplina e por meta.
+   A disciplina do Sensei (antes do " - ") dá as estatísticas por disciplina. O nº da meta não é pedido
+   (o usuário não quis: pouco importa na análise); a linha "Meta N" do texto colado é ignorada.
    Tabela public.cadernos (supabase/cadernos.sql); sem ela, fica em localStorage['est_cadernos']
    e sobe quando a tabela existir.
 ============================================= */
@@ -129,13 +130,7 @@
       return { nome: g.nome, cadernos: g.regs.length, q: t.q, c: t.c, m: t.m, acerto: pct(t.c, t.q),
         tendencia: rec.q && ant.q ? pct(rec.c, rec.q) - pct(ant.c, ant.q) : null, poucas: t.q < POUCAS };
     }).sort((a, b) => a.acerto - b.acerto || b.q - a.q);
-    const porMeta = new Map();
-    lista.filter(r => r.meta).forEach(r => { if (!porMeta.has(r.meta)) porMeta.set(r.meta, []); porMeta.get(r.meta).push(r); });
-    const metas = [...porMeta.entries()].map(([meta, l]) => {
-      const t = soma(l);
-      return { meta, cadernos: l.length, q: t.q, c: t.c, m: t.m, acerto: pct(t.c, t.q), ultima: l.reduce((a, r) => (r.data > a ? r.data : a), l[0].data) };
-    }).sort((a, b) => b.meta - a.meta);
-    return { cadernos: lista.length, total: tot, acerto: pct(tot.c, tot.q), ult7, semanas, dias, assuntos, refeitos, disciplinas, metas };
+    return { cadernos: lista.length, total: tot, acerto: pct(tot.c, tot.q), ult7, semanas, dias, assuntos, refeitos, disciplinas };
   }
 
   /* ---------- tela ---------- */
@@ -228,15 +223,6 @@
         <p class="est-plano-sub">Pela disciplina escrita no nome do caderno (como o Sensei manda), do pior para o melhor. Tendência: últimos ${RECENTE_DIAS} dias × antes.</p>
         ${tabelaGrupos(st.disciplinas.map(d => ({ ...d, rotulo: `<strong>${esc(d.nome)}</strong><span class="est-cad-item">${d.cadernos} caderno${d.cadernos === 1 ? '' : 's'}</span>` })))}
       </div>
-      ${st.metas.length ? `<div class="est-plano-card">
-        <h3 class="est-plano-card-title">Por meta</h3>
-        <p class="est-plano-sub">Cadernos registrados em cada meta do Sensei.</p>
-        <div class="est-cad-tabela-rolagem"><table class="est-cad-tabela">
-          <thead><tr><th>Meta</th><th>Cadernos</th><th>Questões</th><th>Acerto</th><th>Tempo</th></tr></thead>
-          <tbody>${st.metas.map(m => `<tr><td><strong>Meta ${m.meta}</strong><span class="est-cad-item">até ${ddmm(m.ultima)}</span></td><td>${m.cadernos}</td><td>${m.q}</td>
-            <td>${barraAcerto(m.acerto)}</td><td>${fmtMin(m.m)}</td></tr>`).join('')}</tbody>
-        </table></div>
-      </div>` : ''}
       <div class="est-plano-card">
         <h3 class="est-plano-card-title">Acerto por assunto</h3>
         <p class="est-plano-sub">Do pior para o melhor. A tendência compara os últimos ${RECENTE_DIAS} dias com antes (em pontos). Com menos de ${POUCAS} questões, o acerto ainda diz pouco.</p>
@@ -258,7 +244,7 @@
         <ul class="est-cad-lista">${lista.map(r => { const n = nomes(r.topico_id, r.subtopico_id); return `<li>
           <span class="est-cad-data">${ddmm(r.data)}</span>
           <span class="est-cad-desc">${r.link ? `<a href="${esc(r.link)}" target="_blank" rel="noopener">${esc(r.nome || 'Caderno')}</a>` : esc(r.nome || 'Caderno')}
-            <small>${r.meta ? `Meta ${r.meta} · ` : ''}${esc(n.item)}${n.assunto ? ' › ' + esc(n.assunto) : ''}</small></span>
+            <small>${esc(n.item)}${n.assunto ? ' › ' + esc(n.assunto) : ''}</small></span>
           <span class="est-cad-nums">${r.certas}/${r.feitas} · <strong>${pct(r.certas, r.feitas)}%</strong>${r.minutos ? ' · ' + fmtMin(r.minutos) : ''}</span>
           ${r.certas < r.feitas ? `<button type="button" class="est-cad-x" data-a="erros" data-id="${esc(r.id)}" title="Registrar as questões erradas deste caderno no Caderno de Erros (já no item e no assunto dele)">❌ ${r.feitas - r.certas}</button>` : ''}
           <button type="button" class="est-cad-x" data-a="refazer" data-id="${esc(r.id)}" title="Registrar de novo este caderno (refeito)">↻</button>
@@ -285,10 +271,7 @@
         <button type="button" class="est-modal-close" data-a="fechar" aria-label="Fechar">✕</button></div>
       <div class="est-cad-campos">
         <label class="est-form-group">Link do caderno no TEC <input type="url" class="est-form-input" data-k="link" value="${esc(base.link || '')}" placeholder="https://www.tecconcursos.com.br/questoes/cadernos/…" /></label>
-        <div class="est-cad-linha est-cad-linha2">
-          <label class="est-form-group">Nome <input type="text" class="est-form-input" data-k="nome" maxlength="160" value="${esc(base.nome || '')}" placeholder="Ex.: DIREITO CONSTITUCIONAL - Nacionalidade" /></label>
-          <label class="est-form-group">Meta <input type="number" class="est-form-input" data-k="meta" min="1" inputmode="numeric" value="${esc(base.meta || '')}" placeholder="nº" /></label>
-        </div>
+        <label class="est-form-group">Nome <input type="text" class="est-form-input" data-k="nome" maxlength="160" value="${esc(base.nome || '')}" placeholder="Ex.: DIREITO CONSTITUCIONAL - Nacionalidade" /></label>
         <label class="est-form-group">Disciplina <select class="est-form-select" data-k="disc">${opcoes(e.disciplinas, dId)}</select></label>
         <label class="est-form-group">Item do edital <select class="est-form-select" data-k="item"></select></label>
         <label class="est-form-group">Assunto <select class="est-form-select" data-k="sub"></select></label>
@@ -335,7 +318,7 @@
       const r = {
         id: novoId(), edital_id: e.id, disciplina_id: c('disc').value, topico_id: tId, subtopico_id: sub || null,
         tec_id: tecIdDe(link), link: link || null, nome: c('nome').value.trim() || (tecIdDe(link) ? 'Caderno ' + tecIdDe(link) : 'Caderno'),
-        data, feitas, certas, minutos, meta: parseInt(c('meta').value, 10) || null, criado_em: new Date().toISOString()
+        data, feitas, certas, minutos, criado_em: new Date().toISOString()
       };
       if (!(await registrar(r))) { ev.target.disabled = false; return; }
       if (r.nome) { const mapa = ler(MAPA, {}); mapa[norm(r.nome)] = { discId: r.disciplina_id, topicoId: tId, subtopicoId: sub || '' }; gravarLocal(MAPA, mapa); }
@@ -393,7 +376,6 @@
   function abrirMeta() {
     const e = editalAtivo();
     if (!e || !e.disciplinas.length) { aviso('Escolha um edital com disciplinas antes de registrar cadernos.'); return; }
-    const ultimaMeta = Math.max(0, ...regs.filter(r => r.edital_id === e.id).map(r => r.meta || 0)) || '';
     const ov = document.createElement('div');
     ov.className = 'est-modal-overlay active';
     ov.style.zIndex = '1040';
@@ -403,12 +385,9 @@
       <div class="est-cad-campos">
         <label class="est-form-group">Cole a meta (no Sensei, selecione o quadro da meta, copie e cole aqui)
           <textarea class="est-form-input" data-k="texto" rows="5" placeholder="Meta 6&#10;DIREITO CONSTITUCIONAL - Nacionalidade&#10;HISTÓRIA DO MARANHÃO - A invasão holandesa&#10;…"></textarea></label>
-        <div class="est-cad-linha est-cad-linha2">
-          <label class="est-form-group">Meta <input type="number" class="est-form-input" data-k="meta" min="1" inputmode="numeric" value="${esc(ultimaMeta)}" /></label>
-          <label class="est-form-group">Data <input type="date" class="est-form-input" data-k="data" value="${hoje()}" max="${hoje()}" /></label>
-        </div>
+        <label class="est-form-group">Data <input type="date" class="est-form-input" data-k="data" value="${hoje()}" max="${hoje()}" /></label>
         <div class="est-cad-linhas" data-k="linhas"></div>
-        <p class="est-plano-sub">Preencha feitas e certas só dos cadernos que você terminou; os outros ficam para depois (cole a meta de novo quando terminar: os já registrados aparecem com ✓). Disciplina e item vêm sugeridos pelo nome: confira.</p>
+        <p class="est-plano-sub">Preencha feitas e certas só dos cadernos que você terminou; os outros ficam para depois (cole a meta de novo quando terminar: os registrados nos últimos 7 dias avisam “já registrado”). Disciplina e item vêm sugeridos pelo nome: confira.</p>
         <p class="est-cad-msg" role="alert"></p>
         <div class="est-motor-acoes">
           <button type="button" class="est-btn-cancelar" data-a="fechar">Cancelar</button>
@@ -424,16 +403,15 @@
     const subsDe = (tId, sSel) => { const l = tId && window.estSub ? window.estSub.doTopico(tId) : []; return opcoes(l, sSel, l.length ? '(item inteiro)' : 'sem assuntos'); };
     let nomes = [];
     function montar() {
-      const lido = lerMeta(c('texto').value);
-      if (lido.meta) c('meta').value = lido.meta;
-      nomes = lido.nomes;
-      const nMeta = parseInt(c('meta').value, 10) || null;
+      nomes = lerMeta(c('texto').value).nomes;
+      const semana = mais(hoje(), -7);
       caixa.innerHTML = nomes.map((nome, i) => {
-        const feito = regs.find(r => r.edital_id === e.id && nMeta && r.meta === nMeta && norm(r.nome) === norm(nome));
+        // Só um aviso: o mesmo nome pode voltar numa meta nova (então os campos continuam abertos)
+        const feito = regs.filter(r => r.edital_id === e.id && r.data > semana && norm(r.nome) === norm(nome)).sort((a, b) => b.data.localeCompare(a.data))[0];
         const g = sugerir(e, nome);
         return `<div class="est-cad-lin ${feito ? 'feito' : ''}" data-i="${i}">
-          <div class="est-cad-lin-nome">${feito ? '✓ ' : ''}${esc(nome)}${feito ? ` <small>já registrado: ${feito.certas}/${feito.feitas}</small>` : ''}</div>
-          ${feito ? '' : `<div class="est-cad-lin-campos">
+          <div class="est-cad-lin-nome">${feito ? '✓ ' : ''}${esc(nome)}${feito ? ` <small>já registrado em ${ddmm(feito.data)}: ${feito.certas}/${feito.feitas}</small>` : ''}</div>
+          <div class="est-cad-lin-campos">
             <select class="est-form-select" data-c="disc" aria-label="Disciplina de ${esc(nome)}">${opcoes(e.disciplinas, g.discId, 'Disciplina…')}</select>
             <select class="est-form-select" data-c="item" aria-label="Item do edital de ${esc(nome)}">${itensDe(g.discId, g.topicoId)}</select>
             <select class="est-form-select" data-c="sub" aria-label="Assunto de ${esc(nome)}">${subsDe(g.topicoId, g.subtopicoId)}</select>
@@ -441,11 +419,10 @@
             <input type="number" class="est-form-input" data-c="feitas" min="1" placeholder="Feitas" aria-label="Feitas em ${esc(nome)}" inputmode="numeric" />
             <input type="number" class="est-form-input" data-c="certas" min="0" placeholder="Certas" aria-label="Certas em ${esc(nome)}" inputmode="numeric" />
             <input type="number" class="est-form-input" data-c="min" min="0" placeholder="Min" aria-label="Minutos em ${esc(nome)}" inputmode="numeric" />
-          </div>`}</div>`;
+          </div></div>`;
       }).join('');
     }
     c('texto').addEventListener('input', montar);
-    c('meta').addEventListener('change', montar);
     caixa.addEventListener('change', ev => {
       const lin = ev.target.closest('.est-cad-lin'), k = ev.target.dataset.c;
       if (!lin) return;
@@ -455,9 +432,9 @@
     c('texto').focus();
     ov.querySelector('[data-a="salvar"]').addEventListener('click', async ev => {
       const msg = t => { ov.querySelector('.est-cad-msg').textContent = t; };
-      const meta = parseInt(c('meta').value, 10) || null, data = c('data').value || hoje();
+      const data = c('data').value || hoje();
       const novos = [];
-      for (const lin of caixa.querySelectorAll('.est-cad-lin:not(.feito)')) {
+      for (const lin of caixa.querySelectorAll('.est-cad-lin')) {
         const v = k => lin.querySelector(`[data-c="${k}"]`).value;
         const nome = nomes[Number(lin.dataset.i)];
         if (!v('feitas')) continue;
@@ -466,7 +443,7 @@
         if (!(feitas > 0) || !(certas >= 0) || certas > feitas) return msg(`Confira feitas e certas de “${nome}” (certas entre 0 e as feitas).`);
         if (link && !/^https?:\/\//i.test(link)) return msg(`O link de “${nome}” precisa começar com http:// ou https://.`);
         novos.push({ id: novoId(), edital_id: e.id, disciplina_id: v('disc'), topico_id: v('item'), subtopico_id: v('sub') || null,
-          tec_id: tecIdDe(link), link: link || null, nome, data, feitas, certas, minutos: parseInt(v('min'), 10) || 0, meta, criado_em: new Date().toISOString() });
+          tec_id: tecIdDe(link), link: link || null, nome, data, feitas, certas, minutos: parseInt(v('min'), 10) || 0, criado_em: new Date().toISOString() });
       }
       if (!novos.length) return msg('Preencha feitas e certas de ao menos um caderno.');
       ev.target.disabled = true;
@@ -482,7 +459,7 @@
       if (typeof renderDashboard === 'function') renderDashboard();
       render();
       const q = novos.slice(0, ok).reduce((a, r) => ({ f: a.f + r.feitas, c: a.c + r.certas }), { f: 0, c: 0 });
-      aviso(`${ok} caderno${ok === 1 ? '' : 's'}${meta ? ' da meta ' + meta : ''} registrado${ok === 1 ? '' : 's'}: ${q.c}/${q.f} (${pct(q.c, q.f)}%).`);
+      aviso(`${ok} caderno${ok === 1 ? '' : 's'} registrado${ok === 1 ? '' : 's'}: ${q.c}/${q.f} (${pct(q.c, q.f)}%).`);
       const comErro = novos.slice(0, ok).filter(r => r.certas < r.feitas);
       if (comErro.length && window.estErros && await window.customConfirm(`Há erros em ${comErro.length} caderno${comErro.length === 1 ? '' : 's'}. Registrar agora no Caderno de Erros, começando por “${comErro[0].nome}”? (Os outros têm o botão ❌ na lista de registros.)`)) registrarErros(comErro[0]);
     });
@@ -536,7 +513,7 @@
       if (b.dataset.a === 'erros') { const r = regs.find(x => x.id === b.dataset.id); if (r) registrarErros(r); }
       if (b.dataset.a === 'refazer') {
         const r = regs.find(x => x.id === b.dataset.id);
-        if (r) abrirForm({ id: r.id, link: r.link, nome: r.nome, meta: r.meta, disciplina_id: r.disciplina_id, topico_id: r.topico_id, subtopico_id: r.subtopico_id });
+        if (r) abrirForm({ id: r.id, link: r.link, nome: r.nome, disciplina_id: r.disciplina_id, topico_id: r.topico_id, subtopico_id: r.subtopico_id });
       }
     });
   }
