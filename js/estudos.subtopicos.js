@@ -746,6 +746,23 @@
     if (el) el.innerHTML = corpoDesempenho();
   }
 
+  /* Formulário "Registrar sessão" (estudos.html / v5): o campo Subtópico mostra os assuntos do tópico
+     escolhido. O v5 dispara "change" também quando escolhe sozinho, mas sem propagar (bubbles: false):
+     por isso a escuta é na captura, e o preenchimento espera o v5 terminar de trocar as listas. */
+  function preencherSubDoModal() {
+    const sel = document.getElementById('est-sub-select');
+    const tId = (document.getElementById('est-topic-select') || {}).value;
+    if (!sel) return;
+    const lista = tId ? doTopico(tId) : [];
+    sel.innerHTML = !tId ? '<option value="">Escolha o tópico primeiro</option>'
+      : lista.length ? '<option value="">Tópico inteiro (sem subtópico)</option>' + lista.map(s => `<option value="${esc(s.id)}">${paiDe(s) ? '↳ ' : ''}${esc(s.nome)}</option>`).join('')
+      : '<option value="">Este tópico ainda não tem subtópicos</option>';
+    sel.disabled = !lista.length;
+  }
+  document.addEventListener('change', ev => {
+    if (ev.target && /^est-(edital-select-modal|disc-select|topic-select)$/.test(ev.target.id)) setTimeout(preencherSubDoModal, 0);
+  }, true);
+
   window.estSub = {
     carregar, migrar, doTopico, porId, doRegistro, sugestao, topicoPorNomes, ligarPaginas, atualizarDoItem,
     criar, vincular, desvincular, faixa, paginasNoPdf, atualizarCampos, definirTec, linkDoCaderno, editarTec, renomear, mover, ordenar, paiDe, mesclar, reclassificar, excluir,

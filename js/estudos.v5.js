@@ -424,6 +424,7 @@ async function submitSession() {
   const correctQ = parseInt(document.getElementById('est-questions-correct')?.value) || 0;
   const tecLinkInput = document.getElementById('est-session-tec-link')?.value.trim();
   const metaDone = !!document.getElementById('est-meta-check')?.checked;
+  const subId = document.getElementById('est-sub-select')?.value || '';   // subtópico (opcional)
 
   if (!eId || !dId) return;
 
@@ -477,6 +478,10 @@ async function submitSession() {
     tipo: 'estudo',
     metaDone: metaDone && !!topicName
   };
+  // Subtópico escolhido: as questões, os acertos e o tempo ficam nele (mesmo formato da conclusão de meta)
+  if (subId && topicName && window.estSub && window.estSub.temSessoes()) {
+    session.assuntos = [{ subtopico_id: subId, minutos: totalMinutes, questoes: totalQ, acertos: session.questionsCorrect }];
+  }
 
   studyData.push(session);
   saveData();
