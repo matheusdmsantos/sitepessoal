@@ -492,6 +492,12 @@
   async function imagensParaWord(html) {
     const tpl = document.createElement('template');
     tpl.innerHTML = html;
+    // O Word não entende o desenho do KaTeX: a fórmula vai como o LaTeX dela, em itálico
+    tpl.content.querySelectorAll('.ql-formula').forEach(f => {
+      const em = document.createElement('em');
+      em.textContent = f.getAttribute('data-value') || f.textContent;
+      f.replaceWith(em);
+    });
     for (const img of tpl.content.querySelectorAll('img')) {
       const el = new Image();
       el.src = img.getAttribute('src');

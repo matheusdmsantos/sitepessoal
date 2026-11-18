@@ -412,7 +412,7 @@
     const um = (c, ref) => { t += c; refs.push(ref); };
     const inline = nos => nos.forEach(n => {
       if (n.nodeType === 3) { for (let k = 0; k < n.data.length; k++) um(n.data[k], { no: n, k }); }
-      else if (n.nodeType === 1 && n.tagName === 'IMG') um('￼', { el: n });
+      else if (n.nodeType === 1 && (n.tagName === 'IMG' || n.classList.contains('ql-formula'))) um('￼', { el: n });   // fórmula = 1, como no Quill
       else if (n.nodeType === 1 && n.tagName !== 'BR') inline(n.childNodes);
     });
     const bloco = el => { const ini = refs.length; inline(el.childNodes); um('\n', { fim: el, ini }); };

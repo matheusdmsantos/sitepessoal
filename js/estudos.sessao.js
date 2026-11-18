@@ -1477,6 +1477,16 @@
 
   function limparHtmlColado(html) {
     const doc = new DOMParser().parseFromString(html, 'text/html');
+    // Fórmula já desenhada (ChatGPT, Claude… usam KaTeX/MathML e guardam o LaTeX numa <annotation>): volta a ser
+    // o LaTeX entre $$ (bloco) ou \( \) (no meio do texto), que converterFormulas desenha depois de colar
+    doc.querySelectorAll('.katex-display, .katex, math').forEach(el => {
+      if (!el.isConnected || el.closest('.ql-formula')) return;
+      const ann = el.querySelector('annotation[encoding="application/x-tex"]');
+      if (!ann) return;
+      const tex = ann.textContent.trim();
+      const bloco = el.classList.contains('katex-display') || el.getAttribute('display') === 'block';
+      el.replaceWith(doc.createTextNode(bloco ? `$$${tex}$$` : `\\(${tex}\\)`));
+    });
     doc.querySelectorAll('script, style, meta, link, title, noscript, button, input, select, textarea, svg').forEach(n => n.remove());
 
     doc.body.querySelectorAll('*').forEach(el => {
@@ -1530,6 +1540,64 @@
     const i = sel ? sel.index : quill.getLength();
     if (sel && sel.length) quill.deleteText(sel.index, sel.length, 'user');
     quill.clipboard.dangerouslyPasteHTML(i, limparHtmlColado(html), 'user');
+    converterFormulas();
+  }
+
+  /* =============================================
+     FÓRMULAS (KaTeX 0.16.9, carregado ao abrir a janela; o CSS vem pelo <link> do estudos.html)
+     Fórmula = o embed "formula" do próprio Quill 1.3.6 (<span class="ql-formula" data-value="LaTeX">,
+     desenhado pelo KaTeX). Texto colado de IAs vem em LaTeX: $$…$$ e \[…\] (bloco, fica numa linha só,
+     centralizada), \(…\) e $…$ (no meio do texto; $…$ só com cara de fórmula: \ ^ _ { }, para não pegar
+     "R$ 10 e R$ 20"). O botão ∑ converte o que já está no resumo ou, sem nada, abre o campo para digitar.
+  ============================================= */
+  const KATEX_JS = 'https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js';
+  let katexCarregando = null;
+  function carregarKatex() {
+    if (window.katex) return Promise.resolve(true);
+    if (!katexCarregando) {
+      katexCarregando = new Promise(ok => {
+        const s = document.createElement('script');
+        s.src = KATEX_JS;
+        s.onload = () => ok(true);
+        s.onerror = () => { katexCarregando = null; ok(false); };
+        document.head.appendChild(s);
+      });
+    }
+    return katexCarregando;
+  }
+
+  const RE_FORMULA = /\$\$([\s\S]+?)\$\$|\\\[([\s\S]+?)\\\]|\\\(([\s\S]+?)\\\)|(?<![\\$\w])\$(?=\S)([^$\n]+?)(?<=\S)\$(?![\w$])/g;
+
+  // Converte o LaTeX em texto do editor em fórmulas. Devolve quantas converteu.
+  async function converterFormulas() {
+    const texto = quill.getContents().ops.map(op => (typeof op.insert === 'string' ? op.insert : '\uFFFC')).join('');
+    const achados = [];
+    for (const m of texto.matchAll(RE_FORMULA)) {
+      const tex = (m[1] || m[2] || m[3] || m[4] || '').replace(/\s*\n\s*/g, ' ').trim();
+      if (!tex || tex.includes('\uFFFC')) continue;
+      if (m[4] !== undefined && !/[\\^_{}]/.test(tex)) continue;   // "$5 e $10": não é fórmula
+      achados.push({ i: m.index, n: m[0].length, tex, bloco: m[1] !== undefined || m[2] !== undefined });
+    }
+    if (!achados.length) return 0;
+    if (!(await carregarKatex())) { aviso('Não foi possível carregar o desenhista de fórmulas (KaTeX). Confira a conexão.'); return 0; }
+    for (const f of achados.reverse()) {   // de trás para frente: os índices de antes continuam valendo
+      quill.deleteText(f.i, f.n, 'user');
+      quill.insertEmbed(f.i, 'formula', f.tex, 'user');
+      if (!f.bloco) continue;
+      // Bloco: sozinho na linha e centralizado
+      let i = f.i;
+      if (quill.getText(i + 1, 1) !== '\n') quill.insertText(i + 1, '\n', 'user');
+      if (i > 0 && quill.getText(i - 1, 1) !== '\n') { quill.insertText(i, '\n', 'user'); i++; }
+      if (!quill.getFormat(i, 1).list) quill.formatLine(i, 1, 'align', 'center', 'user');   // em lista, centralizar levaria o marcador junto
+    }
+    return achados.length;
+  }
+
+  async function botaoFormula() {
+    const n = await converterFormulas();
+    if (n) { aviso(`${n} fórmula${n === 1 ? '' : 's'} convertida${n === 1 ? '' : 's'}.`); return; }
+    if (!(await carregarKatex())) { aviso('Não foi possível carregar o desenhista de fórmulas (KaTeX). Confira a conexão.'); return; }
+    quill.theme.tooltip.edit('formula');   // campo do Quill para digitar o LaTeX (ex.: K_f = \frac{A}{L^2})
   }
 
   function iniciarImagens() {
@@ -1785,11 +1853,11 @@
             [{ 'color': [] }, { 'background': [] }],
             [{ 'list': 'ordered' }, { 'list': 'bullet' }, { 'indent': '-1' }, { 'indent': '+1' }],
             [{ 'align': [] }],
-            ['blockquote', 'code-block', 'link', 'image', 'desenho', 'tinta'],
+            ['blockquote', 'code-block', 'link', 'image', 'formula', 'desenho', 'tinta'],
             ['clean'],
             ...(window.isOwner && window.isOwner() ? [['ia']] : [])
           ],
-          handlers: { ia: melhorarComIA, desenho: () => desenhar(), tinta: () => window.estTinta && window.estTinta.ligar(!window.estTinta.ligada()) }
+          handlers: { ia: melhorarComIA, formula: botaoFormula, desenho: () => desenhar(), tinta: () => window.estTinta && window.estTinta.ligar(!window.estTinta.ligada()) }
         }
       }
     });
@@ -1814,6 +1882,9 @@
     }
     quill.on('text-change', (delta, old, fonte) => { if (fonte === 'user') agendarSalvar(); });
     iniciarImagens();
+    carregarKatex();   // as fórmulas já salvas no resumo e as coladas precisam dele
+    const botaoForm = quill.getModule('toolbar').container.querySelector('.ql-formula');
+    if (botaoForm) botaoForm.title = 'Fórmula: converte o LaTeX do resumo ($$…$$, \\(…\\)) ou digite uma nova';
     if (window.estTinta) {
       window.estTinta.iniciar({
         quill, indiceEm, pagina: paginaDaTinta, resumoId: idResumo,
